@@ -1,0 +1,190 @@
+/*!
+ * Copyright (C) Microsoft Corporation. All rights reserved.
+ * This file is auto-generated. Do not modify it manually.
+ * Changes to this file may be overwritten.
+ */
+
+export const dataSourcesInfo = {
+  "accounts": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "accountid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "activitymimeattachments": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "activitymimeattachmentid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "aur_benefitses": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "aur_benefitsid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "aur_brokers": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "aur_brokerid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "aur_business_ruleses": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "aur_business_rulesid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "businessunits": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "businessunitid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "aur_consequenceses": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "aur_consequencesid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "aur_consequences_results": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "aur_consequences_resultid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "contacts": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "contactid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "aur_coverageses": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "aur_coveragesid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "aur_customdocumenttemplateses": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "aur_customdocumenttemplatesid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "aur_deductibleses": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "aur_deductiblesid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "aur_email_attachmentses": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "aur_email_attachmentsid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "emails": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "activityid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "aur_email_records": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "aur_email_recordid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "cr058_emailtemplates": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "cr058_emailtemplateid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "aur_exclusionses": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "aur_exclusionsid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "aur_inclusionses": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "aur_inclusionsid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "aur_quoteses": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "aur_quotesid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "aur_plans": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "aur_planid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "cr058_policies": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "cr058_policyid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "aur_productses": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "aur_productsid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "aur_quotes": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "aur_quoteid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "aur_quotes_detailses": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "aur_quotes_detailsid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "systemusers": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "systemuserid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "aur_warrantieses": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "aur_warrantiesid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  }
+};

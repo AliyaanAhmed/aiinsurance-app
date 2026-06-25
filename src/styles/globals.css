@@ -1,0 +1,71 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 220 43% 98%;
+    --foreground: 222 47% 8%;
+    --surface: 0 0% 100%;
+    --surface-soft: 216 100% 99%;
+    --surface-muted: 214 45% 96%;
+    --border: 214 30% 88%;
+    --border-soft: 214 32% 93%;
+    --primary: 218 70% 44%;
+    --primary-light: 217 91% 60%;
+    --primary-dark: 224 64% 33%;
+    --secondary: 246 90% 67%;
+    --success: 160 80% 31%;
+    --warning: 38 92% 50%;
+    --danger: 0 84% 60%;
+    --info: 190 90% 38%;
+    --muted: 215 32% 94%;
+    --muted-foreground: 215 15% 42%;
+  }
+
+  .dark {
+    --background: 210 65% 8%;
+    --foreground: 214 100% 96%;
+    --surface: 211 64% 12%;
+    --surface-soft: 209 61% 16%;
+    --surface-muted: 209 58% 18%;
+    --border: 207 48% 23%;
+    --border-soft: 207 46% 25%;
+    --primary: 217 91% 60%;
+    --primary-light: 213 94% 68%;
+    --primary-dark: 224 76% 48%;
+    --secondary: 258 90% 66%;
+    --success: 160 84% 39%;
+    --warning: 43 96% 56%;
+    --danger: 0 91% 71%;
+    --info: 188 86% 53%;
+    --muted: 210 50% 18%;
+    --muted-foreground: 212 24% 73%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-size: 14px;
+    margin: 0;
+    min-width: 320px;
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+  }
+
+  ::selection {
+    background: hsl(var(--primary) / 0.18);
+  }
+}

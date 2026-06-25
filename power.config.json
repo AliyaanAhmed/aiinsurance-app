@@ -1,0 +1,151 @@
+{
+  "version": "1.0",
+  "appId": "e5302b13-a5de-4b24-8e55-59ee074af302",
+  "appDisplayName": "Insurance Quotes",
+  "region": "prod",
+  "appType": "CodeApp",
+  "environmentId": "75dd5fe2-be00-e8ef-b643-353c3cdd9ac7",
+  "description": "Insurance Quotes Power Apps code app",
+  "buildPath": "dist",
+  "buildEntryPoint": "index.html",
+  "localAppUrl": "http://localhost:3000",
+  "logoPath": "Default",
+  "connectionReferences": {},
+  "databaseReferences": {
+    "default.cds": {
+      "dataSources": {
+        "products": {
+          "entitySetName": "aur_productses",
+          "logicalName": "aur_products",
+          "isHidden": false
+        },
+        "inquiries": {
+          "entitySetName": "aur_quoteses",
+          "logicalName": "aur_quotes",
+          "isHidden": false
+        },
+        "quotes": {
+          "entitySetName": "aur_quotes",
+          "logicalName": "aur_quote",
+          "isHidden": false
+        },
+        "quotesdetails": {
+          "entitySetName": "aur_quotes_detailses",
+          "logicalName": "aur_quotes_details",
+          "isHidden": false
+        },
+        "plans": {
+          "entitySetName": "aur_plans",
+          "logicalName": "aur_plan",
+          "isHidden": false
+        },
+        "brokers": {
+          "entitySetName": "aur_brokers",
+          "logicalName": "aur_broker",
+          "isHidden": false
+        },
+        "accounts": {
+          "entitySetName": "accounts",
+          "logicalName": "account",
+          "isHidden": false
+        },
+        "contacts": {
+          "entitySetName": "contacts",
+          "logicalName": "contact",
+          "isHidden": false
+        },
+        "businessrules": {
+          "entitySetName": "aur_business_ruleses",
+          "logicalName": "aur_business_rules",
+          "isHidden": false
+        },
+        "consequences": {
+          "entitySetName": "aur_consequenceses",
+          "logicalName": "aur_consequences",
+          "isHidden": false
+        },
+        "consequencesresults": {
+          "entitySetName": "aur_consequences_results",
+          "logicalName": "aur_consequences_result",
+          "isHidden": false
+        },
+        "coverages": {
+          "entitySetName": "aur_coverageses",
+          "logicalName": "aur_coverages",
+          "isHidden": false
+        },
+        "benefits": {
+          "entitySetName": "aur_benefitses",
+          "logicalName": "aur_benefits",
+          "isHidden": false
+        },
+        "exclusions": {
+          "entitySetName": "aur_exclusionses",
+          "logicalName": "aur_exclusions",
+          "isHidden": false
+        },
+        "inclusions": {
+          "entitySetName": "aur_inclusionses",
+          "logicalName": "aur_inclusions",
+          "isHidden": false
+        },
+        "warranties": {
+          "entitySetName": "aur_warrantieses",
+          "logicalName": "aur_warranties",
+          "isHidden": false
+        },
+        "deductibles": {
+          "entitySetName": "aur_deductibleses",
+          "logicalName": "aur_deductibles",
+          "isHidden": false
+        },
+        "customdocumenttemplates": {
+          "entitySetName": "aur_customdocumenttemplateses",
+          "logicalName": "aur_customdocumenttemplates",
+          "isHidden": false
+        },
+        "emailtemplates": {
+          "entitySetName": "cr058_emailtemplates",
+          "logicalName": "cr058_emailtemplate",
+          "isHidden": false
+        },
+        "businessunits": {
+          "entitySetName": "businessunits",
+          "logicalName": "businessunit",
+          "isHidden": false
+        },
+        "users": {
+          "entitySetName": "systemusers",
+          "logicalName": "systemuser",
+          "isHidden": false
+        },
+        "policies": {
+          "entitySetName": "cr058_policies",
+          "logicalName": "cr058_policy",
+          "isHidden": false
+        },
+        "emailrecords": {
+          "entitySetName": "aur_email_records",
+          "logicalName": "aur_email_record",
+          "isHidden": false
+        },
+        "emailattachments": {
+          "entitySetName": "aur_email_attachmentses",
+          "logicalName": "aur_email_attachments",
+          "isHidden": false
+        },
+        "emailmessages": {
+          "entitySetName": "emails",
+          "logicalName": "email",
+          "isHidden": false
+        },
+        "attachments": {
+          "entitySetName": "activitymimeattachments",
+          "logicalName": "activitymimeattachment",
+          "isHidden": false
+        }
+      },
+      "environmentVariableName": ""
+    }
+  }
+}
