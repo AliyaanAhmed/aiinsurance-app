@@ -143,6 +143,11 @@
           "entitySetName": "activitymimeattachments",
           "logicalName": "activitymimeattachment",
           "isHidden": false
+        },
+        "productrulelinks": {
+          "entitySetName": "cr058_productrulelink1s",
+          "logicalName": "cr058_productrulelink1",
+          "isHidden": false
         }
       },
       "environmentVariableName": ""

@@ -152,6 +152,13 @@ export const dataSourcesInfo = {
     "dataSourceType": "Dataverse",
     "apis": {}
   },
+  "cr058_productrulelink1s": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "cr058_productrulelink1id",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
   "aur_productses": {
     "tableId": "",
     "version": "",

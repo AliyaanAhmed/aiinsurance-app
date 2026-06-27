@@ -40,18 +40,25 @@ export function mapProductSummary(
 }
 
 export function mapInquirySummary(record: Aur_quoteses): InquirySummary {
+  const accountName = record.aur_accountname?.trim() || 'No account linked'
+  const brokerName =
+    record.aur_brokername?.trim() ||
+    record.aur_accountname?.trim() ||
+    'No broker linked'
+
   return {
     id: record.aur_quotesid,
     name: record.aur_name,
     inquiryNumber: record.aur_quote_number ?? `INQ-${record.aur_quotesid.slice(0, 8).toUpperCase()}`,
-    inquiryType: record.aur_inquiry_typename ?? 'New',
+    inquiryType: record.aur_inquiry_typename ?? inquiryTypeLabel(record.aur_inquiry_type) ?? 'New',
+    inquiryTypeValue: record.aur_inquiry_type ? Number(record.aur_inquiry_type) : undefined,
     status: record.aur_inquiry_statusname ?? inquiryStatusLabel(record.aur_inquiry_status) ?? record.statuscodename ?? 'Draft',
     inquiryStatusValue: record.aur_inquiry_status ? Number(record.aur_inquiry_status) : undefined,
     accountId: record._aur_account_value,
-    accountName: record.aur_accountname ?? 'No account linked',
+    accountName,
     contactName: record.aur_contactname ?? 'No contact linked',
     brokerId: record._aur_account_value,
-    brokerName: record.aur_accountname ?? 'No broker linked',
+    brokerName,
     productId: record._aur_product_value,
     productName: record.aur_productname ?? 'No product linked',
     planId: record._aur_plan_value,
@@ -75,6 +82,12 @@ export function mapInquiryDetail(
   broker?: RelatedParty,
 ): InquiryDetail {
   const summary = mapInquirySummary(record)
+  const resolvedAccountName = account?.name?.trim() || summary.accountName
+  const resolvedContactName = contact?.name?.trim() || summary.contactName
+  const resolvedBrokerName =
+    broker?.name?.trim() ||
+    account?.name?.trim() ||
+    summary.brokerName
   const readiness = [
     {
       label: 'Overall Completeness',
@@ -100,6 +113,9 @@ export function mapInquiryDetail(
 
   return {
     ...summary,
+    accountName: resolvedAccountName,
+    contactName: resolvedContactName,
+    brokerName: resolvedBrokerName,
     riskDescription: record.aur_risk_description ?? 'Risk explanation not captured yet.',
     paymentTerm: record.aur_payment_termname ?? 'Annual',
     territorialScope: record.aur_territorial_scope ?? 'Not specified',
@@ -127,7 +143,8 @@ export function mapQuoteSummary(record: Aur_quotes): QuoteSummary {
     id: record.aur_quoteid,
     inquiryId: record._aur_quotes_value ?? '',
     name: record.aur_name,
-    status: record.aur_quote_statusname ?? record.statuscodename ?? 'Active',
+    status: record.aur_quote_statusname ?? quoteStatusLabel(record.aur_quote_status) ?? record.statuscodename ?? 'Active',
+    quoteStatusValue: record.aur_quote_status ? Number(record.aur_quote_status) : undefined,
     productName: record.aur_productname ?? 'No product linked',
     planName: record.aur_planname ?? 'No plan linked',
     totalPremium: record.aur_total_premium ?? 0,
@@ -282,6 +299,13 @@ function inquiryStatusLabel(value?: Aur_quotesesaur_inquiry_status) {
   if (value === 2) return 'Refer to Underwriter'
   if (value === 3) return 'Escalate to Head of Aviation'
   if (value === 4) return 'Property or Reinsurance Team'
+  return undefined
+}
+
+function quoteStatusLabel(value?: number) {
+  if (value === 751820000) return 'Quote Won'
+  if (value === 751820001) return 'Quote Lost'
+  if (value === 751820002) return 'Deactivated'
   return undefined
 }
 

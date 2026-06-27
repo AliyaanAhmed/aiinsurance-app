@@ -15,15 +15,16 @@ import { GuardedRoute } from '../components/system/GuardedRoute'
 import { AdminCatalogPage } from '../pages/admin/AdminCatalogPage'
 import { AdminDetailPage } from '../pages/admin/AdminDetailPage'
 import { DocumentTemplatePreviewPage } from '../pages/admin/DocumentTemplatePreviewPage'
+import { EmailTemplatesPage } from '../pages/admin/EmailTemplatesPage'
+import { DocumentTemplatesPage } from '../pages/admin/DocumentTemplatesPage'
+import { BusinessRulesPage } from '../pages/admin/BusinessRulesPage'
+import { BusinessRuleWorkspacePage } from '../pages/admin/BusinessRuleWorkspacePage'
 import {
   Boxes,
   BriefcaseBusiness,
   Building2,
-  FilePenLine,
-  Files,
   Layers3,
   ListChecks,
-  Mail,
   NotebookTabs,
   ScanLine,
   ServerCog,
@@ -178,7 +179,23 @@ export const router = createBrowserRouter([
         path: 'admin/business-rules',
         element: (
           <GuardedRoute bucket="products">
-            <AdminCatalogPage entity="business-rules" icon={FilePenLine} />
+            <BusinessRulesPage />
+          </GuardedRoute>
+        ),
+      },
+      {
+        path: 'admin/business-rules/create',
+        element: (
+          <GuardedRoute bucket="products">
+            <BusinessRuleWorkspacePage />
+          </GuardedRoute>
+        ),
+      },
+      {
+        path: 'admin/business-rules/:id/edit',
+        element: (
+          <GuardedRoute bucket="products">
+            <BusinessRuleWorkspacePage />
           </GuardedRoute>
         ),
       },
@@ -266,7 +283,7 @@ export const router = createBrowserRouter([
         path: 'admin/email-templates',
         element: (
           <GuardedRoute bucket="admin">
-            <AdminCatalogPage entity="email-templates" icon={Mail} />
+            <EmailTemplatesPage />
           </GuardedRoute>
         ),
       },
@@ -274,7 +291,7 @@ export const router = createBrowserRouter([
         path: 'admin/document-templates',
         element: (
           <GuardedRoute bucket="admin">
-            <AdminCatalogPage entity="document-templates" icon={Files} />
+            <DocumentTemplatesPage />
           </GuardedRoute>
         ),
       },

@@ -559,8 +559,8 @@ export async function getProductWorkspace(productId?: string): Promise<ProductWo
     summary,
     availablePlans: plansDataset.records.filter((plan) => !productId || plan.productId === productId),
     availableRules: rulesDataset.records,
-    relationshipNotice:
-      'Product-to-rule assignment is structured in the workspace, but the exact Dataverse junction table logical name still needs confirmation before linked saves can be turned on.',
+    associatedRuleIds: [],
+    relationshipNotice: undefined,
   }
 }
 

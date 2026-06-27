@@ -1,5 +1,5 @@
 import { useParams, Link } from 'react-router-dom'
-import { ArrowLeft, FileText } from 'lucide-react'
+import { ArrowLeft, FileText, Layers3 } from 'lucide-react'
 import { useAsyncData } from '../../hooks/useAsyncData'
 import { getQuoteDetail } from '../../services/quotesService'
 import { Button } from '../../components/ui/Button'
@@ -23,15 +23,15 @@ export function QuoteEditPage() {
           Back to quotes
         </Link>
       </Button>
-      <Card variant="premium" className="space-y-4">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+      <Card variant="premium" className="space-y-3">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <div className="flex items-center gap-2">
               <Badge variant="approved">{data.status}</Badge>
               <Badge variant="info">{data.productName}</Badge>
             </div>
-            <h1 className="mt-3 text-[30px] font-bold">{data.name}</h1>
-            <p className="text-sm text-muted-foreground">
+            <h1 className="mt-2 text-[24px] font-bold tracking-[-0.02em]">{data.name}</h1>
+            <p className="mt-1 text-sm text-muted-foreground">
               Linked inquiry: {data.inquiry?.name ?? 'No inquiry linked'} · Plan: {data.planName}
             </p>
           </div>
@@ -44,10 +44,8 @@ export function QuoteEditPage() {
       </Card>
       <Tabs defaultValue="quote-details">
         <TabsList>
-          <TabsTrigger value="quote-details">Quote Details</TabsTrigger>
-          <TabsTrigger value="plan-details">Plan Details</TabsTrigger>
-          <TabsTrigger value="email">Email</TabsTrigger>
-          <TabsTrigger value="documents">Documents</TabsTrigger>
+          <TabsTrigger value="quote-details" icon={FileText}>Quote Details</TabsTrigger>
+          <TabsTrigger value="plan-details" icon={Layers3}>Plan Details</TabsTrigger>
         </TabsList>
         <TabsContent value="quote-details" className="mt-4">
           <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
@@ -88,25 +86,6 @@ export function QuoteEditPage() {
             <h3 className="text-xl font-semibold">Plan and product-linked content</h3>
             <p className="mt-3 text-sm text-muted-foreground">
               This first phase keeps the quote workbench read-first. Full plan/product-linked editing and save workflows are deferred to the next implementation wave.
-            </p>
-          </Card>
-        </TabsContent>
-        <TabsContent value="email" className="mt-4">
-          <Card className="space-y-3">
-            <div className="flex items-center gap-3">
-              <FileText className="h-5 w-5 text-primary" />
-              <h3 className="text-xl font-semibold">Email Draft Area</h3>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              Communication templates remain Dataverse-backed and will be integrated into send/save actions in the next wave.
-            </p>
-          </Card>
-        </TabsContent>
-        <TabsContent value="documents" className="mt-4">
-          <Card>
-            <h3 className="text-xl font-semibold">Documents</h3>
-            <p className="mt-3 text-sm text-muted-foreground">
-              PDF export and linked document workflows are reserved for the next build wave after the read-first shell is validated.
             </p>
           </Card>
         </TabsContent>

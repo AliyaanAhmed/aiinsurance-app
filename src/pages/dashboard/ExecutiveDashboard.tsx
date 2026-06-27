@@ -1,15 +1,33 @@
-import { CartesianGrid, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { ArrowUpRight, Bot, Clock3, FileText, ShieldAlert, Sparkles } from 'lucide-react'
+import { motion } from 'framer-motion'
+import {
+  Area,
+  AreaChart,
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts'
+import {
+  ArrowRightLeft,
+  CircleDollarSign,
+  Mail,
+  PieChart as PieChartIcon,
+  ShieldCheck,
+  TrendingUp,
+} from 'lucide-react'
+import type { ReactNode } from 'react'
 import { useAsyncData } from '../../hooks/useAsyncData'
 import { getDashboardMetrics } from '../../services/dashboardService'
 import { Card } from '../../components/ui/Card'
 import { Badge } from '../../components/ui/Badge'
-import { PageHeader } from '../../components/layout/PageHeader'
 import { formatCompactNumber, formatCurrency } from '../../lib/formatters'
-import type { InquirySummary } from '../../domain/app'
 import { Skeleton } from '../../components/ui/Skeleton'
-import { Button } from '../../components/ui/Button'
-import { Link } from 'react-router-dom'
 
 export function DashboardPage() {
   const { data, loading, error } = useAsyncData(getDashboardMetrics, [])
@@ -17,11 +35,12 @@ export function DashboardPage() {
   if (loading) {
     return (
       <div className="grid gap-6">
-        <Skeleton className="h-40 rounded-[22px]" />
-        <div className="grid gap-4 lg:grid-cols-3">
-          <Skeleton className="h-36 rounded-[22px]" />
-          <Skeleton className="h-36 rounded-[22px]" />
-          <Skeleton className="h-36 rounded-[22px]" />
+        <Skeleton className="h-64 rounded-[28px]" />
+        <div className="grid gap-6 xl:grid-cols-2">
+          <Skeleton className="h-[360px] rounded-[26px]" />
+          <Skeleton className="h-[360px] rounded-[26px]" />
+          <Skeleton className="h-[360px] rounded-[26px]" />
+          <Skeleton className="h-[360px] rounded-[26px]" />
         </div>
       </div>
     )
@@ -40,244 +59,521 @@ export function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        icon={Sparkles}
-        title="Executive operations workspace"
-        description="Premium underwriting command center with real Dataverse-backed operational signals."
-        actions={
-          data.previewMode ? (
-            <Badge variant="info">Preview Fallback Active</Badge>
-          ) : (
-            <Badge variant="approved">Hosted Runtime Connected</Badge>
-          )
-        }
-      />
-
-      <Card variant="glass" className="overflow-hidden border-border-soft bg-[radial-gradient(circle_at_top_right,rgba(59,130,246,0.12),transparent_30%),radial-gradient(circle_at_bottom_left,rgba(139,92,246,0.10),transparent_28%)]">
-        <div className="grid gap-8 xl:grid-cols-[1.7fr_1fr]">
+      <Card
+        variant="glass"
+        className="relative overflow-hidden border-border-soft bg-[linear-gradient(135deg,rgba(255,255,255,0.96)_0%,rgba(240,247,255,0.95)_52%,rgba(231,241,255,0.96)_100%)] px-6 py-6 dark:bg-[linear-gradient(135deg,rgba(15,23,42,0.92)_0%,rgba(15,23,42,0.84)_52%,rgba(30,41,59,0.92)_100%)]"
+      >
+        <div className="pointer-events-none absolute inset-0">
+          {[
+            { Icon: Mail, className: 'left-[8%] top-[18%]', delay: 0 },
+            { Icon: TrendingUp, className: 'right-[10%] top-[22%]', delay: 0.6 },
+            { Icon: ShieldCheck, className: 'right-[18%] bottom-[18%]', delay: 0.3 },
+            { Icon: CircleDollarSign, className: 'left-[16%] bottom-[16%]', delay: 0.9 },
+          ].map(({ Icon, className, delay }, index) => (
+            <motion.div
+              key={index}
+              className={`absolute ${className} text-primary/10 dark:text-primary/12`}
+              animate={{ y: [0, -12, 0], rotate: [0, 3, 0] }}
+              transition={{ duration: 6, repeat: Number.POSITIVE_INFINITY, ease: 'easeInOut', delay }}
+            >
+              <Icon className="h-20 w-20" />
+            </motion.div>
+          ))}
+        </div>
+        <div className="relative grid gap-8 xl:grid-cols-[1.35fr_0.65fr]">
           <div className="space-y-5">
-            <Badge variant="new">Executive operations workspace</Badge>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="new">Executive dashboard</Badge>
+              {data.previewMode ? <Badge variant="info">Preview fallback</Badge> : <Badge variant="approved">Dataverse live</Badge>}
+            </div>
             <div className="space-y-3">
-              <h2 className="text-[32px] font-bold leading-tight">{data.greeting}</h2>
-              <p className="max-w-3xl text-base leading-8 text-muted-foreground">
-                {data.heroDescription}
-              </p>
+              <p className="text-[12px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Insurance platform</p>
+              <h1 className="max-w-4xl text-[34px] font-bold leading-tight tracking-[-0.03em]">{data.greeting}</h1>
+              <p className="max-w-3xl text-base leading-8 text-muted-foreground">{data.heroDescription}</p>
             </div>
             <div className="grid gap-4 md:grid-cols-3">
               {data.heroMetrics.map((metric) => (
-                <Card key={metric.label} className="bg-surface/80">
-                  <p className="text-[12px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
-                    {metric.label}
+                <div key={metric.label} className="rounded-[24px] border border-white/60 bg-white/72 p-5 shadow-[0_16px_40px_rgba(15,23,42,0.06)] backdrop-blur-xl dark:border-white/8 dark:bg-white/[0.04]">
+                  <p className="text-[12px] font-bold uppercase tracking-[0.16em] text-muted-foreground">{metric.label}</p>
+                  <p className="mt-3 text-4xl font-bold">
+                    {metric.label.includes('Reassurance') ? formatCurrency(metric.value) : formatCompactNumber(metric.value)}
                   </p>
-                  <p className="mt-3 text-4xl font-bold">{formatCompactNumber(metric.value)}</p>
                   <p className="mt-2 text-sm text-muted-foreground">{metric.helper}</p>
-                </Card>
+                </div>
               ))}
             </div>
           </div>
-          <div className="flex flex-col gap-4">
+          <div className="space-y-4">
             {data.insightCards.map((insight, index) => (
-              <Card key={insight.title} className="flex items-start gap-4 bg-surface/90">
-                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-                  {index === 0 ? <Bot className="h-5 w-5" /> : index === 1 ? <ShieldAlert className="h-5 w-5" /> : <FileText className="h-5 w-5" />}
-                </div>
-                <div className="space-y-1">
-                  <h3 className="text-base font-semibold">{insight.title}</h3>
-                  <p className="text-sm text-muted-foreground">{insight.text}</p>
-                </div>
-              </Card>
+              <motion.div
+                key={insight.title}
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.45, delay: index * 0.08 }}
+              >
+                <Card className="rounded-[24px] bg-white/78 dark:bg-white/[0.04]">
+                  <div className="flex items-start gap-4">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                      {index === 0 ? <Mail className="h-5 w-5" /> : index === 1 ? <ArrowRightLeft className="h-5 w-5" /> : <PieChartIcon className="h-5 w-5" />}
+                    </div>
+                    <div className="space-y-1">
+                      <h3 className="text-base font-semibold">{insight.title}</h3>
+                      <p className="text-sm leading-7 text-muted-foreground">{insight.text}</p>
+                    </div>
+                  </div>
+                </Card>
+              </motion.div>
             ))}
           </div>
         </div>
       </Card>
 
-      <div className="grid gap-4 xl:grid-cols-5">
-        {[...data.inquiryKpis, ...data.quoteKpis, ...data.renewalKpis].map((metric) => (
-          <Card key={metric.label} variant="premium" className="relative overflow-hidden">
-            <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-primary via-secondary to-info opacity-70" />
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-[12px] font-bold uppercase tracking-[0.16em] text-muted-foreground">{metric.label}</p>
-                <p className="mt-5 text-[30px] font-bold leading-none">
-                  {metric.label.includes('Premium') ? formatCompactNumber(metric.value) : formatCompactNumber(metric.value)}
-                </p>
+      <div className="grid gap-6 xl:grid-cols-2">
+        <MetricPanel
+          title="Broker Email Intake"
+          description="Inquiry-linked email activity, using the same Dataverse email stream visible inside inquiry workspaces."
+          eyebrow="Email activity"
+          stats={[
+            { label: 'Broker emails', value: formatCompactNumber(data.brokerEmailCount) },
+            { label: 'Inquiries', value: formatCompactNumber(data.totalInquiries) },
+          ]}
+          contentClassName="grid gap-5 lg:grid-cols-[1.15fr_0.85fr]"
+        >
+          {data.brokerEmailByInquiry.length === 0 ? (
+            <EmptyChartState
+              title="No inquiry-linked emails yet"
+              description="Once email activity is linked to inquiries, the intake board will start surfacing the busiest conversations here."
+            />
+          ) : (
+            <>
+              <div className="h-[220px] overflow-hidden rounded-[22px] border border-border-soft bg-[linear-gradient(180deg,rgba(37,99,235,0.08)_0%,rgba(255,255,255,0.7)_100%)] p-3 dark:bg-[linear-gradient(180deg,rgba(37,99,235,0.12)_0%,rgba(15,23,42,0.58)_100%)]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={data.brokerEmailByInquiry} layout="vertical" margin={{ top: 4, right: 6, bottom: 4, left: 6 }}>
+                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="rgba(82,97,115,0.12)" />
+                    <XAxis type="number" hide />
+                    <YAxis type="category" dataKey="label" width={72} tickLine={false} axisLine={false} />
+                    <Tooltip formatter={(value) => [`${Number(value ?? 0)} emails`, 'Volume']} />
+                    <Bar dataKey="value" radius={[0, 10, 10, 0]} maxBarSize={20}>
+                      {data.brokerEmailByInquiry.map((_, index) => (
+                        <Cell key={index} fill={PRODUCT_COLORS[index % PRODUCT_COLORS.length]} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
               </div>
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-                <ArrowUpRight className="h-4 w-4" />
+              <div className="space-y-3">
+                <div className="rounded-[22px] border border-border-soft bg-surface-soft/75 p-4">
+                  <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Status mix</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {data.emailStatusMix.map((item, index) => (
+                      <span key={item.label} className="inline-flex items-center gap-2 rounded-full border border-border-soft bg-surface px-3 py-2 text-sm">
+                        <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: PRODUCT_COLORS[index % PRODUCT_COLORS.length] }} />
+                        <span className="font-medium">{item.label}</span>
+                        <span className="text-muted-foreground">{item.value}</span>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <div className="rounded-[22px] border border-border-soft bg-surface-soft/75 p-4">
+                  <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Recent activity trend</p>
+                  <div className="mt-3 h-[108px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={data.brokerEmailTrend} margin={{ top: 6, right: 4, left: -18, bottom: 0 }}>
+                        <defs>
+                          <linearGradient id="emailTrendFill" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#2563EB" stopOpacity={0.34} />
+                            <stop offset="100%" stopColor="#2563EB" stopOpacity={0.04} />
+                          </linearGradient>
+                        </defs>
+                        <XAxis dataKey="label" tickLine={false} axisLine={false} />
+                        <Tooltip />
+                        <Area type="monotone" dataKey="value" stroke="#2563EB" fill="url(#emailTrendFill)" strokeWidth={2.4} />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
               </div>
-            </div>
-            <p className="mt-4 text-sm text-muted-foreground">{metric.helper}</p>
-          </Card>
-        ))}
-      </div>
+            </>
+          )}
+        </MetricPanel>
 
-      <div className="grid gap-6 xl:grid-cols-[1.3fr_0.9fr]">
-        <Card variant="premium" className="h-[360px]">
-          <div className="mb-5 flex items-center justify-between">
-            <div>
-              <h3 className="text-xl font-semibold">Inquiry Trend</h3>
-              <p className="text-sm text-muted-foreground">Operational trend view built from the current inquiry mix.</p>
+        <MetricPanel
+          title="Conversion Flow"
+          description="How many inquiries move into quotes and how many quotes convert into won outcome."
+          eyebrow="Pipeline"
+          stats={[
+            { label: 'Inquiry -> Quote', value: `${data.inquiryToQuoteConversionRate}%` },
+            { label: 'Quote -> Won', value: `${data.quoteToWonConversionRate}%` },
+          ]}
+          contentClassName="space-y-4"
+        >
+          <div className="grid gap-4 xl:grid-cols-[0.92fr_1.08fr]">
+            <div className="rounded-[24px] border border-border-soft bg-[linear-gradient(180deg,rgba(255,255,255,0.95)_0%,rgba(240,247,255,0.72)_100%)] p-5 dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.82)_0%,rgba(30,41,59,0.6)_100%)]">
+              <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Conversion performance</p>
+              <div className="mt-4 space-y-4">
+                <ConversionStage
+                  label="Inquiries"
+                  value={data.totalInquiries}
+                  width="100%"
+                  tone="from-sky-500 to-blue-600"
+                />
+                <ConversionStage
+                  label="Quotes"
+                  value={data.totalQuotes}
+                  width={`${Math.max(data.inquiryToQuoteConversionRate, 18)}%`}
+                  tone="from-violet-500 to-indigo-600"
+                />
+                <ConversionStage
+                  label="Won"
+                  value={data.wonQuotes}
+                  width={`${Math.max(data.totalQuotes === 0 ? 0 : Math.round((data.wonQuotes / Math.max(data.totalInquiries, 1)) * 100), 12)}%`}
+                  tone="from-emerald-500 to-teal-600"
+                />
+              </div>
             </div>
-            <Badge variant="neutral">Last active dataset</Badge>
-          </div>
-          <ResponsiveContainer width="100%" height="88%">
-            <LineChart data={data.inquiryMix}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(82,97,115,0.15)" />
-              <XAxis dataKey="label" tickLine={false} axisLine={false} />
-              <YAxis tickLine={false} axisLine={false} />
-              <Tooltip />
-              <Line type="monotone" dataKey="value" stroke="#3B82F6" strokeWidth={3} dot={{ r: 4, fill: '#3B82F6' }} activeDot={{ r: 6 }} />
-            </LineChart>
-          </ResponsiveContainer>
-        </Card>
-        <Card variant="premium" className="h-[360px]">
-          <div className="mb-5">
-            <h3 className="text-xl font-semibold">Inquiries by Product</h3>
-            <p className="text-sm text-muted-foreground">Current product contribution across inquiry volume.</p>
-          </div>
-          <ResponsiveContainer width="100%" height="88%">
-            <PieChart>
-              <Pie
-                data={data.topProducts}
-                dataKey="value"
-                nameKey="label"
-                innerRadius={65}
-                outerRadius={110}
-                fill="#8B5CF6"
-                paddingAngle={4}
+            <div className="grid gap-4 md:grid-cols-2">
+              <MiniStatCard
+                title="Inquiry to Quote"
+                value={`${data.inquiryToQuoteConversionRate}%`}
+                helper={`${data.totalQuotes} quotes from ${data.totalInquiries} inquiries`}
+                tone="primary"
               />
-              <Tooltip />
-            </PieChart>
-          </ResponsiveContainer>
-        </Card>
-      </div>
+              <MiniStatCard
+                title="Quote to Won"
+                value={`${data.quoteToWonConversionRate}%`}
+                helper={`${data.wonQuotes} won outcomes from live quote records`}
+                tone="success"
+              />
+              <MiniStatCard
+                title="Reassurance"
+                value={formatCurrency(data.wonPremiumTotal)}
+                helper="Current won quote reassurance pool"
+                tone="secondary"
+              />
+              <MiniStatCard
+                title="Pipeline Balance"
+                value={formatCompactNumber(Math.max(data.totalQuotes - data.wonQuotes, 0))}
+                helper="Quotes still open or not yet won"
+                tone="warning"
+              />
+            </div>
+          </div>
+        </MetricPanel>
 
-      <div className="grid gap-6 xl:grid-cols-[1.45fr_0.95fr]">
-        <Card variant="premium" className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-xl font-semibold">Recent Inquiries</h3>
-              <p className="text-sm text-muted-foreground">Fresh intake records and their underwriting posture.</p>
-            </div>
-            <Button asChild variant="ghost">
-              <Link to="/inquiries">View All</Link>
-            </Button>
+        <MetricPanel
+          title="Reassurance by Product"
+          description="Total reassurance value of won quotes broken down by product."
+          eyebrow="Revenue lens"
+          stats={[
+            { label: 'Reassurance', value: formatCurrency(data.wonPremiumTotal) },
+            { label: 'Won quotes', value: formatCompactNumber(data.wonQuotes) },
+          ]}
+          contentClassName="grid gap-5 lg:grid-cols-[1fr_1fr]"
+        >
+          {data.wonPremiumByProduct.length === 0 ? (
+            <EmptyChartState
+              title="No reassurance by product yet"
+              description="Product reassurance will appear here as quote outcomes mature into won status."
+            />
+          ) : (
+            <>
+              <div className="h-[220px] overflow-hidden rounded-[22px] border border-border-soft bg-surface-soft/80 p-3">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={data.wonPremiumByProduct} layout="vertical" margin={{ top: 4, right: 6, bottom: 4, left: 6 }}>
+                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="rgba(82,97,115,0.12)" />
+                    <XAxis type="number" hide />
+                    <YAxis type="category" dataKey="label" width={108} tickLine={false} axisLine={false} />
+                    <Tooltip formatter={(value) => formatCurrency(Number(value ?? 0))} />
+                    <Bar dataKey="value" radius={[0, 10, 10, 0]} maxBarSize={20}>
+                      {data.wonPremiumByProduct.map((_, index) => (
+                        <Cell key={index} fill={PRODUCT_COLORS[index % PRODUCT_COLORS.length]} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="space-y-3">
+                {data.wonPremiumByProduct.slice(0, 5).map((item, index) => (
+                  <LegendRow key={item.label} color={PRODUCT_COLORS[index % PRODUCT_COLORS.length]} label={item.label} value={formatCurrency(item.value)} />
+                ))}
+              </div>
+            </>
+          )}
+        </MetricPanel>
+
+        <MetricPanel
+          title="Reassurance by Plan"
+          description="Won quote reassurance grouped by the plan selected on the quote."
+          eyebrow="Plan view"
+          stats={[
+            { label: 'Plans tracked', value: formatCompactNumber(data.wonPremiumByPlan.length) },
+            { label: 'Reassurance', value: formatCurrency(data.wonPremiumTotal) },
+          ]}
+          contentClassName="grid gap-5 lg:grid-cols-[1fr_1fr]"
+        >
+          {data.wonPremiumByPlan.length === 0 ? (
+            <EmptyChartState
+              title="No reassurance by plan yet"
+              description="Plan-linked reassurance will appear here once quotes with plans are marked won."
+            />
+          ) : (
+            <>
+              <div className="h-[220px] overflow-hidden rounded-[22px] border border-border-soft bg-surface-soft/80 p-3">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={data.wonPremiumByPlan} margin={{ top: 8, right: 10, left: 0, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="planPremiumFill" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#6366F1" stopOpacity={0.34} />
+                        <stop offset="100%" stopColor="#6366F1" stopOpacity={0.05} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(82,97,115,0.12)" />
+                    <XAxis dataKey="label" tickLine={false} axisLine={false} />
+                    <YAxis hide />
+                    <Tooltip formatter={(value) => formatCurrency(Number(value ?? 0))} />
+                    <Area type="monotone" dataKey="value" stroke="#6366F1" fill="url(#planPremiumFill)" strokeWidth={2.5} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="space-y-3">
+                {data.wonPremiumByPlan.slice(0, 5).map((item, index) => (
+                  <LegendRow key={item.label} color={PLAN_COLORS[index % PLAN_COLORS.length]} label={item.label} value={formatCurrency(item.value)} />
+                ))}
+              </div>
+            </>
+          )}
+        </MetricPanel>
+
+        <MetricPanel
+          title="Inquiry by Products"
+          description="Current inquiry volume contribution across products."
+          eyebrow="Product mix"
+          stats={[
+            { label: 'Products', value: formatCompactNumber(data.topProducts.length) },
+            { label: 'Inquiries', value: formatCompactNumber(data.totalInquiries) },
+          ]}
+          contentClassName="grid gap-5 lg:grid-cols-[0.95fr_1.05fr]"
+        >
+          {data.topProducts.length === 0 ? (
+            <EmptyChartState
+              title="No product-linked inquiries yet"
+              description="Once inquiry records are linked with products, the mix will start showing here."
+            />
+          ) : (
+            <>
+              <div className="h-[220px] overflow-hidden rounded-[22px] border border-border-soft bg-surface-soft/80 p-3">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={data.topProducts} dataKey="value" nameKey="label" innerRadius={52} outerRadius={88} paddingAngle={4}>
+                      {data.topProducts.map((_, index) => (
+                        <Cell key={index} fill={PRODUCT_COLORS[index % PRODUCT_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="space-y-3">
+                {data.topProducts.map((item, index) => (
+                  <LegendRow key={item.label} color={PRODUCT_COLORS[index % PRODUCT_COLORS.length]} label={item.label} value={`${item.value} inquiries`} />
+                ))}
+              </div>
+            </>
+          )}
+        </MetricPanel>
+
+        <MetricPanel
+          title="Inquiry by Brokers"
+          description="Inquiry volume grouped by broker accounts linked on the inquiry record."
+          eyebrow="Broker mix"
+          stats={[
+            { label: 'Brokers', value: formatCompactNumber(data.inquiryByBrokers.length) },
+            { label: 'Inquiries', value: formatCompactNumber(data.totalInquiries) },
+          ]}
+          contentClassName="grid gap-5 lg:grid-cols-[1fr_1fr]"
+        >
+          {data.inquiryByBrokers.length === 0 ? (
+            <EmptyChartState
+              title="No broker-linked inquiries yet"
+              description="As broker accounts are linked on inquiries, their intake share will start appearing here."
+            />
+          ) : (
+            <>
+              <div className="h-[220px] overflow-hidden rounded-[22px] border border-border-soft bg-surface-soft/80 p-3">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={data.inquiryByBrokers} layout="vertical" margin={{ top: 4, right: 6, bottom: 4, left: 6 }}>
+                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="rgba(82,97,115,0.12)" />
+                    <XAxis type="number" hide />
+                    <YAxis type="category" dataKey="label" width={120} tickLine={false} axisLine={false} />
+                    <Tooltip formatter={(value) => [`${Number(value ?? 0)} inquiries`, 'Volume']} />
+                    <Bar dataKey="value" radius={[0, 10, 10, 0]} maxBarSize={20}>
+                      {data.inquiryByBrokers.map((_, index) => (
+                        <Cell key={index} fill={PLAN_COLORS[index % PLAN_COLORS.length]} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="space-y-3">
+                {data.inquiryByBrokers.map((item, index) => (
+                  <LegendRow key={item.label} color={PLAN_COLORS[index % PLAN_COLORS.length]} label={item.label} value={`${item.value} inquiries`} />
+                ))}
+              </div>
+            </>
+          )}
+        </MetricPanel>
+
+        <MetricPanel
+          title="Inquiry Type Mix"
+          description="Live inquiry distribution across New, Renewal, Endorsement, and Claims."
+          eyebrow="Intake mix"
+          stats={[
+            { label: 'Renewals', value: formatCompactNumber(data.renewalKpis[0]?.value ?? 0) },
+            { label: 'Average risk', value: formatCompactNumber(data.inquiryKpis[2]?.value ?? 0) },
+          ]}
+          contentClassName="grid gap-5 lg:grid-cols-[0.95fr_1.05fr]"
+        >
+          <div className="h-[220px] overflow-hidden rounded-[22px] border border-border-soft bg-surface-soft/80 p-3">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={data.inquiryMix} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(82,97,115,0.12)" />
+                <XAxis dataKey="label" tickLine={false} axisLine={false} />
+                <YAxis tickLine={false} axisLine={false} allowDecimals={false} />
+                <Tooltip />
+                <Bar dataKey="value" radius={[10, 10, 0, 0]} maxBarSize={42}>
+                  {data.inquiryMix.map((_, index) => (
+                    <Cell key={index} fill={MIX_COLORS[index % MIX_COLORS.length]} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
           </div>
-          <div className="overflow-hidden rounded-[18px] border border-border-soft">
-            <div className="grid grid-cols-[1.1fr_1.1fr_0.7fr_0.5fr_0.8fr_0.55fr] bg-surface-muted px-4 py-3 text-[12px] font-bold uppercase tracking-[0.08em] text-muted-foreground">
-              <span>Inquiry #</span>
-              <span>Client</span>
-              <span>Status</span>
-              <span>AI Score</span>
-              <span>Premium</span>
-              <span>Updated</span>
-            </div>
-            <div className="divide-y divide-border-soft">
-              {data.recentInquiries.map((item) => (
-                <RecentInquiryRow key={item.id} item={item} />
-              ))}
-            </div>
+          <div className="space-y-3">
+            {data.inquiryMix.map((item, index) => (
+              <LegendRow key={item.label} color={MIX_COLORS[index % MIX_COLORS.length]} label={item.label} value={`${item.value} inquiries`} />
+            ))}
           </div>
-        </Card>
-        <div className="space-y-6">
-          <Card variant="premium" className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-xl font-semibold">Quotes by Status</h3>
-                <p className="text-sm text-muted-foreground">Distribution of quote outcomes and active pipeline.</p>
-              </div>
-              <Button asChild variant="ghost" size="sm">
-                <Link to="/quotes">Open quotes</Link>
-              </Button>
+        </MetricPanel>
+      </div>
+    </div>
+  )
+}
+
+function MetricPanel({
+  eyebrow,
+  title,
+  description,
+  stats,
+  children,
+  contentClassName,
+}: {
+  eyebrow: string
+  title: string
+  description: string
+  stats: Array<{ label: string; value: string }>
+  children: ReactNode
+  contentClassName?: string
+}) {
+  return (
+    <Card variant="premium" className="rounded-[28px] overflow-hidden">
+      <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
+        <div className="space-y-2">
+          <p className="text-[12px] font-bold uppercase tracking-[0.16em] text-muted-foreground">{eyebrow}</p>
+          <h3 className="text-xl font-semibold">{title}</h3>
+          <p className="max-w-2xl text-sm text-muted-foreground">{description}</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {stats.map((stat) => (
+            <div key={stat.label} className="rounded-full border border-border-soft bg-surface-soft px-3 py-2 text-right">
+              <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">{stat.label}</p>
+              <p className="text-sm font-semibold">{stat.value}</p>
             </div>
-            <div className="space-y-4">
-              {data.quoteStatusMix.map((item) => (
-                <StatusBar key={item.label} label={item.label} value={item.value} total={Math.max(1, data.recentQuotes.length || data.quoteStatusMix.reduce((sum, current) => sum + current.value, 0))} />
-              ))}
-            </div>
-          </Card>
-          <Card variant="premium" className="space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-warning/12 text-warning">
-                <Clock3 className="h-5 w-5" />
-              </div>
-              <div>
-                <h3 className="text-xl font-semibold">Operational Overview</h3>
-                <p className="text-sm text-muted-foreground">Executive summary across in-progress underwriting activity.</p>
-              </div>
-            </div>
-            <div className="grid gap-4">
-              {[...data.inquiryKpis.slice(0, 2), ...data.quoteKpis.slice(0, 2)].map((metric) => (
-                <OperationalCard key={metric.label} title={metric.label} value={String(metric.value)} helper={metric.helper} />
-              ))}
-            </div>
-          </Card>
+          ))}
         </div>
       </div>
+      <div className={contentClassName ?? 'h-[280px]'}>
+        {children}
+      </div>
+    </Card>
+  )
+}
+
+function LegendRow({ color, label, value }: { color: string; label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-[18px] border border-border-soft bg-surface-soft/70 px-4 py-3">
+      <div className="flex min-w-0 items-center gap-3">
+        <span className="h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: color }} />
+        <span className="truncate text-sm font-medium">{label}</span>
+      </div>
+      <span className="shrink-0 text-sm font-semibold">{value}</span>
     </div>
   )
 }
 
-function RecentInquiryRow({ item }: { item: InquirySummary }) {
-  return (
-    <Link
-      to={`/inquiries/${item.id}`}
-      className="grid grid-cols-[1.1fr_1.1fr_0.7fr_0.5fr_0.8fr_0.55fr] items-center gap-3 px-4 py-4 transition hover:bg-primary/5"
-    >
-      <div className="space-y-1">
-        <p className="font-semibold text-primary">{item.inquiryNumber}</p>
-        <p className="text-[12px] text-muted-foreground">{item.productName}</p>
-      </div>
-      <div className="space-y-1">
-        <p className="font-medium">{item.accountName}</p>
-        <p className="text-[12px] text-muted-foreground">{item.contactName}</p>
-      </div>
-      <div>
-        <Badge variant={item.status.toLowerCase().includes('review') ? 'review' : 'new'}>{item.status}</Badge>
-      </div>
-      <p className="font-semibold">{item.riskScore}</p>
-      <p className="font-medium">{formatCurrency(item.grossPremium)}</p>
-      <p className="text-[12px] text-muted-foreground">{formatRelativeTime(item.createdOn)}</p>
-    </Link>
-  )
-}
-
-function StatusBar({ label, value, total }: { label: string; value: number; total: number }) {
-  const width = Math.max(8, Math.round((value / total) * 100))
+function ConversionStage({
+  label,
+  value,
+  width,
+  tone,
+}: {
+  label: string
+  value: number
+  width: string
+  tone: string
+}) {
   return (
     <div className="space-y-2">
-      <div className="flex items-center justify-between text-sm">
-        <span className="font-medium">{label}</span>
-        <span className="text-muted-foreground">{value}</span>
-      </div>
-      <div className="h-2 rounded-full bg-surface-muted">
-        <div className="h-2 rounded-full bg-gradient-to-r from-primary to-info" style={{ width: `${width}%` }} />
-      </div>
-    </div>
-  )
-}
-
-function OperationalCard({ title, value, helper }: { title: string; value: string; helper: string }) {
-  return (
-    <div className="rounded-[18px] border border-border-soft bg-surface-soft p-4">
       <div className="flex items-center justify-between gap-3">
-        <p className="text-sm font-semibold">{title}</p>
-        <ArrowUpRight className="h-4 w-4 text-muted-foreground" />
+        <span className="text-sm font-semibold">{label}</span>
+        <span className="text-sm font-semibold">{formatCompactNumber(value)}</span>
       </div>
-      <p className="mt-4 text-3xl font-bold">{value}</p>
-      <p className="mt-2 text-sm text-muted-foreground">{helper}</p>
+      <div className="h-3 overflow-hidden rounded-full bg-slate-200/80 dark:bg-white/10">
+        <div className={`h-full rounded-full bg-gradient-to-r ${tone}`} style={{ width }} />
+      </div>
     </div>
   )
 }
 
-function formatRelativeTime(value: string) {
-  if (!value) return 'Now'
-  const current = new Date()
-  const date = new Date(value)
-  const diff = Math.round((current.getTime() - date.getTime()) / 3600000)
-  if (Number.isNaN(diff)) return 'Now'
-  if (diff <= 1) return '1h ago'
-  if (diff < 24) return `${diff}h ago`
-  const days = Math.round(diff / 24)
-  return `${days}d ago`
+function MiniStatCard({
+  title,
+  value,
+  helper,
+  tone,
+}: {
+  title: string
+  value: string
+  helper: string
+  tone: 'primary' | 'success' | 'secondary' | 'warning'
+}) {
+  const toneClass =
+    tone === 'success'
+      ? 'from-emerald-500/14 to-teal-500/10 text-emerald-700 dark:text-emerald-300'
+      : tone === 'secondary'
+        ? 'from-violet-500/14 to-indigo-500/10 text-violet-700 dark:text-violet-300'
+        : tone === 'warning'
+          ? 'from-amber-500/14 to-orange-500/10 text-amber-700 dark:text-amber-300'
+          : 'from-blue-500/14 to-sky-500/10 text-blue-700 dark:text-blue-300'
+
+  return (
+    <div className={`rounded-[22px] border border-border-soft bg-gradient-to-br ${toneClass} p-5`}>
+      <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">{title}</p>
+      <p className="mt-3 text-2xl font-bold text-foreground">{value}</p>
+      <p className="mt-2 text-sm leading-6 text-muted-foreground">{helper}</p>
+    </div>
+  )
 }
+
+function EmptyChartState({ title, description }: { title: string; description: string }) {
+  return (
+    <div className="flex h-[220px] items-center justify-center rounded-[24px] border border-dashed border-border-soft bg-surface-soft/70 px-6 text-center">
+      <div className="max-w-sm space-y-2">
+        <p className="text-base font-semibold">{title}</p>
+        <p className="text-sm leading-6 text-muted-foreground">{description}</p>
+      </div>
+    </div>
+  )
+}
+
+const PRODUCT_COLORS = ['#2563EB', '#14B8A6', '#7C3AED', '#F59E0B', '#EF4444', '#0EA5E9']
+const PLAN_COLORS = ['#1D4ED8', '#6366F1', '#0F766E', '#EA580C', '#BE185D', '#0891B2']
+const MIX_COLORS = ['#2563EB', '#8B5CF6', '#14B8A6', '#F59E0B', '#EF4444']

@@ -183,13 +183,6 @@ export const APP_ROUTES: RouteDefinition[] = [
     group: 'Administration',
   },
   {
-    path: '/admin/brokers',
-    label: 'Brokers',
-    bucket: 'admin',
-    icon: BriefcaseBusiness,
-    group: 'Administration',
-  },
-  {
     path: '/admin/accounts',
     label: 'Accounts',
     bucket: 'admin',

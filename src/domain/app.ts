@@ -105,6 +105,7 @@ export interface ProductWorkspace {
   }
   availablePlans: AdminCatalogItem[]
   availableRules: AdminCatalogItem[]
+  associatedRuleIds: string[]
   relationshipNotice?: string
 }
 
@@ -113,6 +114,7 @@ export interface InquirySummary {
   name: string
   inquiryNumber: string
   inquiryType: string
+  inquiryTypeValue?: number
   status: string
   inquiryStatusValue?: number
   accountId?: string
@@ -191,6 +193,7 @@ export interface QuoteSummary {
   inquiryId: string
   name: string
   status: string
+  quoteStatusValue?: number
   productName: string
   planName: string
   totalPremium: number
@@ -351,6 +354,19 @@ export interface DashboardMetrics {
   greeting: string
   heroDescription: string
   heroMetrics: KpiMetric[]
+  brokerEmailCount: number
+  brokerEmailByInquiry: ChartDatum[]
+  emailStatusMix: ChartDatum[]
+  totalInquiries: number
+  totalQuotes: number
+  wonQuotes: number
+  wonPremiumTotal: number
+  inquiryToQuoteConversionRate: number
+  quoteToWonConversionRate: number
+  brokerEmailTrend: ChartDatum[]
+  wonPremiumByProduct: ChartDatum[]
+  wonPremiumByPlan: ChartDatum[]
+  inquiryByBrokers: ChartDatum[]
   inquiryKpis: KpiMetric[]
   quoteKpis: KpiMetric[]
   renewalKpis: KpiMetric[]

@@ -64,6 +64,7 @@ export function Select({
       </SelectPrimitive.Trigger>
       <SelectPrimitive.Portal>
         <SelectPrimitive.Content
+          data-codex-select-content="true"
           position="popper"
           sideOffset={8}
           className={cn(

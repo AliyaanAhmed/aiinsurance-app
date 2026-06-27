@@ -1,15 +1,25 @@
-import { useMemo, useState, type ReactNode, type FormEvent } from 'react'
+import { useState, type ReactNode, type FormEvent } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { ArrowLeft, Copy, Eye, FileText, Printer, Save, Send, Sparkles } from 'lucide-react'
+import { ArrowLeft, BadgeCheck, CheckCircle2, ChevronDown, ChevronUp, Download, FileText, FileWarning, Gem, Layers3, Pencil, Save, ShieldAlert, ShieldCheck, TicketSlash, Trash2, XCircle } from 'lucide-react'
 import { useAsyncData } from '../../hooks/useAsyncData'
-import { getQuoteDetail, getQuoteEditorOptions, saveQuoteDetail } from '../../services/quotesService'
+import {
+  deleteQuotePlanLinkedRecord,
+  getQuoteDetail,
+  getQuoteEditorOptions,
+  getQuotePlanLinkedSections,
+  renameQuotePlanLinkedRecord,
+  saveQuoteDetail,
+  updateQuoteStatus,
+  type QuotePlanLinkedEntityKey,
+} from '../../services/quotesService'
 import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/Tabs'
 import { Badge } from '../../components/ui/Badge'
 import { Input } from '../../components/ui/Input'
-import { Select } from '../../components/ui/Select'
 import { formatCurrency } from '../../lib/formatters'
+import { generateQuotePdf } from '../../lib/quotePdf'
+import takafulHeaderSrc from '../../assets/takaful-header.png?inline'
 
 interface QuoteFormState {
   name: string
@@ -28,9 +38,6 @@ interface QuoteFormState {
   deductiblesId: string
   warrantiesId: string
   quoteStatus: 'QuoteWon' | 'QuoteLost' | ''
-  emailTo: string
-  emailSubject: string
-  emailBody: string
 }
 
 export function QuoteWorkbenchPage() {
@@ -39,9 +46,20 @@ export function QuoteWorkbenchPage() {
   const [form, setForm] = useState<QuoteFormState | null>(null)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
-  const [selectedEmailTemplateId, setSelectedEmailTemplateId] = useState('')
-  const [selectedDocumentTemplateId, setSelectedDocumentTemplateId] = useState('')
-  const [copyState, setCopyState] = useState<'idle' | 'copied'>('idle')
+  const [statusBusy, setStatusBusy] = useState(false)
+  const [isExporting, setIsExporting] = useState(false)
+  const [expandedPlanSections, setExpandedPlanSections] = useState<Record<string, boolean>>({
+    benefits: false,
+    inclusions: false,
+    exclusions: false,
+    deductibles: false,
+    warranties: false,
+    coverages: false,
+  })
+  const [editingPlanRecordKey, setEditingPlanRecordKey] = useState<string | null>(null)
+  const [editingPlanRecordName, setEditingPlanRecordName] = useState('')
+  const [planActionBusyKey, setPlanActionBusyKey] = useState<string | null>(null)
+  const [planActionError, setPlanActionError] = useState<string | null>(null)
   const { data, loading, error } = useAsyncData(async () => {
     const [detail, options] = await Promise.all([getQuoteDetail(id), getQuoteEditorOptions()])
     setForm({
@@ -60,46 +78,27 @@ export function QuoteWorkbenchPage() {
       exclusionsId: options.exclusions.find((item) => item.name === detail.exclusionName)?.id ?? '',
       deductiblesId: options.deductibles.find((item) => item.name === detail.deductibleName)?.id ?? '',
       warrantiesId: options.warranties.find((item) => item.name === detail.warrantyName)?.id ?? '',
-      quoteStatus: detail.status === 'QuoteWon' || detail.status === 'QuoteLost' ? detail.status : '',
-      emailTo: '',
-      emailSubject: `${detail.name} - Quote Proposal`,
-      emailBody: detail.aiSummary,
+      quoteStatus:
+        detail.quoteStatusValue === 751820000
+          ? 'QuoteWon'
+          : detail.quoteStatusValue === 751820001
+            ? 'QuoteLost'
+            : normalizeQuoteStatus(detail.status),
     })
     return { detail, options }
   }, [id, refreshKey])
-
-  const activeEmailTemplates = useMemo(
-    () => (data?.detail.emailTemplates ?? []).filter((template) => template.isActive),
-    [data?.detail.emailTemplates],
-  )
-  const selectedEmailTemplate = useMemo(
-    () => activeEmailTemplates.find((template) => template.id === selectedEmailTemplateId) ?? activeEmailTemplates[0],
-    [activeEmailTemplates, selectedEmailTemplateId],
-  )
-  const selectedDocumentTemplate = useMemo(
-    () =>
-      data?.detail.documentTemplates.find((template) => template.id === selectedDocumentTemplateId) ??
-      data?.detail.documentTemplates[0],
-    [data?.detail.documentTemplates, selectedDocumentTemplateId],
+  const {
+    data: planSections,
+    loading: planSectionsLoading,
+  } = useAsyncData(
+    () => getQuotePlanLinkedSections(form?.planId ?? ''),
+    [form?.planId, refreshKey],
   )
 
   if (loading) return <Card>Loading quote workbench...</Card>
   if (error || !data || !form) return <Card>{error ?? 'Quote not found.'}</Card>
-
-  const mergeContext = {
-    QuoteName: form.name,
-    QuotePremium: formatCurrency(Number(form.totalPremium) || 0),
-    ProductName: data.detail.productName,
-    PlanName: data.detail.planName,
-    ClientName: data.detail.inquiry?.accountName ?? 'Valued Client',
-    InquiryNumber: data.detail.inquiry?.inquiryNumber ?? 'N/A',
-    AiSummary: form.aiSummary,
-    OutcomeReason: form.reason || 'No outcome reason has been captured yet.',
-  }
-  const mergeTokens = Object.keys(mergeContext)
-  const renderedEmailSubject = renderTemplate(form.emailSubject, mergeContext)
-  const renderedEmailBody = renderTemplate(form.emailBody, mergeContext)
-  const renderedDocument = renderTemplate(selectedDocumentTemplate?.content ?? '', mergeContext)
+  const currentForm = form
+  const currentDetail = data.detail
 
   async function handleSave(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -134,56 +133,66 @@ export function QuoteWorkbenchPage() {
     }
   }
 
-  function applyEmailTemplate() {
-    if (!selectedEmailTemplate) return
-    setForm((current) =>
-      current
-        ? {
-            ...current,
-            emailSubject: selectedEmailTemplate.subject,
-            emailBody: selectedEmailTemplate.body,
-          }
-        : current,
-    )
-  }
-
-  async function copyEmailPreview() {
+  async function handleRenamePlanRecord(entity: QuotePlanLinkedEntityKey, recordId: string) {
+    if (!editingPlanRecordName.trim()) return
+    const busyKey = `rename:${entity}:${recordId}`
     try {
-      await navigator.clipboard.writeText(renderedEmailBody)
-      setCopyState('copied')
-      window.setTimeout(() => setCopyState('idle'), 1500)
-    } catch {
-      setCopyState('idle')
+      setPlanActionBusyKey(busyKey)
+      setPlanActionError(null)
+      await renameQuotePlanLinkedRecord(entity, recordId, editingPlanRecordName.trim())
+      setEditingPlanRecordKey(null)
+      setEditingPlanRecordName('')
+      setRefreshKey((value) => value + 1)
+    } catch (cause) {
+      setPlanActionError(cause instanceof Error ? cause.message : 'Unable to update the record name.')
+    } finally {
+      setPlanActionBusyKey(null)
     }
   }
 
-  function printDocumentPreview() {
-    if (!form || !data) return
-    const currentForm = form
-    const currentDetail = data.detail
-    const printWindow = window.open('', '_blank', 'width=1024,height=768')
-    if (!printWindow) return
-    printWindow.document.write(`
-      <html>
-        <head>
-          <title>${currentForm.name} - Quote Document</title>
-          <style>
-            body { font-family: Segoe UI, Arial, sans-serif; padding: 32px; color: #0f172a; }
-            h1 { margin-bottom: 8px; }
-            .meta { color: #475569; margin-bottom: 24px; }
-            .card { border: 1px solid #cbd5e1; border-radius: 18px; padding: 24px; white-space: pre-wrap; line-height: 1.6; }
-          </style>
-        </head>
-        <body>
-          <h1>${escapeHtml(currentForm.name)}</h1>
-          <p class="meta">${escapeHtml(`${currentDetail.productName} | ${currentDetail.planName} | ${formatCurrency(Number(currentForm.totalPremium) || 0)}`)}</p>
-          <div class="card">${escapeHtml(renderedDocument || 'No document template content available.')}</div>
-        </body>
-      </html>
-    `)
-    printWindow.document.close()
-    printWindow.focus()
-    printWindow.print()
+  async function handleQuoteStatusChange(nextStatus: 'QuoteWon' | 'QuoteLost') {
+    try {
+      setStatusBusy(true)
+      setSaveError(null)
+      setForm((current) => (current ? { ...current, quoteStatus: nextStatus } : current))
+      await updateQuoteStatus(id, nextStatus)
+      setRefreshKey((value) => value + 1)
+    } catch (cause) {
+      setSaveError(cause instanceof Error ? cause.message : 'Unable to update quote status.')
+    } finally {
+      setStatusBusy(false)
+    }
+  }
+
+  async function handleDeletePlanRecord(entity: QuotePlanLinkedEntityKey, recordId: string) {
+    const busyKey = `delete:${entity}:${recordId}`
+    try {
+      setPlanActionBusyKey(busyKey)
+      setPlanActionError(null)
+      await deleteQuotePlanLinkedRecord(entity, recordId)
+      setRefreshKey((value) => value + 1)
+    } catch (cause) {
+      setPlanActionError(cause instanceof Error ? cause.message : 'Unable to delete the record.')
+    } finally {
+      setPlanActionBusyKey(null)
+    }
+  }
+
+  async function handleExportPdf() {
+    try {
+      setIsExporting(true)
+      setSaveError(null)
+      await generateQuotePdf({
+        detail: currentDetail,
+        form: currentForm,
+        planSections: planSections ?? [],
+        headerImageSrc: takafulHeaderSrc,
+      })
+    } catch (cause) {
+      setSaveError(cause instanceof Error ? cause.message : 'Failed to generate PDF')
+    } finally {
+      setIsExporting(false)
+    }
   }
 
   return (
@@ -194,33 +203,55 @@ export function QuoteWorkbenchPage() {
           Back to quotes
         </Link>
       </Button>
-      <Card variant="premium" className="space-y-4">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+      <Card variant="premium" className="space-y-3">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <div className="flex items-center gap-2">
               <Badge variant="approved">{data.detail.status}</Badge>
-              <Badge variant="info">{data.detail.productName}</Badge>
-              {form.quoteStatus ? <Badge variant="review">{form.quoteStatus}</Badge> : null}
+              <Badge variant="info">{currentDetail.productName}</Badge>
             </div>
-            <h1 className="mt-3 text-[30px] font-bold">{data.detail.name}</h1>
-            <p className="text-sm text-muted-foreground">
-              Linked inquiry: {data.detail.inquiry?.name ?? 'No inquiry linked'} - Plan: {data.detail.planName}
+            <h1 className="mt-2 text-[24px] font-bold tracking-[-0.02em]">{data.detail.name}</h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Linked inquiry: {currentDetail.inquiry?.name ?? 'No inquiry linked'} - Plan: {currentDetail.planName}
             </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <QuoteStatusChip
+                active={form.quoteStatus === 'QuoteWon'}
+                disabled={statusBusy}
+                icon={CheckCircle2}
+                label="Quote Won"
+                onClick={() => void handleQuoteStatusChange('QuoteWon')}
+              />
+              <QuoteStatusChip
+                active={form.quoteStatus === 'QuoteLost'}
+                disabled={statusBusy}
+                icon={XCircle}
+                label="Quote Lost"
+                tone="danger"
+                onClick={() => void handleQuoteStatusChange('QuoteLost')}
+              />
+            </div>
           </div>
-          <div className="grid gap-3 md:grid-cols-3">
-            <Metric label="Total Premium" value={formatCurrency(data.detail.totalPremium)} />
-            <Metric label="Gross Premium" value={formatCurrency(data.detail.grossPremium)} />
-            <Metric label="VAT" value={formatCurrency(data.detail.vat)} />
+          <div className="space-y-2.5">
+            <div className="grid gap-3 md:grid-cols-3">
+            <Metric label="Total Premium" value={formatCurrency(currentDetail.totalPremium)} />
+            <Metric label="Gross Premium" value={formatCurrency(currentDetail.grossPremium)} />
+            <Metric label="VAT" value={formatCurrency(currentDetail.vat)} />
+            </div>
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button type="button" variant="secondary" className="bg-white hover:bg-surface" disabled={isExporting} onClick={() => void handleExportPdf()}>
+                <Download className="h-4 w-4" />
+                {isExporting ? 'Generating...' : 'Generate Quote'}
+              </Button>
+            </div>
           </div>
         </div>
       </Card>
       <form onSubmit={handleSave} className="space-y-6">
         <Tabs defaultValue="quote-details">
           <TabsList>
-            <TabsTrigger value="quote-details">Quote Details</TabsTrigger>
-            <TabsTrigger value="plan-details">Plan Details</TabsTrigger>
-            <TabsTrigger value="email">Email</TabsTrigger>
-            <TabsTrigger value="documents">Documents</TabsTrigger>
+            <TabsTrigger value="quote-details" icon={FileText}>Quote Details</TabsTrigger>
+            <TabsTrigger value="plan-details" icon={Layers3}>Plan Details</TabsTrigger>
           </TabsList>
           <TabsContent value="quote-details" className="mt-4">
             <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
@@ -235,20 +266,6 @@ export function QuoteWorkbenchPage() {
                 <div className="grid gap-4 md:grid-cols-2">
                   <Field label="Quote Name">
                     <Input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
-                  </Field>
-                  <Field label="Quote Status">
-                    <Select
-                      value={form.quoteStatus}
-                      onValueChange={(value) =>
-                        setForm({ ...form, quoteStatus: value as QuoteFormState['quoteStatus'] })
-                      }
-                      options={[
-                        { value: '', label: 'No final outcome' },
-                        { value: 'QuoteWon', label: 'Quote Won' },
-                        { value: 'QuoteLost', label: 'Quote Lost' },
-                      ]}
-                    >
-                    </Select>
                   </Field>
                   <Field label="Total Premium">
                     <Input value={form.totalPremium} onChange={(event) => setForm({ ...form, totalPremium: event.target.value })} />
@@ -300,204 +317,140 @@ export function QuoteWorkbenchPage() {
             </div>
           </TabsContent>
           <TabsContent value="plan-details" className="mt-4">
-            <Card className="space-y-4">
-              <h3 className="text-xl font-semibold">Plan and Product-linked Content</h3>
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                <Field label="Product">
-                  <SelectField value={form.productId} onChange={(value) => setForm({ ...form, productId: value })} options={data.options.products} />
-                </Field>
-                <Field label="Plan">
-                  <SelectField value={form.planId} onChange={(value) => setForm({ ...form, planId: value })} options={data.options.plans} />
-                </Field>
-                <Field label="Coverage">
-                  <SelectField value={form.coverageId} onChange={(value) => setForm({ ...form, coverageId: value })} options={data.options.coverages} />
-                </Field>
-                <Field label="Benefits">
-                  <SelectField value={form.benefitsId} onChange={(value) => setForm({ ...form, benefitsId: value })} options={data.options.benefits} />
-                </Field>
-                <Field label="Inclusions">
-                  <SelectField value={form.inclusionsId} onChange={(value) => setForm({ ...form, inclusionsId: value })} options={data.options.inclusions} />
-                </Field>
-                <Field label="Exclusions">
-                  <SelectField value={form.exclusionsId} onChange={(value) => setForm({ ...form, exclusionsId: value })} options={data.options.exclusions} />
-                </Field>
-                <Field label="Deductibles">
-                  <SelectField value={form.deductiblesId} onChange={(value) => setForm({ ...form, deductiblesId: value })} options={data.options.deductibles} />
-                </Field>
-                <Field label="Warranties">
-                  <SelectField value={form.warrantiesId} onChange={(value) => setForm({ ...form, warrantiesId: value })} options={data.options.warranties} />
-                </Field>
-              </div>
-            </Card>
-          </TabsContent>
-          <TabsContent value="email" className="mt-4">
-            <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
+            <div className="space-y-6">
               <Card className="space-y-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <FileText className="h-5 w-5 text-primary" />
-                    <div>
-                      <h3 className="text-xl font-semibold">Email Draft Area</h3>
-                      <p className="text-sm text-muted-foreground">
-                        Reusable Dataverse-backed templates are available here for quote communications.
-                      </p>
-                    </div>
-                  </div>
-                  <Button type="button" variant="secondary" onClick={copyEmailPreview}>
-                    <Copy className="h-4 w-4" />
-                    {copyState === 'copied' ? 'Copied' : 'Copy Preview'}
-                  </Button>
-                </div>
-                <div className="rounded-[18px] border border-border-soft bg-surface-soft p-4">
-                  <p className="text-[12px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Merge fields</p>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {mergeTokens.map((token) => (
-                      <button
-                        key={token}
-                        type="button"
-                        className="rounded-full border border-border bg-surface px-3 py-1 text-xs font-semibold text-primary transition hover:border-primary hover:bg-primary/5"
-                        onClick={() =>
-                          setForm((current) =>
-                            current ? { ...current, emailBody: `${current.emailBody} {{${token}}}`.trim() } : current,
-                          )
-                        }
-                      >
-                        {`{{${token}}}`}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div className="grid gap-4">
-                  <Field label="Recipient Email">
-                    <Input value={form.emailTo} onChange={(event) => setForm({ ...form, emailTo: event.target.value })} />
-                  </Field>
-                  <Field label="Subject">
-                    <Input value={form.emailSubject} onChange={(event) => setForm({ ...form, emailSubject: event.target.value })} />
-                  </Field>
-                  <Field label="Body">
-                    <textarea
-                      className="min-h-48 w-full rounded-[16px] border border-border bg-surface px-3 py-3 text-sm outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10"
-                      value={form.emailBody}
-                      onChange={(event) => setForm({ ...form, emailBody: event.target.value })}
-                    />
-                  </Field>
-                </div>
-              </Card>
-              <div className="space-y-6">
-                <Card className="space-y-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <h3 className="text-xl font-semibold">Template Library</h3>
-                      <p className="text-sm text-muted-foreground">Choose a live Dataverse template and apply it to the draft.</p>
-                    </div>
-                    <Button type="button" variant="outline" onClick={applyEmailTemplate} disabled={!selectedEmailTemplate}>
-                      <Sparkles className="h-4 w-4" />
-                      Apply Template
-                    </Button>
-                  </div>
-                  <div className="space-y-3">
-                    {activeEmailTemplates.map((template) => (
-                      <button
-                        key={template.id}
-                        type="button"
-                        className={`w-full rounded-[18px] border p-4 text-left transition ${
-                          template.id === selectedEmailTemplate?.id
-                            ? 'border-primary bg-primary/5 shadow-soft'
-                            : 'border-border-soft bg-surface-soft hover:border-primary/40'
-                        }`}
-                        onClick={() => setSelectedEmailTemplateId(template.id)}
-                      >
-                        <div className="flex items-center justify-between gap-3">
-                          <p className="font-semibold">{template.name}</p>
-                          <Badge variant="info">{template.category}</Badge>
-                        </div>
-                        <p className="mt-2 text-sm font-medium">{template.subject}</p>
-                        <p className="mt-2 line-clamp-3 text-sm text-muted-foreground">{template.body}</p>
-                      </button>
-                    ))}
-                  </div>
-                </Card>
-                <Card className="space-y-4">
-                  <div className="flex items-center gap-3">
-                    <Eye className="h-5 w-5 text-info" />
-                    <div>
-                      <h3 className="text-xl font-semibold">Rendered Preview</h3>
-                      <p className="text-sm text-muted-foreground">Live merged output using the current quote context.</p>
-                    </div>
-                  </div>
-                  <div className="rounded-[18px] border border-border-soft bg-surface-soft p-5">
-                    <p className="text-sm font-semibold">{renderedEmailSubject}</p>
-                    <div className="mt-4 whitespace-pre-wrap text-sm leading-7 text-muted-foreground">{renderedEmailBody}</div>
-                  </div>
-                  <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                    <Send className="h-4 w-4 text-success" />
-                    Delivery integration can now be layered later without rebuilding the composition workspace.
-                  </div>
-                </Card>
-              </div>
-            </div>
-          </TabsContent>
-          <TabsContent value="documents" className="mt-4">
-            <div className="grid gap-6 xl:grid-cols-[1fr_1fr]">
-              <Card className="space-y-4">
-                <div className="flex items-center justify-between gap-3">
+                <div className="flex items-start justify-between gap-4">
                   <div>
-                    <h3 className="text-xl font-semibold">Document Templates</h3>
+                    <h3 className="text-xl font-semibold">Plan-linked Catalog</h3>
                     <p className="text-sm text-muted-foreground">
-                      Live document templates connected from Dataverse for quote-ready output preparation.
+                      Each accordion shows records whose `aur_plan` matches the plan selected on this quote.
                     </p>
                   </div>
-                  <Button type="button" variant="secondary" onClick={printDocumentPreview}>
-                    <Printer className="h-4 w-4" />
-                    Open Print View
-                  </Button>
+                  {form.planId ? <Badge variant="info">Plan linked</Badge> : <Badge variant="neutral">No plan selected</Badge>}
                 </div>
-                <div className="grid gap-4">
-                  {data.detail.documentTemplates.map((template) => (
-                    <button
-                      key={template.id}
-                      type="button"
-                      className={`rounded-[18px] border p-4 text-left transition ${
-                        template.id === selectedDocumentTemplate?.id
-                          ? 'border-primary bg-primary/5 shadow-soft'
-                          : 'border-border-soft bg-surface-soft hover:border-primary/40'
-                      }`}
-                      onClick={() => setSelectedDocumentTemplateId(template.id)}
-                    >
-                      <p className="font-semibold">{template.name}</p>
-                      <p className="line-clamp-5 text-sm text-muted-foreground">
-                        {template.content || 'No template content captured yet.'}
-                      </p>
-                    </button>
-                  ))}
-                </div>
-              </Card>
-              <Card className="space-y-4">
-                <h3 className="text-xl font-semibold">PDF Export Area</h3>
-                <p className="text-sm text-muted-foreground">
-                  The export workflow surface now renders merged template output for quote packaging and downstream communication handoff.
-                </p>
-                <div className="rounded-[18px] border border-border-soft bg-surface-soft p-4">
-                  <p className="text-[12px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Export Summary</p>
-                  <div className="mt-3 grid gap-3 md:grid-cols-2">
-                    <Metric label="Quote Name" value={data.detail.name} />
-                    <Metric label="Total Premium" value={formatCurrency(Number(form.totalPremium))} />
-                    <Metric label="Client" value={data.detail.inquiry?.accountName ?? 'No client linked'} />
-                    <Metric label="Plan" value={data.detail.planName} />
+                {planActionError ? <p className="text-sm text-danger">{planActionError}</p> : null}
+                {!form.planId ? (
+                  <p className="text-sm text-muted-foreground">Select a plan on the quote first to load related records.</p>
+                ) : planSectionsLoading ? (
+                  <p className="text-sm text-muted-foreground">Loading plan-linked records...</p>
+                ) : (
+                  <div className="space-y-3">
+                    {(planSections ?? []).map((section) => {
+                      const isExpanded = expandedPlanSections[section.key] ?? false
+                      const SectionIcon = planSectionIcon(section.key)
+                      return (
+                        <div key={section.key} className="overflow-hidden rounded-[24px] border border-border-soft bg-white shadow-[0_10px_24px_rgba(15,23,42,0.06)] dark:bg-slate-950/95 dark:shadow-[0_12px_28px_rgba(2,6,23,0.22)]">
+                          <button
+                            type="button"
+                            className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left transition hover:bg-surface-soft/70"
+                            onClick={() =>
+                              setExpandedPlanSections((current) => ({
+                                ...current,
+                                [section.key]: !isExpanded,
+                              }))
+                            }
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                                <SectionIcon className="h-5 w-5" />
+                              </div>
+                              <div>
+                                <p className="text-base font-semibold">{section.title}</p>
+                                <p className="text-sm text-muted-foreground">Plan-linked records</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <Badge variant="review">{section.records.length}</Badge>
+                              {isExpanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+                            </div>
+                          </button>
+                          {isExpanded ? (
+                            <div className="border-t border-border-soft px-5 py-5">
+                              {section.records.length === 0 ? (
+                                <p className="text-sm text-muted-foreground">No {section.title.toLowerCase()} records are linked to this plan yet.</p>
+                              ) : (
+                                <div className="grid gap-3 xl:grid-cols-4">
+                                  {section.records.map((record) => {
+                                    const recordKey = `${section.key}:${record.id}`
+                                    const isEditing = editingPlanRecordKey === recordKey
+                                    const renameBusy = planActionBusyKey === `rename:${section.key}:${record.id}`
+                                    const deleteBusy = planActionBusyKey === `delete:${section.key}:${record.id}`
+                                    return (
+                                      <Card key={record.id} variant="interactive" className="space-y-3 rounded-[20px] border border-border-soft bg-surface px-4 py-4 shadow-[0_8px_18px_rgba(15,23,42,0.05)]">
+                                        <div className="flex items-start justify-between gap-3">
+                                          <div className="min-w-0 flex-1">
+                                            {isEditing ? (
+                                              <Input value={editingPlanRecordName} onChange={(event) => setEditingPlanRecordName(event.target.value)} />
+                                            ) : (
+                                              <h4 className="truncate text-sm font-semibold leading-6">{record.name}</h4>
+                                            )}
+                                          </div>
+                                          {!isEditing ? (
+                                            <div className="flex items-center gap-1">
+                                              <Button
+                                                type="button"
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-8 w-8 rounded-full bg-white text-muted-foreground hover:bg-surface-soft hover:text-primary"
+                                                onClick={() => {
+                                                  setEditingPlanRecordKey(recordKey)
+                                                  setEditingPlanRecordName(record.name)
+                                                }}
+                                              >
+                                                <Pencil className="h-4 w-4" />
+                                              </Button>
+                                              <Button
+                                                type="button"
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-8 w-8 rounded-full bg-white text-muted-foreground hover:bg-danger/10 hover:text-danger"
+                                                disabled={deleteBusy}
+                                                onClick={() => void handleDeletePlanRecord(section.key, record.id)}
+                                              >
+                                                <Trash2 className="h-4 w-4" />
+                                              </Button>
+                                            </div>
+                                          ) : null}
+                                        </div>
+                                        <div className="flex flex-wrap justify-end gap-2">
+                                          {isEditing ? (
+                                            <>
+                                              <Button
+                                                type="button"
+                                                variant="secondary"
+                                                size="sm"
+                                                className="bg-white hover:bg-surface"
+                                                onClick={() => {
+                                                  setEditingPlanRecordKey(null)
+                                                  setEditingPlanRecordName('')
+                                                }}
+                                              >
+                                                Cancel
+                                              </Button>
+                                              <Button
+                                                type="button"
+                                                size="sm"
+                                                disabled={renameBusy}
+                                                onClick={() => void handleRenamePlanRecord(section.key, record.id)}
+                                              >
+                                                <Save className="h-4 w-4" />
+                                                {renameBusy ? 'Saving...' : 'Save'}
+                                              </Button>
+                                            </>
+                                          ) : null}
+                                        </div>
+                                      </Card>
+                                    )
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          ) : null}
+                        </div>
+                      )
+                    })}
                   </div>
-                </div>
-                <div className="rounded-[18px] border border-border-soft bg-surface-soft p-5">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-[12px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Rendered document preview</p>
-                      <p className="mt-2 font-semibold">{selectedDocumentTemplate?.name ?? 'No template selected'}</p>
-                    </div>
-                    <Badge variant="review">Merged</Badge>
-                  </div>
-                  <div className="mt-4 whitespace-pre-wrap text-sm leading-7 text-muted-foreground">
-                    {renderedDocument || 'No template content is available yet for preview.'}
-                  </div>
-                </div>
+                )}
               </Card>
             </div>
           </TabsContent>
@@ -525,38 +478,52 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   )
 }
 
-function SelectField({
-  value,
-  onChange,
-  options,
+function planSectionIcon(key: QuotePlanLinkedEntityKey) {
+  if (key === 'benefits') return Gem
+  if (key === 'inclusions') return BadgeCheck
+  if (key === 'exclusions') return TicketSlash
+  if (key === 'deductibles') return FileWarning
+  if (key === 'warranties') return ShieldCheck
+  return ShieldAlert
+}
+
+function QuoteStatusChip({
+  active,
+  disabled,
+  icon: Icon,
+  label,
+  onClick,
+  tone = 'primary',
 }: {
-  value: string
-  onChange: (value: string) => void
-  options: Array<{ id: string; name: string }>
+  active: boolean
+  disabled?: boolean
+  icon: typeof CheckCircle2
+  label: string
+  onClick: () => void
+  tone?: 'primary' | 'danger'
 }) {
+  const activeClass =
+    tone === 'danger'
+      ? 'border-danger/30 bg-danger/10 text-danger'
+      : 'border-primary/30 bg-primary/10 text-primary'
   return (
-    <Select
-      value={value}
-      onValueChange={onChange}
-      options={[
-        { value: '', label: 'None selected' },
-        ...options.map((option) => ({ value: option.id, label: option.name })),
-      ]}
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition ${active ? activeClass : 'border-border-soft bg-white text-muted-foreground hover:bg-surface-soft'} disabled:cursor-not-allowed disabled:opacity-60`}
     >
-    </Select>
+      <span className={`flex h-5 w-5 items-center justify-center rounded-full ${active ? (tone === 'danger' ? 'bg-danger/15' : 'bg-primary/15') : 'bg-surface-soft'}`}>
+        <Icon className="h-3.5 w-3.5" />
+      </span>
+      {label}
+    </button>
   )
 }
 
-function renderTemplate(template: string, values: Record<string, string>) {
-  return Object.entries(values).reduce((output, [key, value]) => output.replaceAll(`{{${key}}}`, value), template)
-}
-
-function escapeHtml(value: string) {
-  return value
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#039;')
-    .replaceAll('\n', '<br />')
+function normalizeQuoteStatus(value: string) {
+  const normalized = value.replace(/\s+/g, '').trim().toLowerCase()
+  if (normalized === 'quotewon') return 'QuoteWon'
+  if (normalized === 'quotelost') return 'QuoteLost'
+  return ''
 }

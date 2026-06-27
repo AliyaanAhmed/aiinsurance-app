@@ -17,7 +17,7 @@ export function Sidebar() {
   }, {})
 
   return (
-    <aside className="hidden w-[280px] shrink-0 border-r border-white/8 bg-[linear-gradient(180deg,#071421_0%,#0A1A2B_55%,#091522_100%)] text-white lg:flex lg:flex-col">
+    <aside className="hidden lg:fixed lg:inset-y-0 lg:left-0 lg:z-40 lg:flex lg:w-[280px] lg:flex-col lg:border-r lg:border-white/8 lg:bg-[linear-gradient(180deg,#071421_0%,#0A1A2B_55%,#091522_100%)] lg:text-white">
       <div className="border-b border-white/8 px-5 py-5">
         <div className="flex items-center gap-3">
           <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-white/5 shadow-[0_10px_30px_rgba(59,130,246,0.12)]">
@@ -29,7 +29,7 @@ export function Sidebar() {
           </div>
         </div>
       </div>
-      <nav className="flex-1 space-y-7 overflow-y-auto px-3 py-5">
+      <nav className="scrollbar-hidden flex-1 space-y-7 overflow-y-auto px-3 py-5">
         {Object.entries(grouped).map(([group, routes]) => (
           <div key={group} className="space-y-3">
             <p className="px-3 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">

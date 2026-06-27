@@ -12,6 +12,7 @@ interface DataTableProps<T> {
   data: T[]
   emptyTitle: string
   emptyDescription: string
+  preserveHeaderOnEmpty?: boolean
 }
 
 export function DataTable<T>({
@@ -19,6 +20,7 @@ export function DataTable<T>({
   data,
   emptyTitle,
   emptyDescription,
+  preserveHeaderOnEmpty = false,
 }: DataTableProps<T>) {
   const table = useReactTable({
     data,
@@ -26,7 +28,7 @@ export function DataTable<T>({
     getCoreRowModel: getCoreRowModel(),
   })
 
-  if (data.length === 0) {
+  if (data.length === 0 && !preserveHeaderOnEmpty) {
     return <EmptyState title={emptyTitle} description={emptyDescription} />
   }
 
@@ -54,18 +56,32 @@ export function DataTable<T>({
             ))}
           </thead>
           <tbody>
-            {table.getRowModel().rows.map((row) => (
-              <tr
-                key={row.id}
-                className="border-b border-border-soft/80 bg-surface transition duration-150 hover:bg-primary/5"
-              >
-                {row.getVisibleCells().map((cell) => (
-                  <td key={cell.id} className="px-4 py-4 align-middle text-[13px]">
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                  </td>
-                ))}
+            {table.getRowModel().rows.length === 0 ? (
+              <tr className="bg-surface">
+                <td
+                  colSpan={columns.length}
+                  className="px-6 py-12 text-center"
+                >
+                  <div className="mx-auto max-w-md space-y-2">
+                    <p className="text-base font-semibold text-foreground">{emptyTitle}</p>
+                    <p className="text-sm text-muted-foreground">{emptyDescription}</p>
+                  </div>
+                </td>
               </tr>
-            ))}
+            ) : (
+              table.getRowModel().rows.map((row) => (
+                <tr
+                  key={row.id}
+                  className="border-b border-border-soft/80 bg-surface transition duration-150 hover:bg-primary/5"
+                >
+                  {row.getVisibleCells().map((cell) => (
+                    <td key={cell.id} className="px-4 py-4 align-middle text-[13px]">
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </td>
+                  ))}
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>

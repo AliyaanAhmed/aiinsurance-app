@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
-import { ArrowLeft, BellRing, FileStack, Save, ShieldCheck } from 'lucide-react'
+import { ArrowLeft, BellRing, FileStack, FileText, Link2, NotebookPen, Save, ShieldCheck } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
 import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
@@ -117,10 +117,10 @@ export function PolicyWorkspacePage() {
       <form onSubmit={handleSave} className="space-y-6">
         <Tabs defaultValue="overview">
           <TabsList>
-            <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="servicing">Servicing</TabsTrigger>
-            <TabsTrigger value="linked-records">Linked Records</TabsTrigger>
-            <TabsTrigger value="notes">Notes</TabsTrigger>
+            <TabsTrigger value="overview" icon={FileText}>Overview</TabsTrigger>
+            <TabsTrigger value="servicing" icon={ShieldCheck}>Servicing</TabsTrigger>
+            <TabsTrigger value="linked-records" icon={Link2}>Linked Records</TabsTrigger>
+            <TabsTrigger value="notes" icon={NotebookPen}>Notes</TabsTrigger>
           </TabsList>
 
           <TabsContent value="overview" className="mt-4">

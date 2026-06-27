@@ -2,9 +2,14 @@ import {
   Aur_business_rulesesService,
   Aur_plansService,
   Aur_productsesService,
+  Cr058_productrulelink1sService,
 } from '../generated'
 import type { AdminCatalogItem, ProductWorkspace } from '../domain/app'
 import { mapProductSummary } from './dataMappers'
+
+function normalizeId(value?: string | null) {
+  return (value ?? '').replace(/[{}]/g, '').trim().toLowerCase()
+}
 
 function mapPlanRecord(plan: Awaited<ReturnType<typeof Aur_plansService.getAll>>['data'][number]): AdminCatalogItem {
   return {
@@ -30,14 +35,23 @@ function mapRuleRecord(rule: Awaited<ReturnType<typeof Aur_business_rulesesServi
 }
 
 export async function getProductWorkspace(productId?: string): Promise<ProductWorkspace> {
-  const [productsResult, plansResult, rulesResult] = await Promise.all([
+  const [productsResult, plansResult, rulesResult, productRuleLinksResult] = await Promise.all([
     Aur_productsesService.getAll(),
     Aur_plansService.getAll(),
     Aur_business_rulesesService.getAll(),
+    Cr058_productrulelink1sService.getAll().catch(() => ({ data: [] })),
   ])
 
   const products = productsResult.data ?? []
   const current = productId ? products.find((product) => product.aur_productsid === productId) : undefined
+  const productRuleLinks = productRuleLinksResult.data ?? []
+  const normalizedProductId = normalizeId(productId)
+  const associatedRuleIds = productId
+    ? productRuleLinks
+        .filter((link) => normalizeId(link.cr058_productid) === normalizedProductId)
+        .map((link) => normalizeId(link.cr058_businessruleid))
+        .filter(Boolean)
+    : []
 
   return {
     summary: current ? mapProductSummary(current) : undefined,
@@ -76,8 +90,8 @@ export async function getProductWorkspace(productId?: string): Promise<ProductWo
       .filter((plan) => !productId || plan._aur_product_value === productId)
       .map(mapPlanRecord),
     availableRules: (rulesResult.data ?? []).map(mapRuleRecord),
-    relationshipNotice:
-      'Product-to-rule assignment UI is ready, but Dataverse persistence still needs the exact junction-table logical name because product_rule_link1 returned 404 from the environment.',
+    associatedRuleIds,
+    relationshipNotice: undefined,
   }
 }
 
@@ -144,4 +158,57 @@ export async function updateProductPlan(planId: string, input: { name: string; d
 
 export async function deleteProductPlan(planId: string) {
   await Aur_plansService.delete(planId)
+}
+
+export async function saveProductRuleAssociations(input: {
+  productId: string
+  productName: string
+  selectedRuleIds: string[]
+}) {
+  const [linksResult, rulesResult] = await Promise.all([
+    Cr058_productrulelink1sService.getAll(),
+    Aur_business_rulesesService.getAll(),
+  ])
+  const links = linksResult.data ?? []
+  const rules = rulesResult.data ?? []
+  const normalizedProductId = normalizeId(input.productId)
+  const existingLinks = links.filter((link) => normalizeId(link.cr058_productid) === normalizedProductId)
+  const existingRuleIds = new Set(existingLinks.map((link) => normalizeId(link.cr058_businessruleid)))
+  const selectedRuleIds = Array.from(new Set(input.selectedRuleIds.map((id) => normalizeId(id)).filter(Boolean)))
+  const ruleNameMap = new Map(
+    rules.map((rule) => [normalizeId(rule.aur_business_rulesid), rule.aur_name]),
+  )
+
+  const linksToAdd = selectedRuleIds.filter((ruleId) => !existingRuleIds.has(ruleId))
+  const linksToRemove = existingLinks.filter((link) => !selectedRuleIds.includes(normalizeId(link.cr058_businessruleid)))
+
+  for (const ruleId of linksToAdd) {
+    await Cr058_productrulelink1sService.create({
+      cr058_name: `${input.productName} - ${ruleNameMap.get(ruleId) ?? ruleId}`,
+      cr058_productid: input.productId,
+      cr058_businessruleid: ruleId,
+    } as never)
+  }
+
+  for (const link of linksToRemove) {
+    await Cr058_productrulelink1sService.delete(link.cr058_productrulelink1id)
+  }
+}
+
+export async function removeProductRuleAssociation(input: {
+  productId: string
+  businessRuleId: string
+}) {
+  const linksResult = await Cr058_productrulelink1sService.getAll()
+  const links = linksResult.data ?? []
+  const normalizedProductId = normalizeId(input.productId)
+  const normalizedRuleId = normalizeId(input.businessRuleId)
+  const match = links.find(
+    (link) =>
+      normalizeId(link.cr058_productid) === normalizedProductId &&
+      normalizeId(link.cr058_businessruleid) === normalizedRuleId,
+  )
+
+  if (!match) return
+  await Cr058_productrulelink1sService.delete(match.cr058_productrulelink1id)
 }

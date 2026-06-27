@@ -29,19 +29,26 @@ import {
   mapRelatedParty,
 } from './dataMappers'
 
+type InquiryReferenceData = {
+  products: Awaited<ReturnType<typeof Aur_productsesService.getAll>>['data']
+  plans: Awaited<ReturnType<typeof Aur_plansService.getAll>>['data']
+  accounts: Awaited<ReturnType<typeof AccountsService.getAll>>['data']
+}
+
+let inquiryReferenceDataPromise: Promise<InquiryReferenceData> | null = null
+let inquiryEditorOptionsPromise: Promise<Awaited<ReturnType<typeof getInquiryEditorOptionsUncached>>> | null = null
+
 export async function listInquiries(scope?: string): Promise<InquirySummary[]> {
-  const [result, productsResult, plansResult, accountsResult] = await Promise.all([
+  const [result, referenceData] = await Promise.all([
     Aur_quotesesService.getAll({
       orderBy: ['createdon desc'],
     }),
-    Aur_productsesService.getAll(),
-    Aur_plansService.getAll(),
-    AccountsService.getAll(),
+    getInquiryReferenceData(),
   ])
   const records = result.data ?? []
-  const products = productsResult.data ?? []
-  const plans = plansResult.data ?? []
-  const accounts = accountsResult.data ?? []
+  const products = referenceData.products ?? []
+  const plans = referenceData.plans ?? []
+  const accounts = referenceData.accounts ?? []
   const productMap = new Map(products.map((product) => [product.aur_productsid, product.aur_name]))
   const planMap = new Map(plans.map((plan) => [plan.aur_planid, plan.aur_name ?? 'Unnamed plan']))
   const accountMap = new Map(
@@ -61,24 +68,106 @@ export async function listInquiries(scope?: string): Promise<InquirySummary[]> {
 }
 
 export async function getInquiryDetail(id: string): Promise<InquiryDetail> {
+  const coreDetail = await getInquiryDetailCore(id)
+  const supplementaryDetail = await getInquiryDetailSupplementary(id)
+
+  return {
+    ...coreDetail,
+    ...supplementaryDetail,
+  }
+}
+
+export async function getInquiryDetailCore(id: string): Promise<InquiryDetail> {
   const normalizedRouteId = normalizeDataverseId(id)
-  const [inquiryResult, quotesResult, consequencesResult, consequenceResultsResult, productsResult, plansResult, businessRulesResult, accountsResult, emailsResult, attachmentsResult] = await Promise.all([
+  const [inquiryResult, inquiryChoiceFieldsResult, referenceData] = await Promise.all([
     Aur_quotesesService.get(id),
-    Aur_quotesService.getAll(),
-    Aur_consequencesesService.getAll(),
-    Aur_consequences_resultsService.getAll(),
-    Aur_productsesService.getAll(),
-    Aur_plansService.getAll(),
-    Aur_business_rulesesService.getAll(),
-    AccountsService.getAll(),
-    EmailsService.getAll(),
-    ActivitymimeattachmentsService.getAll(),
+    Aur_quotesesService.get(id, {
+      select: ['aur_inquiry_type', 'aur_inquiry_typename', 'aur_inquiry_status', 'aur_inquiry_statusname'],
+    }).catch(() => ({ data: undefined })),
+    getInquiryReferenceData(),
+  ])
+  const productMap = new Map((referenceData.products ?? []).map((product) => [product.aur_productsid, product.aur_name]))
+  const planMap = new Map((referenceData.plans ?? []).map((plan) => [plan.aur_planid, plan.aur_name ?? 'Unnamed plan']))
+  const accountMap = new Map(
+    (referenceData.accounts ?? []).map((account) => [
+      account.accountid,
+      {
+        name: account.name,
+        type: account.aur_account_typename,
+        typeCode: account.aur_account_type,
+      },
+    ]),
+  )
+  const inquiryRecord =
+    inquiryResult.data
+      ? {
+          ...inquiryResult.data,
+          aur_inquiry_type:
+            inquiryChoiceFieldsResult.data?.aur_inquiry_type ??
+            inquiryResult.data.aur_inquiry_type,
+          aur_inquiry_typename:
+            inquiryChoiceFieldsResult.data?.aur_inquiry_typename ??
+            inquiryResult.data.aur_inquiry_typename,
+          aur_inquiry_status:
+            inquiryChoiceFieldsResult.data?.aur_inquiry_status ??
+            inquiryResult.data.aur_inquiry_status,
+          aur_inquiry_statusname:
+            inquiryChoiceFieldsResult.data?.aur_inquiry_statusname ??
+            inquiryResult.data.aur_inquiry_statusname,
+        }
+      : inquiryResult.data
+  const inquiry = inquiryRecord ? resolveInquiryRelations(inquiryRecord, productMap, planMap, accountMap) : undefined
+  if (!inquiry) throw new Error('Inquiry not found.')
+  const inquiryId = normalizeDataverseId(inquiry.aur_quotesid) || normalizedRouteId
+  const [coreAccount, coreContact] = await Promise.all([
+    inquiry._aur_account_value
+      ? AccountsService.get(inquiry._aur_account_value).then((result) => result.data).catch(() => undefined)
+      : Promise.resolve(undefined),
+    inquiry._aur_contact_value
+      ? ContactsService.get(inquiry._aur_contact_value).then((result) => result.data).catch(() => undefined)
+      : Promise.resolve(undefined),
   ])
 
-  const productMap = new Map((productsResult.data ?? []).map((product) => [product.aur_productsid, product.aur_name]))
-  const planMap = new Map((plansResult.data ?? []).map((plan) => [plan.aur_planid, plan.aur_name ?? 'Unnamed plan']))
+  console.info('[Inquiry Debug] inquiry choice fields', {
+    inquiryId,
+    aur_inquiry_type: inquiry.aur_inquiry_type,
+    aur_inquiry_typename: inquiry.aur_inquiry_typename,
+    aur_inquiry_status: inquiry.aur_inquiry_status,
+    aur_inquiry_statusname: inquiry.aur_inquiry_statusname,
+    aur_account_lookup: inquiry._aur_account_value,
+    aur_account_name: inquiry.aur_accountname,
+    coreAccountName: coreAccount?.name,
+  })
+
+  const workspace = mapInquiryDetail(
+    inquiry,
+    [],
+    [],
+    buildWorkflow(inquiry),
+    mapRelatedParty(coreAccount),
+    mapRelatedParty(coreContact),
+    mapRelatedParty(coreAccount),
+  )
+
+  return mergeInquiryWorkspace(
+    workspace,
+    [],
+    [],
+    [],
+    [],
+  )
+}
+
+export async function getInquiryDetailSupplementary(id: string): Promise<Partial<InquiryDetail>> {
+  const normalizedRouteId = normalizeDataverseId(id)
+  const [inquiryResult, referenceData] = await Promise.all([
+    Aur_quotesesService.get(id),
+    getInquiryReferenceData(),
+  ])
+  const productMap = new Map((referenceData.products ?? []).map((product) => [product.aur_productsid, product.aur_name]))
+  const planMap = new Map((referenceData.plans ?? []).map((plan) => [plan.aur_planid, plan.aur_name ?? 'Unnamed plan']))
   const accountMap = new Map(
-    (accountsResult.data ?? []).map((account) => [
+    (referenceData.accounts ?? []).map((account) => [
       account.accountid,
       {
         name: account.name,
@@ -91,16 +180,44 @@ export async function getInquiryDetail(id: string): Promise<InquiryDetail> {
   if (!inquiry) throw new Error('Inquiry not found.')
   const inquiryId = normalizeDataverseId(inquiry.aur_quotesid) || normalizedRouteId
 
+  const [quotesResult, rawQuoteDetails, consequenceResultsResult, emailsResult] = await Promise.all([
+    Aur_quotesService.getAll({
+      filter: `_aur_quotes_value eq ${inquiryId}`,
+      orderBy: ['createdon desc'],
+    }),
+    listQuoteDetailsForInquiry(inquiryId),
+    Aur_consequences_resultsService.getAll({
+      filter: `_aur_inquiry_value eq ${inquiryId}`,
+    }),
+    EmailsService.getAll({
+      filter: `_regardingobjectid_value eq ${inquiryId}`,
+      orderBy: ['createdon desc'],
+    }),
+  ])
+
   const quotes = (quotesResult.data ?? [])
     .filter((quote) => normalizeDataverseId(quote._aur_quotes_value) === inquiryId)
     .map((quote) => resolveQuoteRelations(quote, productMap, planMap))
-  const rawQuoteDetails = await listQuoteDetailsForInquiry(inquiryId)
 
   console.info('[Inquiry Debug] aur_quotes_details paged lookup', {
     inquiryId,
     matchedCount: rawQuoteDetails.length,
     matchedIds: rawQuoteDetails.map((detail) => detail.aur_quotes_detailsid),
   })
+
+  const businessRuleIds = [...new Set(rawQuoteDetails.map((detail) => normalizeDataverseId(detail._aur_business_rules_value)).filter(Boolean))]
+  const [businessRulesResult, consequencesResult] = await Promise.all([
+    businessRuleIds.length
+      ? Aur_business_rulesesService.getAll({
+          filter: buildGuidOrFilter('aur_business_rulesid', businessRuleIds),
+        })
+      : Promise.resolve({ data: [] }),
+    businessRuleIds.length
+      ? Aur_consequencesesService.getAll({
+          filter: buildGuidOrFilter('_aur_business_rule_value', businessRuleIds),
+        })
+      : Promise.resolve({ data: [] }),
+  ])
 
   const businessRuleCatalog = new Map(
     (businessRulesResult.data ?? []).map((rule) => [
@@ -128,7 +245,13 @@ export async function getInquiryDetail(id: string): Promise<InquiryDetail> {
     quoteDetails,
     businessRulesResult.data ?? [],
   )
-  const emailTimeline = buildInquiryEmails(id, emailsResult.data ?? [], attachmentsResult.data ?? [])
+  const emailIds = (emailsResult.data ?? []).map((email) => normalizeDataverseId(email.activityid)).filter(Boolean)
+  const attachmentsResult = emailIds.length
+    ? await ActivitymimeattachmentsService.getAll({
+        filter: buildGuidOrFilter('_objectid_value', emailIds),
+      })
+    : { data: [] }
+  const emailTimeline = buildInquiryEmails(inquiryId, emailsResult.data ?? [], attachmentsResult.data ?? [])
 
   const consequences = buildConsequences(
     quoteDetails,
@@ -176,47 +299,42 @@ export async function getInquiryDetail(id: string): Promise<InquiryDetail> {
     fetchedContactName: contact?.fullname ?? `${contact?.firstname ?? ''} ${contact?.lastname ?? ''}`.trim(),
   })
 
-  const workspace = mapInquiryDetail(
-      inquiry,
-      quotes.map(mapQuoteSummary),
-      quoteDetails,
-      buildWorkflow(inquiry),
-      mapRelatedParty(account),
-      mapRelatedParty(contact),
-      mapRelatedParty(broker),
-    )
-
-  if (contact) {
-    workspace.contactName =
-      contact.fullname?.trim() ||
-      `${contact.firstname ?? ''} ${contact.lastname ?? ''}`.trim() ||
-      workspace.contactName
-  }
-
-  return mergeInquiryWorkspace(
-    workspace,
+  return {
+    account: mapRelatedParty(account),
+    contact: mapRelatedParty(contact),
+    broker: mapRelatedParty(broker),
+    contactName:
+      contact?.fullname?.trim() ||
+      `${contact?.firstname ?? ''} ${contact?.lastname ?? ''}`.trim() ||
+      inquiry.aur_contactname ||
+      'No contact linked',
+    quotes: quotes.map(mapQuoteSummary),
+    quoteDetails,
     consequences,
     consequenceResults,
     aiRuleGroups,
     emailTimeline,
-  )
+  }
 }
 
 export async function getInquiryEditorOptions() {
-  const [productsResult, plansResult, accountsResult] = await Promise.all([
-    Aur_productsesService.getAll(),
-    Aur_plansService.getAll(),
-    AccountsService.getAll(),
-  ])
+  if (!inquiryEditorOptionsPromise) {
+    inquiryEditorOptionsPromise = getInquiryEditorOptionsUncached()
+  }
+  return inquiryEditorOptionsPromise
+}
 
-  const brokerAccounts = (accountsResult.data ?? []).filter((record) => {
+async function getInquiryEditorOptionsUncached() {
+  const referenceData = await getInquiryReferenceData()
+
+  const brokerAccounts = (referenceData.accounts ?? []).filter((record) => {
     const typeName = record.aur_account_typename?.toLowerCase()
     return record.aur_account_type === 751820000 || typeName === 'broker'
   })
 
   return {
-    products: (productsResult.data ?? []).map((record) => ({ id: record.aur_productsid, name: record.aur_name })),
-    plans: (plansResult.data ?? []).map((record) => ({
+    products: (referenceData.products ?? []).map((record) => ({ id: record.aur_productsid, name: record.aur_name })),
+    plans: (referenceData.plans ?? []).map((record) => ({
       id: record.aur_planid,
       name: record.aur_name ?? 'Unnamed plan',
       productId: record._aur_product_value ?? '',
@@ -410,7 +528,132 @@ export async function createQuoteFromInquiry(
   }
 
   const created = await Aur_quotesService.create(record as never)
-  return created.data?.aur_quoteid
+  const createdId = created.data?.aur_quoteid
+  if (createdId) {
+    await deactivateSiblingQuotes(inquiryId, [createdId])
+  }
+  return createdId
+}
+
+export async function listWonQuotesForProduct(productId: string) {
+  const normalizedProductId = normalizeDataverseId(productId)
+  if (!normalizedProductId) return []
+
+  const [quotesResult, referenceData] = await Promise.all([
+    Aur_quotesService.getAll({
+      filter: `_aur_product_value eq ${normalizedProductId} and aur_quote_status eq 751820000`,
+      orderBy: ['createdon desc'],
+    }),
+    getInquiryReferenceData(),
+  ])
+
+  const productMap = new Map((referenceData.products ?? []).map((product) => [product.aur_productsid, product.aur_name]))
+  const planMap = new Map((referenceData.plans ?? []).map((plan) => [plan.aur_planid, plan.aur_name ?? 'Unnamed plan']))
+
+  return (quotesResult.data ?? [])
+    .map((quote) => resolveQuoteRelations(quote, productMap, planMap))
+    .map(mapQuoteSummary)
+}
+
+export async function copyQuotesToInquiry(
+  inquiryId: string,
+  quoteIds: string[],
+) {
+  const normalizedQuoteIds = [...new Set(quoteIds.map((id) => normalizeDataverseId(id)).filter(Boolean))]
+  if (normalizedQuoteIds.length === 0) {
+    return []
+  }
+
+  const targetInquiryResult = await Aur_quotesesService.get(inquiryId)
+  const targetInquiry = targetInquiryResult.data
+  if (!targetInquiry) {
+    throw new Error('Target inquiry not found.')
+  }
+  const targetInquiryNumber = targetInquiry.aur_quote_number?.trim()
+  const targetInquiryName = targetInquiry.aur_name?.trim() || 'Inquiry'
+  const targetQuoteName = targetInquiryNumber
+    ? `${targetInquiryNumber} - ${targetInquiryName}`
+    : targetInquiryName
+
+  const sourceQuotes = await Promise.all(
+    normalizedQuoteIds.map(async (quoteId) => {
+      const result = await Aur_quotesService.get(quoteId)
+      return result.data
+    }),
+  )
+
+  const createdQuoteIds = await Promise.all(
+    sourceQuotes
+      .filter((quote): quote is NonNullable<typeof quote> => Boolean(quote))
+      .map(async (quote) => {
+        const record = {
+          aur_name: targetQuoteName,
+          ...(quote._aur_product_value
+            ? { 'aur_product@odata.bind': `/aur_productses(${quote._aur_product_value})` }
+            : {}),
+          ...(quote._aur_plan_value
+            ? { 'aur_plan@odata.bind': `/aur_plans(${quote._aur_plan_value})` }
+            : {}),
+          ...(quote._aur_coverage_value
+            ? { 'aur_coverage@odata.bind': `/aur_coverageses(${quote._aur_coverage_value})` }
+            : {}),
+          ...(quote._aur_benefits_value
+            ? { 'aur_benefits@odata.bind': `/aur_benefitses(${quote._aur_benefits_value})` }
+            : {}),
+          ...(quote._aur_inclusions_value
+            ? { 'aur_inclusions@odata.bind': `/aur_inclusionses(${quote._aur_inclusions_value})` }
+            : {}),
+          ...(quote._aur_exclusions_value
+            ? { 'aur_exclusions@odata.bind': `/aur_exclusionses(${quote._aur_exclusions_value})` }
+            : {}),
+          ...(quote._aur_deductibles_value
+            ? { 'aur_deductibles@odata.bind': `/aur_deductibleses(${quote._aur_deductibles_value})` }
+            : {}),
+          ...(quote._aur_warranties_value
+            ? { 'aur_warranties@odata.bind': `/aur_warrantieses(${quote._aur_warranties_value})` }
+            : {}),
+          'aur_quotes@odata.bind': `/aur_quoteses(${normalizeDataverseId(inquiryId)})`,
+          aur_total_premium: quote.aur_total_premium ?? 0,
+          aur_gross_premium: quote.aur_gross_premium ?? 0,
+          aur_loading_premium: quote.aur_loading_premium ?? 0,
+          aur_vat: quote.aur_vat ?? 0,
+          aur_ai_generated_summary: quote.aur_ai_generated_summary ?? undefined,
+          aur_reason: quote.aur_reason ?? undefined,
+          statecode: 0,
+          statuscode: 1,
+        }
+
+        const created = await Aur_quotesService.create(record as never)
+        return created.data?.aur_quoteid
+      }),
+  )
+
+  const filteredCreatedIds = createdQuoteIds.filter((value): value is string => Boolean(value))
+  if (filteredCreatedIds.length) {
+    await deactivateSiblingQuotes(inquiryId, filteredCreatedIds)
+  }
+
+  return filteredCreatedIds
+}
+
+async function deactivateSiblingQuotes(inquiryId: string, excludeIds: string[]) {
+  const result = await Aur_quotesService.getAll({
+    filter: `_aur_quotes_value eq ${normalizeDataverseId(inquiryId)}`,
+  })
+
+  const excluded = new Set(excludeIds.map((id) => normalizeDataverseId(id)))
+  const updates = (result.data ?? [])
+    .filter((quote) => {
+      const quoteId = normalizeDataverseId(quote.aur_quoteid)
+      return quoteId && !excluded.has(quoteId)
+    })
+    .map((quote) =>
+      Aur_quotesService.update(quote.aur_quoteid, {
+        aur_quote_status: 751820002 as never,
+      }),
+    )
+
+  await Promise.all(updates)
 }
 
 export async function recordInquiryConsequenceResult(
@@ -449,6 +692,20 @@ export async function createInquiryEmail(
   } as never)
 
   return created.data?.activityid
+}
+
+export async function updateInquiryQuoteDetailResponse(
+  quoteDetailId: string,
+  response: string,
+): Promise<QuoteResponse> {
+  const updated = await Aur_quotes_detailsesService.update(quoteDetailId, {
+    aur_response: response,
+  } as never)
+
+  return mapQuoteResponse(updated.data ?? {
+    aur_quotes_detailsid: quoteDetailId,
+    aur_response: response,
+  } as never)
 }
 
 function buildConsequences(
@@ -645,9 +902,10 @@ function buildInquiryEmails(
   }, new Map<string, InquiryEmailSummary['attachments']>())
 
   return (emails ?? [])
-    .filter((email) => email._regardingobjectid_value === inquiryId)
+    .filter((email) => normalizeDataverseId(email._regardingobjectid_value) === inquiryId)
     .map((email) => {
       const parsed = extractEmailMetadata(email.description ?? '')
+      const status = getEmailStatusLabel(email.statuscodename, email.statuscode, email.directioncode)
       return {
         id: email.activityid,
         subject: email.subject ?? parsed.subject ?? 'Untitled email',
@@ -655,7 +913,7 @@ function buildInquiryEmails(
         sender: firstNonEmpty(email.sender, email.from, parsed.sender, email.owneridname, 'Unknown sender'),
         toRecipients: firstNonEmpty(email.torecipients, email.to, parsed.toRecipients, 'No recipients'),
         regardingId: email._regardingobjectid_value,
-        status: email.statuscodename ?? (email.directioncode ? 'Sent' : 'Received'),
+        status,
         direction: (email.directioncode ? 'sent' : 'received') as 'sent' | 'received',
         createdOn: email.senton ?? email.createdon ?? email.actualend,
         attachments: attachmentsByEmail.get(email.activityid) ?? [],
@@ -670,6 +928,7 @@ async function listQuoteDetailsForInquiry(inquiryId: string) {
 
   do {
     const result = await Aur_quotes_detailsesService.getAll({
+      filter: `_aur_quotes_value eq ${inquiryId}`,
       select: [
         'aur_quotes_detailsid',
         '_aur_business_rules_value',
@@ -684,15 +943,41 @@ async function listQuoteDetailsForInquiry(inquiryId: string) {
     })
 
     records.push(
-      ...(result.data ?? []).filter(
-        (detail) => normalizeDataverseId(detail._aur_quotes_value) === inquiryId,
-      ),
+      ...(result.data ?? []),
     )
 
     skipToken = result.skipToken
   } while (skipToken)
 
   return records
+}
+
+async function getInquiryReferenceData(): Promise<InquiryReferenceData> {
+  if (!inquiryReferenceDataPromise) {
+    inquiryReferenceDataPromise = Promise.all([
+      Aur_productsesService.getAll({
+        select: ['aur_productsid', 'aur_name'],
+      }),
+      Aur_plansService.getAll({
+        select: ['aur_planid', 'aur_name', '_aur_product_value'],
+      }),
+      AccountsService.getAll({
+        select: ['accountid', 'name', 'aur_account_type', 'aur_account_typename'],
+      }),
+    ]).then(([productsResult, plansResult, accountsResult]) => ({
+      products: productsResult.data ?? [],
+      plans: plansResult.data ?? [],
+      accounts: accountsResult.data ?? [],
+    }))
+  }
+
+  return inquiryReferenceDataPromise
+}
+
+function buildGuidOrFilter(fieldName: string, ids: string[]) {
+  return ids
+    .map((id) => `${fieldName} eq ${normalizeDataverseId(id)}`)
+    .join(' or ')
 }
 
 function extractEmailMetadata(html: string) {
@@ -705,6 +990,30 @@ function extractEmailMetadata(html: string) {
 
 function firstNonEmpty(...values: Array<string | undefined>) {
   return values.find((value) => value && value.trim()) ?? ''
+}
+
+function getEmailStatusLabel(
+  statusName?: string | null,
+  statusCode?: string | number | null,
+  directionCode?: boolean | null,
+) {
+  if (typeof statusName === 'string' && statusName.trim()) {
+    return statusName.trim()
+  }
+  if (typeof statusCode === 'number' || typeof statusCode === 'string') {
+    const normalized = Number(statusCode)
+    if (!Number.isNaN(normalized)) {
+      if (normalized === 1) return 'Draft'
+      if (normalized === 2) return 'Completed'
+      if (normalized === 3) return 'Sent'
+      if (normalized === 4) return 'Received'
+      if (normalized === 5) return 'Canceled'
+      if (normalized === 6) return 'Pending Send'
+      if (normalized === 7) return 'Sending'
+      if (normalized === 8) return 'Failed'
+    }
+  }
+  return directionCode ? 'Sent' : 'Received'
 }
 
 function formatAttachmentSize(size?: number) {

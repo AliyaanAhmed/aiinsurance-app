@@ -19,6 +19,25 @@ import type {
 } from '../domain/app'
 import { mapInquirySummary, mapQuoteDetail, mapQuoteResponse, mapQuoteSummary } from './dataMappers'
 
+export type QuotePlanLinkedEntityKey =
+  | 'benefits'
+  | 'inclusions'
+  | 'exclusions'
+  | 'deductibles'
+  | 'warranties'
+  | 'coverages'
+
+export interface QuotePlanLinkedRecord {
+  id: string
+  name: string
+}
+
+export interface QuotePlanLinkedSection {
+  key: QuotePlanLinkedEntityKey
+  title: string
+  records: QuotePlanLinkedRecord[]
+}
+
 export async function listQuotes(): Promise<QuoteSummary[]> {
   const [quotesResult, productsResult, plansResult] = await Promise.all([
     Aur_quotesService.getAll({
@@ -156,6 +175,118 @@ export async function saveQuoteDetail(
   })
 }
 
+export async function updateQuoteStatus(
+  id: string,
+  quoteStatus?: 'QuoteWon' | 'QuoteLost',
+) {
+  await Aur_quotesService.update(id, {
+    ...(quoteStatus
+      ? { aur_quote_status: quoteStatus === 'QuoteWon' ? 751820000 : 751820001 }
+      : { aur_quote_status: undefined }),
+  })
+}
+
+export async function getQuotePlanLinkedSections(planId: string): Promise<QuotePlanLinkedSection[]> {
+  const normalizedPlanId = normalizeDataverseId(planId)
+  if (!normalizedPlanId) {
+    return [
+      { key: 'benefits', title: 'Benefits', records: [] },
+      { key: 'inclusions', title: 'Inclusions', records: [] },
+      { key: 'exclusions', title: 'Exclusions', records: [] },
+      { key: 'deductibles', title: 'Deductibles', records: [] },
+      { key: 'warranties', title: 'Warranties', records: [] },
+      { key: 'coverages', title: 'Coverage', records: [] },
+    ]
+  }
+
+  const [
+    benefitsResult,
+    inclusionsResult,
+    exclusionsResult,
+    deductiblesResult,
+    warrantiesResult,
+    coveragesResult,
+  ] = await Promise.all([
+    Aur_benefitsesService.getAll(),
+    Aur_inclusionsesService.getAll(),
+    Aur_exclusionsesService.getAll(),
+    Aur_deductiblesesService.getAll(),
+    Aur_warrantiesesService.getAll(),
+    Aur_coveragesesService.getAll(),
+  ])
+
+  return [
+    {
+      key: 'benefits',
+      title: 'Benefits',
+      records: (benefitsResult.data ?? [])
+        .filter((record) => normalizeDataverseId(record._aur_plan_value) === normalizedPlanId)
+        .map((record) => ({ id: record.aur_benefitsid, name: record.aur_name })),
+    },
+    {
+      key: 'inclusions',
+      title: 'Inclusions',
+      records: (inclusionsResult.data ?? [])
+        .filter((record) => normalizeDataverseId(record._aur_plan_value) === normalizedPlanId)
+        .map((record) => ({ id: record.aur_inclusionsid, name: record.aur_name })),
+    },
+    {
+      key: 'exclusions',
+      title: 'Exclusions',
+      records: (exclusionsResult.data ?? [])
+        .filter((record) => normalizeDataverseId(record._aur_plan_value) === normalizedPlanId)
+        .map((record) => ({ id: record.aur_exclusionsid, name: record.aur_name })),
+    },
+    {
+      key: 'deductibles',
+      title: 'Deductibles',
+      records: (deductiblesResult.data ?? [])
+        .filter((record) => normalizeDataverseId(record._aur_plan_value) === normalizedPlanId)
+        .map((record) => ({ id: record.aur_deductiblesid, name: record.aur_name })),
+    },
+    {
+      key: 'warranties',
+      title: 'Warranties',
+      records: (warrantiesResult.data ?? [])
+        .filter((record) => normalizeDataverseId(record._aur_plan_value) === normalizedPlanId)
+        .map((record) => ({ id: record.aur_warrantiesid, name: record.aur_name })),
+    },
+    {
+      key: 'coverages',
+      title: 'Coverage',
+      records: (coveragesResult.data ?? [])
+        .filter((record) => normalizeDataverseId(record._aur_plan_value) === normalizedPlanId)
+        .map((record) => ({ id: record.aur_coveragesid, name: record.aur_name })),
+    },
+  ]
+}
+
+export async function renameQuotePlanLinkedRecord(
+  entity: QuotePlanLinkedEntityKey,
+  id: string,
+  name: string,
+) {
+  const payload = { aur_name: name }
+  if (entity === 'benefits') return Aur_benefitsesService.update(id, payload)
+  if (entity === 'inclusions') return Aur_inclusionsesService.update(id, payload)
+  if (entity === 'exclusions') return Aur_exclusionsesService.update(id, payload)
+  if (entity === 'deductibles') return Aur_deductiblesesService.update(id, payload)
+  if (entity === 'warranties') return Aur_warrantiesesService.update(id, payload)
+  return Aur_coveragesesService.update(id, payload)
+}
+
+export async function deleteQuotePlanLinkedRecord(
+  entity: QuotePlanLinkedEntityKey,
+  id: string,
+) {
+  if (entity === 'benefits') return Aur_benefitsesService.delete(id)
+  if (entity === 'inclusions') return Aur_inclusionsesService.delete(id)
+  if (entity === 'exclusions') return Aur_exclusionsesService.delete(id)
+  if (entity === 'deductibles') return Aur_deductiblesesService.delete(id)
+  if (entity === 'warranties') return Aur_warrantiesesService.delete(id)
+  return Aur_coveragesesService.delete(id)
+}
+
 function resolveQuoteRelations(
   quote: Awaited<ReturnType<typeof Aur_quotesService.get>>['data'] extends infer T ? NonNullable<T> : never,
   productMap: Map<string, string>,
@@ -172,4 +303,8 @@ function resolveQuoteRelations(
         ? quote.aur_planname
         : planMap.get(quote._aur_plan_value) ?? quote.aur_planname,
   }
+}
+
+function normalizeDataverseId(value?: string | null) {
+  return value?.replace(/[{}]/g, '').toLowerCase() ?? ''
 }

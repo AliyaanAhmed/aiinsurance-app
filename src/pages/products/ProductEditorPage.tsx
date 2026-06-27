@@ -1,6 +1,22 @@
-import { useMemo, useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, PackagePlus, Pencil, Plus, Save, Trash2 } from 'lucide-react'
+import {
+  ArrowLeft,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  FileText,
+  GitBranch,
+  Layers3,
+  PackagePlus,
+  Pencil,
+  Plus,
+  Save,
+  Search,
+  ShieldCheck,
+  Trash2,
+  X,
+} from 'lucide-react'
 import { PageHeader } from '../../components/layout/PageHeader'
 import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
@@ -13,7 +29,9 @@ import {
   createProductPlan,
   deleteProductPlan,
   getProductWorkspace,
+  removeProductRuleAssociation,
   saveProductWorkspace,
+  saveProductRuleAssociations,
   updateProductPlan,
 } from '../../services/productWorkspaceService'
 import { formatCompactNumber } from '../../lib/formatters'
@@ -42,6 +60,16 @@ interface PlanDraftState {
   description: string
 }
 
+const RULE_GROUPS = [
+  'Mandatory Field',
+  'Required Document',
+  'Inclusion',
+  'Exclusion',
+  'Conditional',
+] as const
+
+type RuleGroup = (typeof RULE_GROUPS)[number]
+
 export function ProductEditorPage() {
   const navigate = useNavigate()
   const { id } = useParams()
@@ -50,12 +78,27 @@ export function ProductEditorPage() {
   const [form, setForm] = useState<ProductFormState | null>(null)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState('details')
   const [planDraft, setPlanDraft] = useState<PlanDraftState>({ open: false, name: '', description: '' })
   const [planBusyId, setPlanBusyId] = useState<string | null>(null)
-  const [builderMode, setBuilderMode] = useState<'sectioned' | 'linear'>('sectioned')
-  const [showEvaluation, setShowEvaluation] = useState(true)
-  const [showEvidence, setShowEvidence] = useState(true)
-  const [activeRuleContext, setActiveRuleContext] = useState<string>('All')
+  const [ruleSearch, setRuleSearch] = useState('')
+  const [selectedRuleIds, setSelectedRuleIds] = useState<string[]>([])
+  const [isRuleModalOpen, setIsRuleModalOpen] = useState(false)
+  const [rulesSaving, setRulesSaving] = useState(false)
+  const [expandedRuleGroups, setExpandedRuleGroups] = useState<Record<string, boolean>>({
+    'Mandatory Field': false,
+    'Required Document': false,
+    Inclusion: false,
+    Exclusion: false,
+    Conditional: false,
+  })
+  const [expandedRuleModalGroups, setExpandedRuleModalGroups] = useState<Record<string, boolean>>({
+    'Mandatory Field': false,
+    'Required Document': false,
+    Inclusion: false,
+    Exclusion: false,
+    Conditional: false,
+  })
 
   const { data, loading, error } = useAsyncData(async () => {
     const workspace = await getProductWorkspace(isCreate ? undefined : id)
@@ -78,30 +121,59 @@ export function ProductEditorPage() {
     return workspace
   }, [id, isCreate, refreshKey])
 
+  useEffect(() => {
+    setSelectedRuleIds(data?.associatedRuleIds ?? [])
+  }, [data?.associatedRuleIds])
+
   const linkedStats = useMemo(() => {
     const planCount = data?.availablePlans.length ?? 0
-    const ruleCount = data?.availableRules.length ?? 0
+    const ruleCount = selectedRuleIds.length
     return [
-      { label: 'Linked Plans', value: formatCompactNumber(planCount), helper: 'Plans connected to this product workspace.' },
-      { label: 'Rule Library', value: formatCompactNumber(ruleCount), helper: 'Available underwriting rules for future assignment.' },
-      { label: 'Status', value: form?.status === 'publish' ? 'Live' : 'Draft', helper: 'Current publishing posture for the product.' },
+      { label: 'Linked Plans', value: formatCompactNumber(planCount), helper: 'Direct child plan records for this product.' },
+      { label: 'Business Rules', value: formatCompactNumber(ruleCount), helper: 'Prepared underwriting rules grouped for association.' },
+      { label: 'Status', value: form?.status === 'publish' ? 'Live' : 'Draft', helper: 'Current publishing posture for this product.' },
     ]
-  }, [data, form?.status])
-  const groupedRules = useMemo(() => {
-    const rules = data?.availableRules ?? []
-    return rules.reduce((map, rule) => {
-      const key = rule.context || 'Rule Library'
-      const current = map.get(key) ?? []
-      current.push(rule)
-      map.set(key, current)
-      return map
-    }, new Map<string, typeof rules>())
+  }, [data?.availablePlans.length, form?.status, selectedRuleIds.length])
+
+  const categorizedRules = useMemo(() => {
+    const grouped = new Map<RuleGroup, NonNullable<typeof data>['availableRules']>()
+    for (const group of RULE_GROUPS) grouped.set(group, [])
+
+    for (const rule of data?.availableRules ?? []) {
+      const group = categorizeRule(rule.name, rule.context, rule.description)
+      const bucket = grouped.get(group) ?? []
+      bucket.push(rule)
+      grouped.set(group, bucket)
+    }
+
+    return grouped
   }, [data?.availableRules])
-  const visibleRuleGroups = useMemo(() => {
-    const entries = Array.from(groupedRules.entries())
-    if (activeRuleContext === 'All') return entries
-    return entries.filter(([context]) => context === activeRuleContext)
-  }, [activeRuleContext, groupedRules])
+
+  const associatedRuleGroups = useMemo(
+    () =>
+      RULE_GROUPS.map((group) => ({
+        label: group,
+        rules: (categorizedRules.get(group) ?? []).filter((rule) => selectedRuleIds.includes(rule.id)),
+      })),
+    [categorizedRules, selectedRuleIds],
+  )
+
+  const filteredRuleGroups = useMemo(() => {
+    const query = ruleSearch.trim().toLowerCase()
+    return RULE_GROUPS.map((group) => ({
+      label: group,
+      rules: (categorizedRules.get(group) ?? []).filter((rule) =>
+        !query
+          ? true
+          : [rule.name, rule.description, rule.context, rule.detail]
+              .join(' ')
+              .toLowerCase()
+              .includes(query),
+      ),
+    }))
+  }, [categorizedRules, ruleSearch])
+
+  const associatedRuleIdSet = useMemo(() => new Set(data?.associatedRuleIds ?? []), [data?.associatedRuleIds])
 
   async function handleSave(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -109,18 +181,14 @@ export function ProductEditorPage() {
     setSaving(true)
     setSaveError(null)
     try {
-      await saveProductWorkspace({
-        id: isCreate ? undefined : id,
-        ...form,
-      })
+      await saveProductWorkspace({ id: isCreate ? undefined : id, ...form })
       if (isCreate) {
         navigate('/admin/products')
       } else {
         setRefreshKey((value) => value + 1)
       }
     } catch (cause) {
-      const message = cause instanceof Error ? cause.message : 'Unable to save product.'
-      setSaveError(message)
+      setSaveError(cause instanceof Error ? cause.message : 'Unable to save product.')
     } finally {
       setSaving(false)
     }
@@ -132,6 +200,7 @@ export function ProductEditorPage() {
       setSaveError('Save the product first before managing linked plans.')
       return
     }
+
     try {
       setPlanBusyId(planDraft.id ?? 'create')
       if (planDraft.id) {
@@ -168,16 +237,59 @@ export function ProductEditorPage() {
     }
   }
 
+  function toggleRuleSelection(ruleId: string) {
+    setSelectedRuleIds((current) =>
+      current.includes(ruleId) ? current.filter((id) => id !== ruleId) : [...current, ruleId],
+    )
+  }
+
+  async function handleSaveRuleAssociations() {
+    if (isCreate || !id || !data?.summary?.name) return
+    try {
+      setRulesSaving(true)
+      setSaveError(null)
+      await saveProductRuleAssociations({
+        productId: id,
+        productName: data.summary.name,
+        selectedRuleIds,
+      })
+      setIsRuleModalOpen(false)
+      setRefreshKey((value) => value + 1)
+    } catch (cause) {
+      setSaveError(cause instanceof Error ? cause.message : 'Unable to save business rule associations.')
+    } finally {
+      setRulesSaving(false)
+    }
+  }
+
+  async function handleRemoveRuleAssociation(ruleId: string) {
+    if (isCreate || !id) return
+    try {
+      setRulesSaving(true)
+      setSaveError(null)
+      await removeProductRuleAssociation({
+        productId: id,
+        businessRuleId: ruleId,
+      })
+      setSelectedRuleIds((current) => current.filter((currentId) => currentId !== ruleId))
+      setRefreshKey((value) => value + 1)
+    } catch (cause) {
+      setSaveError(cause instanceof Error ? cause.message : 'Unable to remove business rule association.')
+    } finally {
+      setRulesSaving(false)
+    }
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
         icon={PackagePlus}
         eyebrow="Product Workspace"
         title={isCreate ? 'Create Product' : data?.summary?.name ?? 'Product Editor'}
-        description="Premium product setup workspace for metadata, plans, rule-assignment readiness, and future form-builder configuration."
+        description="Manage product metadata, direct child plans, and grouped business-rule assignment from one premium product workspace."
         actions={
           <>
-            <Button variant="secondary" asChild>
+            <Button variant="secondary" className="bg-white dark:bg-[#1E293B]" asChild>
               <Link to="/admin/products">
                 <ArrowLeft className="h-4 w-4" />
                 Back to Products
@@ -209,88 +321,47 @@ export function ProductEditorPage() {
         <Card className="text-sm text-muted-foreground">Preparing product editor...</Card>
       ) : (
         <form id="product-editor-form" className="space-y-6" onSubmit={handleSave}>
-          <Tabs defaultValue="details" className="space-y-5">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-5">
             <TabsList>
-              <TabsTrigger value="details">Product Details</TabsTrigger>
-              <TabsTrigger value="plans">Plan Setup</TabsTrigger>
-              <TabsTrigger value="rules">Business Rules</TabsTrigger>
+              <TabsTrigger value="details" icon={FileText}>Product Details</TabsTrigger>
+              <TabsTrigger value="plans" icon={Layers3}>Plans</TabsTrigger>
+              <TabsTrigger value="rules" icon={GitBranch}>Business Rule</TabsTrigger>
             </TabsList>
 
             <TabsContent value="details" className="space-y-6">
               <Card className="space-y-6">
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                   <Field label="Product Name">
-                    <Input
-                      value={form.name}
-                      onChange={(event) => setForm((current) => current ? { ...current, name: event.target.value } : current)}
-                      placeholder="Enter product name"
-                      required
-                    />
+                    <Input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Enter product name" required />
                   </Field>
                   <Field label="Arabic Name">
-                    <Input
-                      value={form.arabicName}
-                      onChange={(event) => setForm((current) => current ? { ...current, arabicName: event.target.value } : current)}
-                      placeholder="Arabic product name"
-                    />
+                    <Input value={form.arabicName} onChange={(event) => setForm({ ...form, arabicName: event.target.value })} placeholder="Arabic product name" />
                   </Field>
                   <Field label="Incoming Email">
-                    <Input
-                      value={form.emailAddress}
-                      onChange={(event) => setForm((current) => current ? { ...current, emailAddress: event.target.value } : current)}
-                      placeholder="product@company.com"
-                    />
+                    <Input value={form.emailAddress} onChange={(event) => setForm({ ...form, emailAddress: event.target.value })} placeholder="product@company.com" />
                   </Field>
                   <Field label="Heading">
-                    <Input
-                      value={form.heading}
-                      onChange={(event) => setForm((current) => current ? { ...current, heading: event.target.value } : current)}
-                      placeholder="Workspace hero heading"
-                    />
+                    <Input value={form.heading} onChange={(event) => setForm({ ...form, heading: event.target.value })} placeholder="Workspace hero heading" />
                   </Field>
                   <Field label="Buy Heading">
-                    <Input
-                      value={form.buyHeading}
-                      onChange={(event) => setForm((current) => current ? { ...current, buyHeading: event.target.value } : current)}
-                      placeholder="Commercial CTA heading"
-                    />
+                    <Input value={form.buyHeading} onChange={(event) => setForm({ ...form, buyHeading: event.target.value })} placeholder="Commercial CTA heading" />
                   </Field>
                   <Field label="Buy Button">
-                    <Input
-                      value={form.buyButton}
-                      onChange={(event) => setForm((current) => current ? { ...current, buyButton: event.target.value } : current)}
-                      placeholder="Get Quote"
-                    />
+                    <Input value={form.buyButton} onChange={(event) => setForm({ ...form, buyButton: event.target.value })} placeholder="Get Quote" />
                   </Field>
                   <Field label="Short Details">
-                    <Input
-                      value={form.shortDetails}
-                      onChange={(event) => setForm((current) => current ? { ...current, shortDetails: event.target.value } : current)}
-                      placeholder="One-line admin summary"
-                    />
+                    <Input value={form.shortDetails} onChange={(event) => setForm({ ...form, shortDetails: event.target.value })} placeholder="One-line admin summary" />
                   </Field>
                   <Field label="Premium Percentage">
-                    <Input
-                      value={form.premiumPercentage}
-                      onChange={(event) => setForm((current) => current ? { ...current, premiumPercentage: event.target.value } : current)}
-                      placeholder="12.5"
-                    />
+                    <Input value={form.premiumPercentage} onChange={(event) => setForm({ ...form, premiumPercentage: event.target.value })} placeholder="12.5" />
                   </Field>
                   <Field label="Display Order">
-                    <Input
-                      value={form.order}
-                      onChange={(event) => setForm((current) => current ? { ...current, order: event.target.value } : current)}
-                      placeholder="1"
-                    />
+                    <Input value={form.order} onChange={(event) => setForm({ ...form, order: event.target.value })} placeholder="1" />
                   </Field>
                   <Field label="Status">
                     <Select
                       value={form.status}
-                      onValueChange={(value) =>
-                        setForm((current) =>
-                          current ? { ...current, status: value as ProductFormState['status'] } : current,
-                        )
-                      }
+                      onValueChange={(value) => setForm({ ...form, status: value as ProductFormState['status'] })}
                       options={[
                         { value: 'draft', label: 'Draft' },
                         { value: 'publish', label: 'Publish' },
@@ -304,7 +375,7 @@ export function ProductEditorPage() {
                   <textarea
                     className="min-h-32 w-full rounded-[16px] border border-border bg-surface px-3 py-3 text-sm outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10"
                     value={form.details}
-                    onChange={(event) => setForm((current) => current ? { ...current, details: event.target.value } : current)}
+                    onChange={(event) => setForm({ ...form, details: event.target.value })}
                     placeholder="Long-form product positioning and operational detail"
                   />
                 </Field>
@@ -313,7 +384,7 @@ export function ProductEditorPage() {
                   <textarea
                     className="min-h-24 w-full rounded-[16px] border border-border bg-surface px-3 py-3 text-sm outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10"
                     value={form.slogan}
-                    onChange={(event) => setForm((current) => current ? { ...current, slogan: event.target.value } : current)}
+                    onChange={(event) => setForm({ ...form, slogan: event.target.value })}
                     placeholder="Short premium marketing or internal slogan"
                   />
                 </Field>
@@ -322,7 +393,7 @@ export function ProductEditorPage() {
                   <textarea
                     className="min-h-24 w-full rounded-[16px] border border-border bg-surface px-3 py-3 text-sm outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10"
                     value={form.remarks}
-                    onChange={(event) => setForm((current) => current ? { ...current, remarks: event.target.value } : current)}
+                    onChange={(event) => setForm({ ...form, remarks: event.target.value })}
                     placeholder="Internal operational notes or product remarks"
                   />
                 </Field>
@@ -331,7 +402,7 @@ export function ProductEditorPage() {
                   <textarea
                     className="min-h-32 w-full rounded-[16px] border border-border bg-surface px-3 py-3 text-sm outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10"
                     value={form.terms}
-                    onChange={(event) => setForm((current) => current ? { ...current, terms: event.target.value } : current)}
+                    onChange={(event) => setForm({ ...form, terms: event.target.value })}
                     placeholder="Optional terms, constraints, or underwriting conditions"
                   />
                 </Field>
@@ -340,222 +411,385 @@ export function ProductEditorPage() {
               </Card>
             </TabsContent>
 
-            <TabsContent value="plans">
+            <TabsContent value="plans" className="space-y-6">
               <Card className="space-y-5">
                 <div className="flex items-center justify-between gap-4">
                   <div>
-                    <h2 className="text-xl font-bold">Plan Setup</h2>
+                    <div className="flex items-center gap-3">
+                      <h2 className="text-xl font-bold">Plans</h2>
+                      <Badge variant="review">{data?.availablePlans.length ?? 0}</Badge>
+                    </div>
                     <p className="mt-1 text-sm text-muted-foreground">
-                      Plans are live Dataverse records filtered into this product workspace, and can now be created and maintained here.
+                      Plans are direct child records of this product and can be created, edited, and deleted from here.
                     </p>
                   </div>
-                  <div className="flex gap-2">
-                    <Button type="button" variant="secondary" onClick={() => setPlanDraft({ open: true, name: '', description: '' })} disabled={isCreate}>
-                      <Plus className="h-4 w-4" />
-                      Add Plan
-                    </Button>
-                    <Button variant="outline" asChild>
-                      <Link to="/admin/plans">Open Plan Library</Link>
-                    </Button>
-                  </div>
+                  <Button type="button" variant="secondary" className="bg-white dark:bg-[#1E293B]" onClick={() => setPlanDraft({ open: true, name: '', description: '' })} disabled={isCreate}>
+                    <Plus className="h-4 w-4" />
+                    Add Plan
+                  </Button>
                 </div>
-                <div className="space-y-3">
-                  {(data?.availablePlans ?? []).map((plan) => (
-                    <Card key={plan.id} variant="interactive" className="flex items-start justify-between gap-4">
-                      <div className="space-y-1">
-                        <p className="font-semibold">{plan.name}</p>
-                        <p className="text-sm text-muted-foreground">{plan.description}</p>
-                        <p className="text-[12px] text-muted-foreground">{plan.detail}</p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Badge variant="info">{plan.status}</Badge>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setPlanDraft({ open: true, id: plan.id, name: plan.name, description: plan.description })}
-                        >
-                          <Pencil className="h-4 w-4" />
-                          Edit
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="text-danger hover:bg-danger/10 hover:text-danger"
-                          disabled={planBusyId === plan.id}
-                          onClick={() => void handleDeletePlan(plan.id)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                          Delete
-                        </Button>
-                      </div>
-                    </Card>
-                  ))}
-                  {(data?.availablePlans.length ?? 0) === 0 ? (
-                    <Card className="text-sm text-muted-foreground">
-                      No plans are currently linked to this product. Use the Plans page to attach plan records.
-                    </Card>
-                  ) : null}
-                </div>
-                {planDraft.open ? (
-                  <Card className="space-y-4 border-primary/15 bg-surface-soft">
-                    <div className="flex items-center justify-between gap-4">
-                      <div>
-                        <h3 className="text-lg font-semibold">{planDraft.id ? 'Edit Plan' : 'Create Plan'}</h3>
-                        <p className="text-sm text-muted-foreground">Maintain plan records directly from the product setup hub.</p>
-                      </div>
-                      <Button type="button" variant="ghost" onClick={() => setPlanDraft({ open: false, name: '', description: '' })}>
-                        Close
-                      </Button>
+
+                {(data?.availablePlans.length ?? 0) === 0 ? (
+                  <Card className="border-dashed border-border bg-surface-soft/70 text-center">
+                    <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                      <Layers3 className="h-6 w-6" />
                     </div>
-                    <form className="grid gap-4 md:grid-cols-2" onSubmit={handlePlanSubmit}>
-                      <Field label="Plan Name">
-                        <Input
-                          value={planDraft.name}
-                          onChange={(event) => setPlanDraft((current) => ({ ...current, name: event.target.value }))}
-                          required
-                        />
-                      </Field>
-                      <div className="md:col-span-2">
-                        <Field label="Description">
-                          <textarea
-                            className="min-h-24 w-full rounded-[16px] border border-border bg-surface px-3 py-3 text-sm outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10"
-                            value={planDraft.description}
-                            onChange={(event) => setPlanDraft((current) => ({ ...current, description: event.target.value }))}
-                          />
-                        </Field>
-                      </div>
-                      <div className="md:col-span-2 flex justify-end gap-3">
-                        <Button type="button" variant="secondary" onClick={() => setPlanDraft({ open: false, name: '', description: '' })}>
-                          Cancel
-                        </Button>
-                        <Button type="submit" disabled={planBusyId === (planDraft.id ?? 'create')}>
-                          {planBusyId === (planDraft.id ?? 'create') ? 'Saving...' : planDraft.id ? 'Save Plan' : 'Create Plan'}
-                        </Button>
-                      </div>
-                    </form>
+                    <h4 className="mt-4 text-lg font-semibold">No plans yet</h4>
+                    <p className="mt-2 text-sm text-muted-foreground">Create the first plan for this product to start structuring quote options.</p>
                   </Card>
-                ) : null}
+                ) : (
+                  <div className="overflow-hidden rounded-[24px] border border-border-soft">
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full border-collapse">
+                        <thead className="bg-surface-muted/80">
+                          <tr>
+                            <th className="px-4 py-3 text-left text-[12px] font-bold uppercase tracking-[0.08em] text-muted-foreground">Name</th>
+                            <th className="px-4 py-3 text-left text-[12px] font-bold uppercase tracking-[0.08em] text-muted-foreground">Description</th>
+                            <th className="px-4 py-3 text-left text-[12px] font-bold uppercase tracking-[0.08em] text-muted-foreground">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(data?.availablePlans ?? []).map((plan) => (
+                            <tr key={plan.id} className="border-b border-border-soft/80 bg-surface transition duration-150 hover:bg-primary/5">
+                              <td className="px-4 py-4">
+                                <div className="space-y-1">
+                                  <p className="font-semibold">{plan.name}</p>
+                                  <p className="text-[12px] text-muted-foreground">{plan.detail}</p>
+                                </div>
+                              </td>
+                              <td className="px-4 py-4 text-sm text-muted-foreground">{plan.description}</td>
+                              <td className="px-4 py-4">
+                                <div className="flex items-center gap-2">
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-9 w-9 rounded-full border border-border-soft bg-white p-0 dark:bg-slate-950/50"
+                                    onClick={() => setPlanDraft({ open: true, id: plan.id, name: plan.name, description: plan.description })}
+                                  >
+                                    <Pencil className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-9 w-9 rounded-full border border-border-soft bg-white p-0 text-danger hover:bg-danger/10 hover:text-danger dark:bg-slate-950/50"
+                                    disabled={planBusyId === plan.id}
+                                    onClick={() => void handleDeletePlan(plan.id)}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
               </Card>
             </TabsContent>
 
-            <TabsContent value="rules">
+            <TabsContent value="rules" className="space-y-6">
               <Card className="space-y-5">
-                <div className="space-y-2">
-                  <h2 className="text-xl font-bold">Business Rule Assignment</h2>
-                  <p className="text-sm text-muted-foreground">
-                    The rule library is live. Product-specific rule linking, grouping, and form-builder preview are prepared here while Dataverse persistence awaits the exact junction-table logical name.
-                  </p>
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <div className="flex items-center gap-3">
+                      <h2 className="text-xl font-bold">Business Rules</h2>
+                      <Badge variant="review">{selectedRuleIds.length}</Badge>
+                    </div>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Associate reusable underwriting rules to this product in grouped form-builder buckets.
+                    </p>
+                  </div>
+                  <Button type="button" variant="secondary" className="bg-white dark:bg-[#1E293B]" onClick={() => setIsRuleModalOpen(true)} disabled={isCreate}>
+                    <Plus className="h-4 w-4" />
+                    Associate Business Rules
+                  </Button>
                 </div>
+
+                {saveError ? <p className="text-sm text-danger">{saveError}</p> : null}
+
                 {data?.relationshipNotice ? (
                   <div className="rounded-[18px] border border-warning/20 bg-warning/10 px-4 py-3 text-sm text-warning">
                     {data.relationshipNotice}
                   </div>
                 ) : null}
-                <div className="grid gap-4 md:grid-cols-4">
-                  <Card variant="interactive" className="space-y-3">
-                    <p className="text-[12px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Builder Mode</p>
-                    <div className="flex gap-2">
-                      <Button type="button" variant={builderMode === 'sectioned' ? 'primary' : 'secondary'} size="sm" onClick={() => setBuilderMode('sectioned')}>
-                        Sectioned
-                      </Button>
-                      <Button type="button" variant={builderMode === 'linear' ? 'primary' : 'secondary'} size="sm" onClick={() => setBuilderMode('linear')}>
-                        Linear
-                      </Button>
+
+                {selectedRuleIds.length === 0 ? (
+                  <Card className="border-dashed border-border bg-surface-soft/70 text-center">
+                    <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-secondary/10 text-secondary">
+                      <GitBranch className="h-6 w-6" />
                     </div>
+                    <h4 className="mt-4 text-lg font-semibold">No business rules associated</h4>
+                    <p className="mt-2 text-sm text-muted-foreground">Select rules from the grouped library to prepare product-specific underwriting logic.</p>
                   </Card>
-                  <label className="flex items-center gap-3 rounded-[22px] border border-border-soft bg-surface px-5 py-4 text-sm font-medium shadow-soft">
-                    <input type="checkbox" checked={showEvaluation} onChange={(event) => setShowEvaluation(event.target.checked)} />
-                    Show evaluation state
-                  </label>
-                  <label className="flex items-center gap-3 rounded-[22px] border border-border-soft bg-surface px-5 py-4 text-sm font-medium shadow-soft">
-                    <input type="checkbox" checked={showEvidence} onChange={(event) => setShowEvidence(event.target.checked)} />
-                    Show evidence capture
-                  </label>
-                  <Card variant="interactive" className="space-y-3">
-                    <p className="text-[12px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Visible Sections</p>
-                    <p className="text-3xl font-bold">{visibleRuleGroups.length}</p>
-                    <p className="text-sm text-muted-foreground">Grouped sections currently visible in the preview canvas.</p>
-                  </Card>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <button type="button" className={`rounded-full px-4 py-2 text-sm font-semibold transition ${activeRuleContext === 'All' ? 'bg-primary text-white shadow-soft' : 'border border-border bg-surface text-muted-foreground hover:border-primary/40'}`} onClick={() => setActiveRuleContext('All')}>
-                    All
-                  </button>
-                  {Array.from(groupedRules.keys()).map((context) => (
-                    <button key={context} type="button" className={`rounded-full px-4 py-2 text-sm font-semibold transition ${activeRuleContext === context ? 'bg-primary text-white shadow-soft' : 'border border-border bg-surface text-muted-foreground hover:border-primary/40'}`} onClick={() => setActiveRuleContext(context)}>
-                      {context}
-                    </button>
-                  ))}
-                </div>
-                <div className="grid gap-3 xl:grid-cols-[1fr_0.9fr]">
+                ) : (
                   <div className="space-y-4">
-                    {visibleRuleGroups.map(([context, rules]) => (
-                      <Card key={context} className="space-y-4">
-                        <div className="flex items-center justify-between gap-3">
-                          <div>
-                            <p className="text-lg font-semibold">{context}</p>
-                            <p className="text-sm text-muted-foreground">
-                              {builderMode === 'sectioned' ? 'Rendered as a grouped question block.' : 'Rendered in a linear underwriting flow.'}
-                            </p>
+                    {associatedRuleGroups.map((group) => (
+                      <Card key={group.label} className="overflow-hidden p-0">
+                        <button
+                          type="button"
+                          className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left transition hover:bg-primary/4"
+                          onClick={() =>
+                            setExpandedRuleGroups((current) => ({
+                              ...current,
+                              [group.label]: !current[group.label],
+                            }))
+                          }
+                        >
+                          <div className="flex items-center gap-3">
+                            <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                              {ruleGroupIcon(group.label)}
+                            </span>
+                            <div>
+                              <p className="font-semibold">{group.label}</p>
+                              <p className="text-sm text-muted-foreground">{group.rules.length} linked rules in this category.</p>
+                            </div>
                           </div>
-                          <Badge variant="review">{rules.length} rules</Badge>
-                        </div>
-                        <div className="grid gap-3">
-                          {rules.map((rule) => (
-                            <Card key={rule.id} variant="interactive" className="space-y-3 bg-surface-soft">
-                              <div className="flex items-center justify-between gap-3">
-                                <p className="font-semibold">{rule.name}</p>
-                                <Badge variant="neutral">{rule.status}</Badge>
-                              </div>
-                              <p className="text-sm text-muted-foreground">{rule.description}</p>
-                              <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-                                {showEvaluation ? <span className="rounded-full border border-border bg-surface px-3 py-1">Evaluation visible</span> : null}
-                                {showEvidence ? <span className="rounded-full border border-border bg-surface px-3 py-1">Evidence input visible</span> : null}
-                                <span className="rounded-full border border-border bg-surface px-3 py-1">{builderMode === 'sectioned' ? 'Section card' : 'Inline row'}</span>
-                              </div>
-                            </Card>
-                          ))}
-                        </div>
+                          <div className="flex items-center gap-3">
+                            <Badge variant="neutral">{group.rules.length}</Badge>
+                            {expandedRuleGroups[group.label] ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+                          </div>
+                        </button>
+
+                        {expandedRuleGroups[group.label] && group.rules.length > 0 ? (
+                          <div className="grid gap-3 border-t border-border-soft px-5 py-5 md:grid-cols-2 xl:grid-cols-3">
+                            {group.rules.map((rule) => (
+                              <Card key={rule.id} className="space-y-3 rounded-[20px] bg-surface-soft/70 p-4 shadow-none">
+                                <div className="flex items-start justify-between gap-3">
+                                  <div>
+                                    <p className="text-sm font-semibold leading-5">{rule.name}</p>
+                                    <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">{rule.description}</p>
+                                  </div>
+                                  <Badge variant="info" className="shrink-0">{group.label}</Badge>
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                  <span className="rounded-full border border-border-soft bg-white px-3 py-1 text-xs text-muted-foreground dark:bg-slate-950/60">
+                                    Available in Form Builder
+                                  </span>
+                                </div>
+                                <div className="flex justify-end">
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-9 w-9 rounded-full border border-border-soft bg-white p-0 text-danger hover:bg-danger/10 hover:text-danger dark:bg-slate-950/50"
+                                    disabled={rulesSaving}
+                                    onClick={() => void handleRemoveRuleAssociation(rule.id)}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </Card>
+                            ))}
+                          </div>
+                        ) : null}
                       </Card>
                     ))}
                   </div>
-                  <Card className="space-y-4 bg-surface-soft">
-                    <div>
-                      <h3 className="text-lg font-semibold">Form Builder Preview</h3>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        Preview how grouped rule sections and product metadata will appear once the relationship table is confirmed.
-                      </p>
-                    </div>
-                    <div className="space-y-3">
-                      <PreviewBlock title="Layout Mode" value="Sectioned rule workspace" />
-                      <PreviewBlock title="Section Style" value="Category grouped" />
-                      <PreviewBlock title="Show Evaluation" value="Enabled" />
-                      <PreviewBlock title="Show Evidence" value="Enabled" />
-                      <PreviewBlock title="Metadata Order" value="Product → Plan → Rule → Evidence" />
-                    </div>
-                    <div className="rounded-[18px] border border-border-soft bg-surface p-4">
-                      <p className="text-[12px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Preview Surface</p>
-                      <div className="mt-3 space-y-3">
-                        {(data?.availableRules ?? []).slice(0, 3).map((rule) => (
-                          <div key={rule.id} className="rounded-[14px] border border-border-soft bg-surface-soft p-3">
-                            <div className="flex items-center justify-between gap-3">
-                              <p className="font-semibold">{rule.name}</p>
-                              <Badge variant="neutral">{rule.context}</Badge>
-                            </div>
-                            <p className="mt-2 text-sm text-muted-foreground">{rule.description}</p>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </Card>
-                </div>
+                )}
               </Card>
             </TabsContent>
           </Tabs>
         </form>
       )}
+
+      {isRuleModalOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm"
+          style={{ marginTop: 0, marginBottom: 0 }}
+        >
+          <Card className="flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden p-0">
+            <div className="border-b border-border-soft px-6 py-5">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-[12px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Association workspace</p>
+                  <h3 className="mt-2 text-2xl font-semibold">Associate Business Rules</h3>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    Search the live rule library, group by underwriting category, and prepare selected rules for this product.
+                  </p>
+                </div>
+                <Button type="button" variant="ghost" size="icon" className="rounded-full border border-border-soft bg-white dark:bg-slate-950/60" onClick={() => setIsRuleModalOpen(false)}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-6 py-5">
+              <div className="space-y-4">
+                  <div className="rounded-[22px] border border-border-soft bg-surface-soft/75 p-4">
+                    <div className="relative">
+                      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <Input className="pl-10" placeholder="Search business rules..." value={ruleSearch} onChange={(event) => setRuleSearch(event.target.value)} />
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    {filteredRuleGroups.map((group) => (
+                      <Card key={group.label} className="overflow-hidden p-0">
+                        <button
+                          type="button"
+                          className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left transition hover:bg-primary/4"
+                          onClick={() =>
+                            setExpandedRuleModalGroups((current) => ({
+                              ...current,
+                              [group.label]: !current[group.label],
+                            }))
+                          }
+                        >
+                          <div className="flex items-center gap-3">
+                            <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                              {ruleGroupIcon(group.label)}
+                            </span>
+                            <div>
+                              <p className="font-semibold">{group.label}</p>
+                              <p className="text-sm text-muted-foreground">{group.rules.length} rules</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <Badge variant="neutral">{group.rules.length}</Badge>
+                            {expandedRuleModalGroups[group.label] ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+                          </div>
+                        </button>
+
+                        {expandedRuleModalGroups[group.label] ? (
+                          <div className="space-y-2 border-t border-border-soft px-5 py-4">
+                            {group.rules.length === 0 ? (
+                              <div className="rounded-[16px] border border-dashed border-border-soft bg-surface-soft/60 px-4 py-4 text-sm text-muted-foreground">
+                                No rules found in this category for the current search.
+                              </div>
+                            ) : (
+                              group.rules.map((rule) => {
+                                const selected = selectedRuleIds.includes(rule.id)
+                                const alreadyAssociated = associatedRuleIdSet.has(rule.id)
+                                return (
+                                  <button
+                                    key={rule.id}
+                                    type="button"
+                                    onClick={() => {
+                                      if (alreadyAssociated) return
+                                      toggleRuleSelection(rule.id)
+                                    }}
+                                    disabled={alreadyAssociated}
+                                    className={`flex w-full items-center justify-between gap-4 rounded-[18px] border px-4 py-3 text-left transition ${
+                                      alreadyAssociated
+                                        ? 'cursor-not-allowed border-border-soft bg-slate-100/95 text-foreground/80 dark:bg-slate-900/80'
+                                        : selected
+                                          ? 'border-border-soft bg-slate-100/95 text-foreground dark:bg-slate-900/80'
+                                          : 'border-border-soft bg-white hover:border-primary/20 hover:bg-primary/4 dark:bg-slate-950/45'
+                                    }`}
+                                  >
+                                    <div className="min-w-0">
+                                      <p className="truncate text-sm font-semibold">{rule.name}</p>
+                                      <div className="mt-1 flex flex-wrap items-center gap-2">
+                                        <p className="truncate text-xs text-muted-foreground">{rule.description}</p>
+                                        {alreadyAssociated ? (
+                                          <span className="rounded-full border border-border-soft bg-white/80 px-2.5 py-0.5 text-[11px] font-semibold text-muted-foreground dark:bg-slate-950/70">
+                                            Already associated
+                                          </span>
+                                        ) : selected ? (
+                                          <span className="rounded-full border border-border-soft bg-white/80 px-2.5 py-0.5 text-[11px] font-semibold text-muted-foreground dark:bg-slate-950/70">
+                                            Selected
+                                          </span>
+                                        ) : null}
+                                      </div>
+                                    </div>
+                                    <span
+                                      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border ${
+                                        alreadyAssociated || selected
+                                          ? 'border-slate-300 bg-slate-700 text-white dark:border-slate-600 dark:bg-slate-200 dark:text-slate-900'
+                                          : 'border-border-soft bg-surface text-transparent'
+                                      }`}
+                                    >
+                                      <Check className="h-4 w-4" />
+                                    </span>
+                                  </button>
+                                )
+                              })
+                            )}
+                          </div>
+                        ) : null}
+                      </Card>
+                    ))}
+                  </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between gap-4 border-t border-border-soft px-6 py-5">
+              <p className="text-sm text-muted-foreground">{selectedRuleIds.length} business rules currently selected.</p>
+              <div className="flex items-center gap-3">
+                <Button type="button" variant="secondary" className="bg-white dark:bg-[#1E293B]" onClick={() => setIsRuleModalOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="button" disabled={rulesSaving || isCreate} onClick={() => void handleSaveRuleAssociations()}>
+                  {rulesSaving ? 'Saving...' : 'Save Associations'}
+                </Button>
+              </div>
+            </div>
+          </Card>
+        </div>
+      ) : null}
+
+      {planDraft.open ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm"
+          style={{ marginTop: 0, marginBottom: 0 }}
+        >
+          <Card className="w-full max-w-2xl p-0 overflow-hidden">
+            <div className="border-b border-border-soft px-6 py-5">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-[12px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Plan workspace</p>
+                  <h3 className="mt-2 text-2xl font-semibold">{planDraft.id ? 'Edit Plan' : 'Create Plan'}</h3>
+                  <p className="mt-2 text-sm text-muted-foreground">Maintain plan records directly from the product setup hub.</p>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="rounded-full border border-border-soft bg-white dark:bg-slate-950/60"
+                  onClick={() => setPlanDraft({ open: false, name: '', description: '' })}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+
+            <form className="space-y-5 px-6 py-5" onSubmit={handlePlanSubmit}>
+              <Field label="Plan Name">
+                <Input
+                  value={planDraft.name}
+                  onChange={(event) => setPlanDraft((current) => ({ ...current, name: event.target.value }))}
+                  required
+                />
+              </Field>
+              <Field label="Description">
+                <textarea
+                  className="min-h-28 w-full rounded-[16px] border border-border bg-surface px-3 py-3 text-sm outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10"
+                  value={planDraft.description}
+                  onChange={(event) => setPlanDraft((current) => ({ ...current, description: event.target.value }))}
+                />
+              </Field>
+              <div className="flex justify-end gap-3 border-t border-border-soft pt-4">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="bg-white dark:bg-[#1E293B]"
+                  onClick={() => setPlanDraft({ open: false, name: '', description: '' })}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={planBusyId === (planDraft.id ?? 'create')}>
+                  {planBusyId === (planDraft.id ?? 'create') ? 'Saving...' : planDraft.id ? 'Save Plan' : 'Create Plan'}
+                </Button>
+              </div>
+            </form>
+          </Card>
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -569,12 +803,19 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   )
 }
 
-function PreviewBlock({ title, value }: { title: string; value: string }) {
-  return (
-    <div className="rounded-[14px] border border-border-soft bg-surface p-3">
-      <p className="text-[12px] font-bold uppercase tracking-[0.16em] text-muted-foreground">{title}</p>
-      <p className="mt-2 text-sm font-semibold">{value}</p>
-    </div>
-  )
+function categorizeRule(name: string, context: string, description: string): RuleGroup {
+  const content = [name, context, description].join(' ').toLowerCase()
+  if (content.includes('required document') || content.includes('required docs') || content.includes('document')) return 'Required Document'
+  if (content.includes('inclusion') || content.includes('include') || content.includes('cover')) return 'Inclusion'
+  if (content.includes('exclusion') || content.includes('exclude') || content.includes('not cover')) return 'Exclusion'
+  if (content.includes('mandatory') || content.includes('required') || content.includes('must')) return 'Mandatory Field'
+  return 'Conditional'
 }
 
+function ruleGroupIcon(group: RuleGroup) {
+  if (group === 'Required Document') return <FileText className="h-4 w-4" />
+  if (group === 'Inclusion') return <ShieldCheck className="h-4 w-4" />
+  if (group === 'Exclusion') return <X className="h-4 w-4" />
+  if (group === 'Mandatory Field') return <Check className="h-4 w-4" />
+  return <GitBranch className="h-4 w-4" />
+}

@@ -29,6 +29,7 @@ export * as CommonModels from './models/CommonModels';
 export * as ContactsModel from './models/ContactsModel';
 export * as Cr058_emailtemplatesModel from './models/Cr058_emailtemplatesModel';
 export * as Cr058_policiesModel from './models/Cr058_policiesModel';
+export * as Cr058_productrulelink1sModel from './models/Cr058_productrulelink1sModel';
 export * as EmailsModel from './models/EmailsModel';
 export * as SystemusersModel from './models/SystemusersModel';
 
@@ -57,5 +58,6 @@ export * from './services/BusinessunitsService';
 export * from './services/ContactsService';
 export * from './services/Cr058_emailtemplatesService';
 export * from './services/Cr058_policiesService';
+export * from './services/Cr058_productrulelink1sService';
 export * from './services/EmailsService';
 export * from './services/SystemusersService';

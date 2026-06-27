@@ -1,5 +1,5 @@
 import { useParams } from 'react-router-dom'
-import { FileStack, ArrowLeft } from 'lucide-react'
+import { FileStack, ArrowLeft, FileText, History, LayoutGrid } from 'lucide-react'
 import { useAsyncData } from '../../hooks/useAsyncData'
 import { getInquiryDetail } from '../../services/inquiriesService'
 import { Card } from '../../components/ui/Card'
@@ -75,10 +75,10 @@ export function InquiryDetailPage() {
 
       <Tabs defaultValue="details">
         <TabsList>
-          <TabsTrigger value="details">Details</TabsTrigger>
-          <TabsTrigger value="ai">AI Extracted Response</TabsTrigger>
-          <TabsTrigger value="quotes">Quotes</TabsTrigger>
-          <TabsTrigger value="history">History</TabsTrigger>
+          <TabsTrigger value="details" icon={LayoutGrid}>Details</TabsTrigger>
+          <TabsTrigger value="ai" icon={FileStack}>AI Extracted Response</TabsTrigger>
+          <TabsTrigger value="quotes" icon={FileText}>Quotes</TabsTrigger>
+          <TabsTrigger value="history" icon={History}>History</TabsTrigger>
         </TabsList>
         <TabsContent value="details" className="mt-4">
           <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">

@@ -1,15 +1,19 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { Archive, ArrowLeft, Bold, ChevronDown, ChevronUp, FileImage, FileSpreadsheet, FileStack, FileText, FolderOpen, GitBranch, Italic, LayoutGrid, List, Mail, MailCheck, MailPlus, Paperclip, Rows3, Save, SendHorizontal, ShieldAlert, Sparkles, Underline } from 'lucide-react'
+import { Archive, ArrowLeft, Bold, CheckCircle2, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, CopyPlus, FileImage, FileSpreadsheet, FileStack, FileText, FolderOpen, GitBranch, History, Italic, LayoutGrid, List, Mail, MailCheck, MailPlus, Paperclip, Rows3, Save, SendHorizontal, ShieldAlert, Sparkles, Underline, X } from 'lucide-react'
 import type { InquiryDetail } from '../../domain/app'
 import { useAsyncData } from '../../hooks/useAsyncData'
 import { useRole } from '../../hooks/useRole'
 import {
+  copyQuotesToInquiry,
   createQuoteFromInquiry,
   createInquiryEmail,
-  getInquiryDetail,
+  getInquiryDetailCore,
+  getInquiryDetailSupplementary,
   getInquiryEditorOptions,
+  listWonQuotesForProduct,
   saveInquiryDetail,
+  updateInquiryQuoteDetailResponse,
   updateInquiryDisposition,
 } from '../../services/inquiriesService'
 import { Card } from '../../components/ui/Card'
@@ -49,11 +53,21 @@ interface EmailComposerState {
   description: string
 }
 
+const emptyEditorOptions = {
+  products: [] as Array<{ id: string; name: string }>,
+  plans: [] as Array<{ id: string; name: string; productId: string }>,
+  brokers: [] as Array<{ id: string; name: string }>,
+  inquiryTypes: [] as Array<{ value: number; label: string }>,
+  inquiryStatuses: [] as Array<{ value: number; label: string }>,
+  coverTypes: [] as Array<{ value: number; label: string }>,
+  paymentTerms: [] as Array<{ value: number; label: string }>,
+}
+
 export function InquiryWorkspacePage() {
   const composerEditorRef = useRef<HTMLDivElement | null>(null)
   const { user } = useRole()
   const { id = '' } = useParams()
-  const [refreshKey, setRefreshKey] = useState(0)
+  const [supplementaryRefreshKey, setSupplementaryRefreshKey] = useState(0)
   const [pendingAction, setPendingAction] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [actionSuccess, setActionSuccess] = useState<string | null>(null)
@@ -70,28 +84,56 @@ export function InquiryWorkspacePage() {
   const [expandedEmailIds, setExpandedEmailIds] = useState<string[]>([])
   const [activeTab, setActiveTab] = useState('details')
   const [aiView, setAiView] = useState<'card' | 'table'>('card')
+  const [emailPanelMode, setEmailPanelMode] = useState<'expanded' | 'collapsed'>('expanded')
+  const [isNarrowViewport, setIsNarrowViewport] = useState(false)
   const [aiCategory, setAiCategory] = useState('All')
   const [riskView, setRiskView] = useState<'card' | 'table'>('card')
   const [quoteView, setQuoteView] = useState<'card' | 'table'>('table')
+  const [isCopyQuotesOpen, setIsCopyQuotesOpen] = useState(false)
+  const [selectedWonQuoteIds, setSelectedWonQuoteIds] = useState<string[]>([])
+  const [copyQuotesBusy, setCopyQuotesBusy] = useState(false)
+  const [copyQuotesError, setCopyQuotesError] = useState<string | null>(null)
   const [appliedConsequenceIds, setAppliedConsequenceIds] = useState<string[]>([])
+  const [quoteDetailDrafts, setQuoteDetailDrafts] = useState<Record<string, string>>({})
+  const [quoteDetailSaveState, setQuoteDetailSaveState] = useState<
+    Record<string, { saving?: boolean; success?: string | null; error?: string | null }>
+  >({})
   const [composer, setComposer] = useState<EmailComposerState>({
     sender: 'underwriting@insureai.com',
     toRecipients: '',
     subject: '',
     description: '',
   })
-  const { data, loading, error } = useAsyncData(async () => {
-    const [detail, options] = await Promise.all([getInquiryDetail(id), getInquiryEditorOptions()])
-    return { detail, options }
-  }, [id, refreshKey])
+  const coreLoad = useAsyncData(async () => getInquiryDetailCore(id), [id])
+  const optionsLoad = useAsyncData(async () => getInquiryEditorOptions(), [])
+  const supplementaryLoad = useAsyncData(async () => getInquiryDetailSupplementary(id), [id, supplementaryRefreshKey])
+  const copySourceProductId = form?.productId || inquiryState?.productId || coreLoad.data?.productId || ''
+  const productWonQuotesLoad = useAsyncData(
+    async () => (copySourceProductId ? listWonQuotesForProduct(copySourceProductId) : []),
+    [copySourceProductId, supplementaryRefreshKey],
+  )
 
   useEffect(() => {
-    if (!data) return
-    const inquiry = data.detail
+    if (typeof window === 'undefined') return
+
+    const syncViewport = () => {
+      const narrow = window.innerWidth < 1440
+      setIsNarrowViewport(narrow)
+      setEmailPanelMode((current) => (narrow ? 'collapsed' : current))
+    }
+
+    syncViewport()
+    window.addEventListener('resize', syncViewport)
+    return () => window.removeEventListener('resize', syncViewport)
+  }, [])
+
+  useEffect(() => {
+    if (!coreLoad.data) return
+    const inquiry = coreLoad.data
     setInquiryState(inquiry)
     setIsEditing(false)
     setActionSuccess(null)
-    const nextForm = buildFormState(inquiry, data.options)
+    const nextForm = buildFormState(inquiry, emptyEditorOptions)
     nextForm.brokerAgentName = inquiry.contact?.name || inquiry.contactName || 'No broker agent linked'
     setForm(nextForm)
     setComposeError(null)
@@ -100,13 +142,56 @@ export function InquiryWorkspacePage() {
     setEmailSearch('')
     setAiCategory('All')
     setExpandedEmailIds([])
+    setIsCopyQuotesOpen(false)
+    setSelectedWonQuoteIds([])
+    setCopyQuotesError(null)
+    setQuoteDetailDrafts({})
+    setQuoteDetailSaveState({})
+    setEmailPanelMode(isNarrowViewport ? 'collapsed' : 'expanded')
     setComposer({
       sender: user.email ?? 'underwriting@insureai.com',
       toRecipients: inquiry.contact?.email ?? inquiry.account?.email ?? '',
       subject: `Regarding ${inquiry.inquiryNumber}`,
       description: '',
     })
-  }, [data, user.email])
+  }, [coreLoad.data, isNarrowViewport, user.email])
+
+  useEffect(() => {
+    if (!supplementaryLoad.data) return
+
+    setInquiryState((current) => {
+      if (!current) return current
+      const merged = {
+        ...current,
+        ...supplementaryLoad.data,
+      }
+      return merged
+    })
+  }, [supplementaryLoad.data])
+
+  useEffect(() => {
+    if (!inquiryState || isEditing) return
+    const nextForm = buildFormState(inquiryState, optionsLoad.data ?? emptyEditorOptions)
+    nextForm.brokerAgentName = inquiryState.contact?.name || inquiryState.contactName || 'No broker agent linked'
+    setForm(nextForm)
+  }, [inquiryState, isEditing, optionsLoad.data])
+
+  useEffect(() => {
+    if (!inquiryState?.quoteDetails?.length) {
+      setQuoteDetailDrafts({})
+      return
+    }
+
+    setQuoteDetailDrafts((current) => {
+      const next = { ...current }
+      for (const detail of inquiryState.quoteDetails) {
+        if (!(detail.id in next)) {
+          next[detail.id] = detail.response ?? ''
+        }
+      }
+      return next
+    })
+  }, [inquiryState?.quoteDetails])
 
   useEffect(() => {
     if (!isComposerOpen || !composerEditorRef.current) return
@@ -115,22 +200,25 @@ export function InquiryWorkspacePage() {
     }
   }, [composer.description, isComposerOpen])
 
+  const detailSource = inquiryState ?? coreLoad.data
+  const quoteDetails = detailSource?.quoteDetails ?? []
+  const emailTimeline = detailSource?.emailTimeline ?? []
+
   const filteredEmails = useMemo(() => {
-    const emails = data?.detail.emailTimeline ?? []
+    const emails = emailTimeline
     if (!emailSearch.trim()) return emails
     const query = emailSearch.toLowerCase()
     return emails.filter((email) =>
-      [email.subject, email.body, email.sender, email.toRecipients, email.status]
+      [email.subject, email.body, email.sender, email.toRecipients, email.status ?? '']
         .join(' ')
         .toLowerCase()
         .includes(query),
     )
-  }, [data?.detail.emailTimeline, emailSearch])
+  }, [emailSearch, emailTimeline])
 
   const groupedQuoteDetails = useMemo(() => {
-    const details = data?.detail.quoteDetails ?? []
-    const grouped = new Map<string, typeof details>()
-    for (const detail of details) {
+    const grouped = new Map<string, typeof quoteDetails>()
+    for (const detail of quoteDetails) {
       const category = detail.businessRuleCategory || 'Uncategorized'
       const bucket = grouped.get(category) ?? []
       bucket.push(detail)
@@ -140,17 +228,17 @@ export function InquiryWorkspacePage() {
       category,
       items,
     }))
-  }, [data?.detail.quoteDetails])
+  }, [quoteDetails])
 
   const aiCategoryFilters = useMemo(
     () => [
-      { label: 'All', count: data?.detail.quoteDetails.length ?? 0 },
+      { label: 'All', count: quoteDetails.length },
       ...groupedQuoteDetails.map((group) => ({
         label: group.category,
         count: group.items.length,
       })),
     ],
-    [data?.detail.quoteDetails.length, groupedQuoteDetails],
+    [groupedQuoteDetails, quoteDetails.length],
   )
 
   const visibleQuoteDetailGroups = useMemo(() => {
@@ -158,25 +246,46 @@ export function InquiryWorkspacePage() {
     return groupedQuoteDetails.filter((group) => group.category === aiCategory)
   }, [aiCategory, groupedQuoteDetails])
 
+  const visibleQuoteDetails = useMemo(() => {
+    if (aiCategory === 'All') return quoteDetails
+    return visibleQuoteDetailGroups.flatMap((group) => group.items)
+  }, [aiCategory, quoteDetails, visibleQuoteDetailGroups])
+
   const missingQuoteDetails = useMemo(
     () =>
-      (data?.detail.quoteDetails ?? []).filter((detail) =>
+      quoteDetails.filter((detail) =>
         detail.response.replace(/\s+/g, ' ').trim().toLowerCase() === 'no information provided',
       ),
-    [data?.detail.quoteDetails],
+    [quoteDetails],
+  )
+  const wonQuotes = useMemo(
+    () =>
+      (productWonQuotesLoad.data ?? []).filter(
+        (quote) =>
+          quote.quoteStatusValue === 751820000 ||
+          quote.status.trim().toLowerCase() === 'quote won' ||
+          quote.status.replace(/\s+/g, '').trim().toLowerCase() === 'quotewon',
+      ),
+    [productWonQuotesLoad.data],
   )
 
   function triggerWorkspaceRefresh() {
-    setForm(null)
-    setRefreshKey((value) => value + 1)
+    setSupplementaryRefreshKey((value) => value + 1)
   }
 
+  const error = coreLoad.error || optionsLoad.error || productWonQuotesLoad.error
   if (error) return <Card>{error}</Card>
-  if (loading || !data || !form) return <InquiryWorkspaceSkeleton />
+  if (coreLoad.loading || !detailSource || !form) return <InquiryWorkspaceSkeleton />
 
-  const inquiry = inquiryState ?? data.detail
+  const inquiry = detailSource
   const inquiryRecordId = inquiry.id || id
-  const options = data.options
+  const options = optionsLoad.data ?? emptyEditorOptions
+  const isHydratingSupplementary =
+    supplementaryLoad.loading &&
+    !inquiry.quotes.length &&
+    !inquiry.quoteDetails.length &&
+    !inquiry.emailTimeline.length &&
+    !inquiry.consequenceResults.length
   const resetForm = () => {
     setIsEditing(false)
     setSaveError(null)
@@ -243,6 +352,48 @@ export function InquiryWorkspacePage() {
     }
   }
 
+  function openCopyQuotesModal() {
+    if (!wonQuotes.length) return
+    setSelectedWonQuoteIds(wonQuotes.map((quote) => quote.id))
+    setCopyQuotesError(null)
+    setIsCopyQuotesOpen(true)
+  }
+
+  function toggleWonQuoteSelection(quoteId: string) {
+    setSelectedWonQuoteIds((current) =>
+      current.includes(quoteId)
+        ? current.filter((id) => id !== quoteId)
+        : [...current, quoteId],
+    )
+  }
+
+  async function handleCopyQuotes() {
+    if (!selectedWonQuoteIds.length) {
+      setCopyQuotesError('Select at least one won quote to copy.')
+      return
+    }
+
+    try {
+      setCopyQuotesBusy(true)
+      setCopyQuotesError(null)
+      setActionError(null)
+      setActionSuccess(null)
+      const createdIds = await copyQuotesToInquiry(inquiryRecordId, selectedWonQuoteIds)
+      setActionSuccess(
+        createdIds.length === 1
+          ? '1 quote was copied into this inquiry as a new active quote.'
+          : `${createdIds.length} quotes were copied into this inquiry as new active quotes.`,
+      )
+      setIsCopyQuotesOpen(false)
+      setSelectedWonQuoteIds([])
+      triggerWorkspaceRefresh()
+    } catch (cause) {
+      setCopyQuotesError(cause instanceof Error ? cause.message : 'Unable to copy the selected quotes.')
+    } finally {
+      setCopyQuotesBusy(false)
+    }
+  }
+
   async function handleSaveDetails() {
     if (!form) return
     try {
@@ -282,6 +433,7 @@ export function InquiryWorkspacePage() {
               productId: form.productId || undefined,
               productName: findOptionName(options.products, form.productId, current.productName),
               inquiryType: findOptionLabel(options.inquiryTypes, form.inquiryType, current.inquiryType),
+              inquiryTypeValue: form.inquiryType ? Number(form.inquiryType) : current.inquiryTypeValue,
               status: findOptionLabel(options.inquiryStatuses, form.inquiryStatus, current.status),
               inquiryStatusValue: form.inquiryStatus ? Number(form.inquiryStatus) : current.inquiryStatusValue,
               planId: form.planId || undefined,
@@ -480,6 +632,92 @@ export function InquiryWorkspacePage() {
     setIsComposerOpen(true)
   }
 
+  function handleQuoteDetailDraftChange(quoteDetailId: string, value: string) {
+    setQuoteDetailDrafts((current) => ({
+      ...current,
+      [quoteDetailId]: value,
+    }))
+    setQuoteDetailSaveState((current) => ({
+      ...current,
+      [quoteDetailId]: {
+        ...current[quoteDetailId],
+        success: null,
+        error: null,
+      },
+    }))
+  }
+
+  async function handleSaveQuoteDetailResponse(quoteDetailId: string) {
+    const currentDetail = inquiry.quoteDetails.find((detail) => detail.id === quoteDetailId)
+    if (!currentDetail) return
+
+    const nextResponse = quoteDetailDrafts[quoteDetailId] ?? currentDetail.response ?? ''
+    if (nextResponse === currentDetail.response) return
+
+    try {
+      setQuoteDetailSaveState((current) => ({
+        ...current,
+        [quoteDetailId]: {
+          saving: true,
+          success: null,
+          error: null,
+        },
+      }))
+
+      await updateInquiryQuoteDetailResponse(quoteDetailId, nextResponse)
+
+      setInquiryState((current) =>
+        current
+          ? {
+              ...current,
+              quoteDetails: current.quoteDetails.map((detail) =>
+                detail.id === quoteDetailId
+                  ? {
+                      ...detail,
+                      response: nextResponse,
+                    }
+                  : detail,
+              ),
+            }
+          : current,
+      )
+      setQuoteDetailDrafts((current) => ({
+        ...current,
+        [quoteDetailId]: nextResponse,
+      }))
+      setQuoteDetailSaveState((current) => ({
+        ...current,
+        [quoteDetailId]: {
+          saving: false,
+          success: 'Saved',
+          error: null,
+        },
+      }))
+      window.setTimeout(() => {
+        setQuoteDetailSaveState((current) => ({
+          ...current,
+          [quoteDetailId]: {
+            ...current[quoteDetailId],
+            success: null,
+          },
+        }))
+      }, 2200)
+    } catch (cause) {
+      setQuoteDetailSaveState((current) => ({
+        ...current,
+        [quoteDetailId]: {
+          saving: false,
+          success: null,
+          error: cause instanceof Error ? cause.message : 'Unable to save response.',
+        },
+      }))
+    }
+  }
+
+  function toggleEmailPanel() {
+    setEmailPanelMode((current) => (current === 'expanded' ? 'collapsed' : 'expanded'))
+  }
+
   return (
     <div className="space-y-6">
       <Button asChild variant="ghost" size="sm">
@@ -498,26 +736,22 @@ export function InquiryWorkspacePage() {
               <Badge variant="pending">{inquiry.status}</Badge>
             </div>
             <div>
-              <p className="text-[12px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Underwriting workspace</p>
-              <h1 className="mt-2 text-[32px] font-bold tracking-[-0.03em]">{inquiry.name}</h1>
-              <p className="mt-2 text-sm text-muted-foreground">
+              <h1 className="text-[24px] font-bold tracking-[-0.02em]">{inquiry.name}</h1>
+              <p className="mt-1.5 text-sm text-muted-foreground">
                 {inquiry.productName} - {inquiry.planName} - {formatDate(inquiry.createdOn)}
               </p>
             </div>
           </div>
-          <div className="space-y-4 lg:min-w-[320px]">
-            <div className="rounded-[22px] border border-primary/12 bg-white/70 p-5 shadow-soft dark:bg-slate-950/35">
+          <div className="space-y-3 lg:min-w-[280px]">
+            <div className="rounded-[22px] border border-primary/12 bg-white/70 p-4 shadow-soft dark:bg-slate-950/35">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-[12px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
                     Overall Completeness
                   </p>
-                  <p className="mt-3 text-4xl font-bold">{formatPercent(inquiry.readiness[0]?.value ?? 0)}</p>
-                  <p className="mt-3 max-w-[210px] text-sm text-muted-foreground">
-                    {inquiry.readiness[0]?.description ?? 'Tracks how much of the inquiry is ready for underwriting action.'}
-                  </p>
+                  <p className="mt-2 text-3xl font-bold">{formatPercent(inquiry.readiness[0]?.value ?? 0)}</p>
                 </div>
-                <div className="h-16 w-16 rounded-full border-4 border-primary/12 p-1">
+                <div className="h-14 w-14 rounded-full border-4 border-primary/12 p-1">
                   <div
                     className="h-full rounded-full bg-gradient-to-br from-primary to-info"
                     style={{ clipPath: `inset(${100 - (inquiry.readiness[0]?.value ?? 0)}% 0 0 0)` }}
@@ -537,12 +771,18 @@ export function InquiryWorkspacePage() {
                   </Button>
                 </>
               ) : (
-                <Button type="button" variant="secondary" onClick={() => setIsEditing(true)}>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="bg-white hover:bg-surface"
+                  onClick={() => setIsEditing(true)}
+                >
                   Edit Inquiry
                 </Button>
               )}
               <Button
                 variant="secondary"
+                className="bg-white hover:bg-surface"
                 disabled={pendingAction === 'refer'}
                 onClick={() => void handleDisposition('RefertoUnderwriter', 'refer')}
               >
@@ -550,17 +790,20 @@ export function InquiryWorkspacePage() {
               </Button>
               <Button
                 variant="outline"
+                className="bg-white hover:bg-surface"
                 disabled={pendingAction === 'escalate'}
                 onClick={() => void handleDisposition('EscalatetoHeadofAviation', 'escalate')}
               >
                 Escalate
               </Button>
               <Button
-                variant="primary"
-                disabled={pendingAction === 'quote'}
-                onClick={() => void handleCreateQuote()}
+                variant="secondary"
+                className="bg-white hover:bg-surface"
+                disabled={!wonQuotes.length}
+                onClick={openCopyQuotesModal}
               >
-                Create Quote
+                <CopyPlus className="h-4 w-4" />
+                Copy Quotes
               </Button>
             </div>
             {actionError ? <p className="text-sm text-danger lg:text-right">{actionError}</p> : null}
@@ -572,41 +815,64 @@ export function InquiryWorkspacePage() {
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
-          <TabsTrigger value="details">Details</TabsTrigger>
-          <TabsTrigger value="ai">AI Extracted Response</TabsTrigger>
-          <TabsTrigger value="actions">Actions</TabsTrigger>
-          <TabsTrigger value="quotes">Quotes</TabsTrigger>
-          <TabsTrigger value="documents">Documents</TabsTrigger>
-          <TabsTrigger value="history">History</TabsTrigger>
+          <TabsTrigger value="details" icon={LayoutGrid}>Details</TabsTrigger>
+          <TabsTrigger value="actions" icon={ShieldAlert}>Actions</TabsTrigger>
+          <TabsTrigger value="quotes" icon={FileText}>Quotes</TabsTrigger>
+          <TabsTrigger value="documents" icon={FolderOpen}>Documents</TabsTrigger>
+          <TabsTrigger value="history" icon={History}>History</TabsTrigger>
         </TabsList>
         <TabsContent value="details" className="mt-4">
           {!form ? null : (
             <div className="space-y-6">
-              <div className="grid gap-6 xl:grid-cols-2 xl:items-start">
+              <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-start">
                 <div className="space-y-6">
                   <Card className="space-y-5">
                     <SectionHeader title="Details" description="Core inquiry identity, product, and relationship fields." />
                     <div className="grid gap-4 md:grid-cols-2">
                       <Field label="Name">
-                        <Input disabled={!isEditing} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
+                        {isEditing ? (
+                          <Input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
+                        ) : (
+                          <ReadOnlyValue value={form.name} />
+                        )}
                       </Field>
                       <Field label="Product">
-                        <SelectField disabled={!isEditing} value={form.productId} onChange={(value) => setForm({ ...form, productId: value })} options={data.options.products} />
+                        {isEditing ? (
+                          <SelectField value={form.productId} onChange={(value) => setForm({ ...form, productId: value })} options={options.products} />
+                        ) : (
+                          <ReadOnlyValue value={inquiry.productName} />
+                        )}
                       </Field>
                       <Field label="Inquiry Type">
-                        <SelectField disabled={!isEditing} value={form.inquiryType} onChange={(value) => setForm({ ...form, inquiryType: value })} options={data.options.inquiryTypes} />
+                        {isEditing ? (
+                          <SelectField value={form.inquiryType} onChange={(value) => setForm({ ...form, inquiryType: value })} options={options.inquiryTypes} />
+                        ) : (
+                          <ReadOnlyValue value={findOptionLabel(options.inquiryTypes, form.inquiryType, inquiry.inquiryType)} />
+                        )}
                       </Field>
                       <Field label="Inquiry Status">
-                        <SelectField disabled={!isEditing} value={form.inquiryStatus} onChange={(value) => setForm({ ...form, inquiryStatus: value })} options={data.options.inquiryStatuses} />
+                        {isEditing ? (
+                          <SelectField value={form.inquiryStatus} onChange={(value) => setForm({ ...form, inquiryStatus: value })} options={options.inquiryStatuses} />
+                        ) : (
+                          <ReadOnlyValue value={findOptionLabel(options.inquiryStatuses, form.inquiryStatus, inquiry.status)} />
+                        )}
                       </Field>
                       <Field label="Plan">
-                        <SelectField disabled={!isEditing} value={form.planId} onChange={(value) => setForm({ ...form, planId: value })} options={data.options.plans.map((item) => ({ id: item.id, name: item.name }))} />
+                        {isEditing ? (
+                          <SelectField value={form.planId} onChange={(value) => setForm({ ...form, planId: value })} options={options.plans.map((item) => ({ id: item.id, name: item.name }))} />
+                        ) : (
+                          <ReadOnlyValue value={inquiry.planName} />
+                        )}
                       </Field>
                       <Field label="Broker">
-                        <SelectField disabled={!isEditing} value={form.brokerId} onChange={(value) => setForm({ ...form, brokerId: value })} options={data.options.brokers} />
+                        {isEditing ? (
+                          <SelectField value={form.brokerId} onChange={(value) => setForm({ ...form, brokerId: value })} options={options.brokers} />
+                        ) : (
+                          <ReadOnlyValue value={inquiry.brokerName} />
+                        )}
                       </Field>
                       <Field label="Broker Agent">
-                        <Input disabled value={form.brokerAgentName} />
+                        <ReadOnlyValue value={form.brokerAgentName} />
                       </Field>
                     </div>
                   </Card>
@@ -615,27 +881,50 @@ export function InquiryWorkspacePage() {
                     <SectionHeader title="Risk" description="Exposure, scope, and risk intelligence inputs for underwriting." />
                     <div className="grid gap-4 md:grid-cols-2">
                       <Field label="Cover Type">
-                        <SelectField disabled={!isEditing} value={form.coverType} onChange={(value) => setForm({ ...form, coverType: value })} options={data.options.coverTypes} />
+                        {isEditing ? (
+                          <SelectField value={form.coverType} onChange={(value) => setForm({ ...form, coverType: value })} options={options.coverTypes} />
+                        ) : (
+                          <ReadOnlyValue value={findOptionLabel(options.coverTypes, form.coverType, inquiry.coverType)} />
+                        )}
                       </Field>
                       <Field label="Risk Score">
-                        <Input disabled={!isEditing} type="number" value={form.riskScore} onChange={(event) => setForm({ ...form, riskScore: event.target.value })} />
+                        {isEditing ? (
+                          <Input type="number" value={form.riskScore} onChange={(event) => setForm({ ...form, riskScore: event.target.value })} />
+                        ) : (
+                          <ReadOnlyValue value={form.riskScore} />
+                        )}
                       </Field>
                       <Field label="Total Sum Insured">
-                        <Input disabled={!isEditing} type="number" value={form.totalSumInsured} onChange={(event) => setForm({ ...form, totalSumInsured: event.target.value })} />
+                        {isEditing ? (
+                          <Input type="number" value={form.totalSumInsured} onChange={(event) => setForm({ ...form, totalSumInsured: event.target.value })} />
+                        ) : (
+                          <ReadOnlyValue value={form.totalSumInsured} />
+                        )}
                       </Field>
                       <Field label="Territorial Scope">
-                        <Input disabled={!isEditing} value={form.territorialScope} onChange={(event) => setForm({ ...form, territorialScope: event.target.value })} />
+                        {isEditing ? (
+                          <Input value={form.territorialScope} onChange={(event) => setForm({ ...form, territorialScope: event.target.value })} />
+                        ) : (
+                          <ReadOnlyValue value={form.territorialScope} />
+                        )}
                       </Field>
                       <Field label="No of Items">
-                        <Input disabled={!isEditing} value={form.noOfItems} onChange={(event) => setForm({ ...form, noOfItems: event.target.value })} />
+                        {isEditing ? (
+                          <Input value={form.noOfItems} onChange={(event) => setForm({ ...form, noOfItems: event.target.value })} />
+                        ) : (
+                          <ReadOnlyValue value={form.noOfItems || 'Not provided'} />
+                        )}
                       </Field>
                       <Field label="Risk Description">
-                        <textarea
-                          disabled={!isEditing}
-                          className="min-h-28 w-full rounded-[16px] border border-border bg-surface px-3 py-3 text-sm outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10 disabled:cursor-default disabled:bg-surface-soft"
-                          value={form.riskDescription}
-                          onChange={(event) => setForm({ ...form, riskDescription: event.target.value })}
-                        />
+                        {isEditing ? (
+                          <textarea
+                            className="min-h-28 w-full rounded-[16px] border border-border bg-surface px-3 py-3 text-sm outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10"
+                            value={form.riskDescription}
+                            onChange={(event) => setForm({ ...form, riskDescription: event.target.value })}
+                          />
+                        ) : (
+                          <ReadOnlyText value={form.riskDescription} />
+                        )}
                       </Field>
                     </div>
                   </Card>
@@ -644,27 +933,193 @@ export function InquiryWorkspacePage() {
                     <SectionHeader title="Premium" description="Commercial premium and deduction controls for the inquiry." />
                     <div className="grid gap-4 md:grid-cols-2">
                       <Field label="Premium to be Charged">
-                        <Input disabled={!isEditing} type="number" value={form.premiumToBeCharged} onChange={(event) => setForm({ ...form, premiumToBeCharged: event.target.value })} />
+                        {isEditing ? (
+                          <Input type="number" value={form.premiumToBeCharged} onChange={(event) => setForm({ ...form, premiumToBeCharged: event.target.value })} />
+                        ) : (
+                          <ReadOnlyValue value={form.premiumToBeCharged} />
+                        )}
                       </Field>
                       <Field label="Brokerage">
-                        <Input disabled={!isEditing} type="number" value={form.brokerage} onChange={(event) => setForm({ ...form, brokerage: event.target.value })} />
+                        {isEditing ? (
+                          <Input type="number" value={form.brokerage} onChange={(event) => setForm({ ...form, brokerage: event.target.value })} />
+                        ) : (
+                          <ReadOnlyValue value={form.brokerage} />
+                        )}
                       </Field>
                       <Field label="Gross Premium">
-                        <Input disabled={!isEditing} type="number" value={form.grossPremium} onChange={(event) => setForm({ ...form, grossPremium: event.target.value })} />
+                        {isEditing ? (
+                          <Input type="number" value={form.grossPremium} onChange={(event) => setForm({ ...form, grossPremium: event.target.value })} />
+                        ) : (
+                          <ReadOnlyValue value={form.grossPremium} />
+                        )}
                       </Field>
                       <Field label="Payment Term">
-                        <SelectField disabled={!isEditing} value={form.paymentTerm} onChange={(value) => setForm({ ...form, paymentTerm: value })} options={data.options.paymentTerms} />
+                        {isEditing ? (
+                          <SelectField value={form.paymentTerm} onChange={(value) => setForm({ ...form, paymentTerm: value })} options={options.paymentTerms} />
+                        ) : (
+                          <ReadOnlyValue value={findOptionLabel(options.paymentTerms, form.paymentTerm, inquiry.paymentTerm)} />
+                        )}
                       </Field>
                       <Field label="Fee">
-                        <Input disabled={!isEditing} type="number" value={form.fee} onChange={(event) => setForm({ ...form, fee: event.target.value })} />
+                        {isEditing ? (
+                          <Input type="number" value={form.fee} onChange={(event) => setForm({ ...form, fee: event.target.value })} />
+                        ) : (
+                          <ReadOnlyValue value={form.fee} />
+                        )}
                       </Field>
                       <Field label="Total Deduction">
-                        <Input disabled={!isEditing} type="number" value={form.totalDeduction} onChange={(event) => setForm({ ...form, totalDeduction: event.target.value })} />
+                        {isEditing ? (
+                          <Input type="number" value={form.totalDeduction} onChange={(event) => setForm({ ...form, totalDeduction: event.target.value })} />
+                        ) : (
+                          <ReadOnlyValue value={form.totalDeduction} />
+                        )}
                       </Field>
                     </div>
                   </Card>
+
+                  <Card className="space-y-5 border-[rgba(56,189,248,0.14)] bg-[linear-gradient(180deg,rgba(239,246,255,0.88)_0%,rgba(255,255,255,0.98)_22%,rgba(255,255,255,0.98)_100%)] dark:border-[rgba(56,189,248,0.18)] dark:bg-[linear-gradient(180deg,rgba(12,74,110,0.26)_0%,rgba(15,23,42,0.96)_24%,rgba(15,23,42,0.96)_100%)]">
+                    <div className="flex flex-col gap-4 border-b border-border-soft pb-5 md:flex-row md:items-start md:justify-between">
+                      <div className="flex items-center gap-3">
+                        <Sparkles className="h-6 w-6 text-[rgb(14,165,233)]" />
+                        <div>
+                          <h3 className="text-xl font-semibold">AI Extracted Response</h3>
+                          <p className="text-sm text-muted-foreground">Editable underwriting responses captured against this inquiry.</p>
+                        </div>
+                      </div>
+                      {missingQuoteDetails.length ? (
+                        <Button type="button" variant="secondary" className="bg-white dark:bg-[#1E293B]" onClick={handleMakeDraft}>
+                          <MailPlus className="h-4 w-4" />
+                          Request a Draft
+                        </Button>
+                      ) : null}
+                    </div>
+
+                    <div className="rounded-[22px] border border-border-soft bg-white px-5 py-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)] dark:bg-slate-950/70">
+                      <p className="text-[12px] font-bold uppercase tracking-[0.16em] text-muted-foreground">AI Generated Summary</p>
+                      <p className="mt-3 text-sm leading-7 text-foreground/90">
+                        {inquiry.summary || 'No AI generated summary is available for this inquiry yet.'}
+                      </p>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      {aiCategoryFilters.map((filter) => (
+                        <Button
+                          key={filter.label}
+                          type="button"
+                          variant={aiCategory === filter.label ? 'primary' : 'secondary'}
+                          size="sm"
+                          className="rounded-full"
+                          onClick={() => setAiCategory(filter.label)}
+                        >
+                          {filter.label}
+                          <span
+                            className={`rounded-full px-1.5 py-0.5 text-[11px] ${
+                              aiCategory === filter.label ? 'bg-white/20 text-white' : 'bg-surface text-muted-foreground'
+                            }`}
+                          >
+                            {filter.count}
+                          </span>
+                        </Button>
+                      ))}
+                    </div>
+
+                    {isHydratingSupplementary ? (
+                      <InlineSectionLoading
+                        title="Loading AI responses"
+                        description="We are syncing extracted responses and business-rule context for this inquiry."
+                      />
+                    ) : quoteDetails.length === 0 ? (
+                      <Card className="border-dashed border-border bg-surface-soft/70 text-center">
+                        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-secondary/10 text-secondary">
+                          <FileStack className="h-6 w-6" />
+                        </div>
+                        <h4 className="mt-4 text-lg font-semibold">No AI extracted responses found</h4>
+                        <p className="mt-2 text-sm text-muted-foreground">No extracted AI response records are available for this inquiry yet.</p>
+                      </Card>
+                    ) : visibleQuoteDetailGroups.length === 0 ? (
+                      <Card className="border-dashed border-border bg-surface-soft/70 text-center">
+                        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-secondary/10 text-secondary">
+                          <FileStack className="h-6 w-6" />
+                        </div>
+                        <h4 className="mt-4 text-lg font-semibold">No responses in this category</h4>
+                        <p className="mt-2 text-sm text-muted-foreground">
+                          No AI extracted responses match the selected category filter right now.
+                        </p>
+                      </Card>
+                    ) : (
+                      <div className="overflow-hidden rounded-[24px] border border-border-soft bg-white dark:bg-slate-950/92">
+                        <div className="overflow-x-auto">
+                          <table className="min-w-[1180px] w-full border-collapse">
+                            <thead className="bg-white dark:bg-slate-950/96">
+                              <tr>
+                                <th className="px-4 py-3 text-left text-[12px] font-bold uppercase tracking-[0.08em] text-muted-foreground">Quote Detail</th>
+                                <th className="px-4 py-3 text-left text-[12px] font-bold uppercase tracking-[0.08em] text-muted-foreground">Category</th>
+                                <th className="px-4 py-3 text-left text-[12px] font-bold uppercase tracking-[0.08em] text-muted-foreground">Response</th>
+                                <th className="px-4 py-3 text-left text-[12px] font-bold uppercase tracking-[0.08em] text-muted-foreground">Source</th>
+                                <th className="px-4 py-3 text-left text-[12px] font-bold uppercase tracking-[0.08em] text-muted-foreground">Action</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {visibleQuoteDetails.map((detail) => {
+                                const draftValue = quoteDetailDrafts[detail.id] ?? detail.response ?? ''
+                                const dirty = draftValue !== (detail.response ?? '')
+                                const saveState = quoteDetailSaveState[detail.id]
+                                const highlighted = draftValue.trim().toLowerCase() === 'no information provided'
+
+                                return (
+                                  <tr key={detail.id} className="border-b border-border-soft/80 bg-surface align-top transition duration-150 hover:bg-primary/5">
+                                    <td className="px-4 py-3">
+                                      <div className="space-y-0.5">
+                                        <p className={`text-sm font-semibold ${highlighted ? 'text-red-600' : 'text-foreground'}`}>{detail.name}</p>
+                                        <Badge variant="approved">{detail.status}</Badge>
+                                      </div>
+                                    </td>
+                                    <td className="px-4 py-3"><Badge variant="neutral">{detail.businessRuleCategory}</Badge></td>
+                                    <td className="px-4 py-3">
+                                      <textarea
+                                        className={`min-h-[72px] w-full min-w-[240px] rounded-[16px] border bg-surface px-3 py-2 text-sm leading-5 outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10 ${
+                                          highlighted
+                                            ? 'border-red-300 bg-white text-red-600 placeholder:text-red-400 focus:border-red-400 focus:ring-red-200'
+                                            : 'border-border text-foreground'
+                                        }`}
+                                        value={draftValue}
+                                        onChange={(event) => handleQuoteDetailDraftChange(detail.id, event.target.value)}
+                                      />
+                                      <div className="mt-1.5 min-h-[16px] text-xs">
+                                        {saveState?.error ? <span className="text-danger">{saveState.error}</span> : null}
+                                        {!saveState?.error && saveState?.success ? <span className="text-success">{saveState.success}</span> : null}
+                                        {!saveState?.error && !saveState?.success && dirty ? <span className="text-muted-foreground">Unsaved changes</span> : null}
+                                      </div>
+                                    </td>
+                                    <td className="px-4 py-3">
+                                      {detail.evidence ? <EvidenceTooltip evidence={detail.evidence} compact /> : <span className="text-xs text-muted-foreground">N/A</span>}
+                                    </td>
+                                    <td className="px-4 py-3">
+                                      <Button type="button" size="sm" className="whitespace-nowrap" disabled={!dirty || saveState?.saving} onClick={() => void handleSaveQuoteDetailResponse(detail.id)}>
+                                        <Save className="h-4 w-4" />
+                                        {saveState?.saving ? 'Saving...' : 'Save'}
+                                      </Button>
+                                    </td>
+                                  </tr>
+                                )
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+                  </Card>
                 </div>
 
+                <div className={`${emailPanelMode === 'collapsed' ? 'xl:w-[86px]' : 'xl:w-[min(47vw,710px)]'} transition-[width] duration-300`}>
+                {emailPanelMode === 'collapsed' ? (
+                  <CollapsedEmailRail
+                    emailCount={emailTimeline.length}
+                    inquiryNumber={inquiry.inquiryNumber}
+                    latestEmailSubject={emailTimeline[0]?.subject}
+                    onExpand={toggleEmailPanel}
+                  />
+                ) : (
                 <Card variant="glass" className="space-y-5 overflow-hidden">
                   <div className="flex flex-col gap-4 border-b border-border-soft pb-5 md:flex-row md:items-start md:justify-between">
                     <div className="space-y-2">
@@ -674,11 +1129,14 @@ export function InquiryWorkspacePage() {
                         All email activity linked to {inquiry.inquiryNumber} from the Dataverse email timeline.
                       </p>
                     </div>
-                    <div className="rounded-[18px] border border-border-soft bg-surface-soft px-4 py-3 text-sm">
+                    <div className="hidden rounded-[18px] border border-border-soft bg-surface-soft px-4 py-3 text-sm">
                       <p className="font-semibold">{inquiry.accountName}</p>
                       <p className="mt-1 text-muted-foreground">{inquiry.productName} · {inquiry.planName}</p>
                       <p className="mt-1 text-muted-foreground">Broker: {inquiry.brokerName}</p>
                     </div>
+                    <Button type="button" variant="ghost" size="icon" className="rounded-full border border-border-soft bg-white/90" onClick={toggleEmailPanel}>
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
                   </div>
 
                   <div className="space-y-4">
@@ -764,7 +1222,12 @@ export function InquiryWorkspacePage() {
                       </Card>
                     ) : null}
 
-                    {filteredEmails.length === 0 ? (
+                    {isHydratingSupplementary ? (
+                      <InlineSectionLoading
+                        title="Loading email activity"
+                        description="Linked email conversations and attachments are still syncing."
+                      />
+                    ) : filteredEmails.length === 0 ? (
                       <Card className="border-dashed border-border bg-surface-soft/70 text-center">
                         <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-primary/10 text-primary">
                           <MailCheck className="h-7 w-7" />
@@ -776,11 +1239,13 @@ export function InquiryWorkspacePage() {
                       </Card>
                     ) : (
                       <div className="space-y-4">
-                        {filteredEmails.map((email, index) => (
+                        {filteredEmails.map((email) => (
                           <div key={email.id} className="grid gap-4 md:grid-cols-[88px_40px_minmax(0,1fr)]">
                             <div className="flex flex-col items-start gap-2 pt-3 text-[12px] text-muted-foreground">
                               <span className="font-semibold">{formatDate(email.createdOn)}</span>
-                              <span>{email.direction === 'sent' ? 'Sent' : 'Received'}</span>
+                              <span className="rounded-full border border-border-soft bg-surface-soft px-2.5 py-1 text-[11px] font-semibold text-foreground/80">
+                                {email.status || 'Unknown'}
+                              </span>
                             </div>
                             <div className="relative hidden justify-center pt-1 md:flex">
                               <div
@@ -788,9 +1253,10 @@ export function InquiryWorkspacePage() {
                               >
                                 <Mail className="h-5 w-5" />
                               </div>
-                              {index !== filteredEmails.length - 1 ? (
-                                <div className={`absolute top-14 w-px ${expandedEmailIds.includes(email.id) ? 'bg-gradient-to-b from-primary to-primary/10' : 'bg-gradient-to-b from-border-soft to-transparent'}`} style={{ height: 'calc(100% + 1rem)' }} />
-                              ) : null}
+                              <div
+                                className={`absolute top-14 w-[2px] ${expandedEmailIds.includes(email.id) ? 'bg-gradient-to-b from-primary to-primary/10' : 'bg-gradient-to-b from-border-soft to-transparent'}`}
+                                style={{ height: 'calc(100% + 1rem)' }}
+                              />
                             </div>
                             <Card variant="interactive" className="rounded-[24px] border border-border-soft bg-white shadow-[0_8px_22px_rgba(15,23,42,0.06)] dark:bg-slate-950/90 dark:shadow-[0_10px_24px_rgba(2,6,23,0.18)]">
                               <button
@@ -801,11 +1267,11 @@ export function InquiryWorkspacePage() {
                                 <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                                   <div className="space-y-2">
                                     <div className="flex flex-wrap items-center gap-2">
-                                      <Badge variant={email.direction === 'sent' ? 'info' : 'approved'}>
-                                        {email.status}
-                                      </Badge>
                                       <span className="text-[12px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
                                         {inquiry.inquiryNumber}
+                                      </span>
+                                      <span className="rounded-full border border-border-soft bg-surface-soft px-2.5 py-1 text-[11px] font-semibold text-foreground/80">
+                                        {email.status || 'Unknown'}
                                       </span>
                                     </div>
                                     <h4 className="text-lg font-semibold">{email.subject}</h4>
@@ -815,9 +1281,6 @@ export function InquiryWorkspacePage() {
                                     </div>
                                   </div>
                                   <div className="flex items-start gap-3">
-                                    <div className="text-right text-[12px] text-muted-foreground">
-                                      <p>{formatDate(email.createdOn)}</p>
-                                    </div>
                                     <div className="flex h-9 w-9 items-center justify-center rounded-full border border-border-soft bg-surface-soft text-muted-foreground">
                                       {expandedEmailIds.includes(email.id) ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                                     </div>
@@ -871,6 +1334,8 @@ export function InquiryWorkspacePage() {
                     )}
                   </div>
                 </Card>
+                )}
+                </div>
               </div>
             </div>
           )}
@@ -947,39 +1412,71 @@ export function InquiryWorkspacePage() {
                 </p>
               </Card>
             ) : aiView === 'card' ? (
-              <div className="space-y-5">
-                {visibleQuoteDetailGroups.map((group) => (
-                  <section key={group.category} className="space-y-4">
-                    <div className="grid gap-4 xl:grid-cols-3">
-                      {group.items.map((detail) => (
-                        <Card key={detail.id} variant="interactive" className="space-y-4 rounded-[24px] border border-border-soft bg-white shadow-[0_10px_24px_rgba(15,23,42,0.06)] dark:bg-slate-950/95 dark:shadow-[0_12px_28px_rgba(2,6,23,0.22)]">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="space-y-2">
-                              <h4 className="text-lg font-semibold">{detail.name}</h4>
-                              <p className="text-sm text-muted-foreground">{detail.businessRuleName}</p>
-                            </div>
-                            <Badge variant="approved">{detail.status}</Badge>
+              aiCategory === 'All' ? (
+                <div className="grid gap-4 xl:grid-cols-3">
+                  {visibleQuoteDetails.map((detail) => (
+                    <Card key={detail.id} variant="interactive" className="space-y-4 rounded-[24px] border border-border-soft bg-white shadow-[0_10px_24px_rgba(15,23,42,0.06)] dark:bg-slate-950/95 dark:shadow-[0_12px_28px_rgba(2,6,23,0.22)]">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="space-y-2">
+                          <h4 className="text-lg font-semibold">{detail.name}</h4>
+                          <p className="text-sm text-muted-foreground">{detail.businessRuleName}</p>
+                        </div>
+                        <Badge variant="approved">{detail.status}</Badge>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <Badge variant="neutral">{detail.businessRuleCategory}</Badge>
+                        <Badge variant="info">{detail.conditionMet}</Badge>
+                      </div>
+                      <div className="space-y-3 rounded-[18px] border border-border-soft bg-surface-soft/80 p-4">
+                        <div>
+                          <div className="flex items-center justify-between gap-3">
+                            <p className="text-[12px] font-bold uppercase tracking-[0.12em] text-muted-foreground">Response</p>
+                            {detail.evidence ? <EvidenceTooltip evidence={detail.evidence} /> : null}
                           </div>
-                          <div className="flex flex-wrap gap-2">
-                            <Badge variant="neutral">{detail.businessRuleCategory}</Badge>
-                            <Badge variant="info">{detail.conditionMet}</Badge>
-                          </div>
-                          <div className="space-y-3 rounded-[18px] border border-border-soft bg-surface-soft/80 p-4">
-                            <div>
-                              <p className="text-[12px] font-bold uppercase tracking-[0.12em] text-muted-foreground">Response</p>
-                              <p className="mt-2 text-sm text-foreground/90">{detail.response || 'No response captured.'}</p>
+                          <p className={`mt-2 text-sm ${getResponseTextClass(detail.response)}`}>
+                            {detail.response || 'No response captured.'}
+                          </p>
+                        </div>
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              ) : (
+                <div className="space-y-5">
+                  {visibleQuoteDetailGroups.map((group) => (
+                    <section key={group.category} className="space-y-4">
+                      <div className="grid gap-4 xl:grid-cols-3">
+                        {group.items.map((detail) => (
+                          <Card key={detail.id} variant="interactive" className="space-y-4 rounded-[24px] border border-border-soft bg-white shadow-[0_10px_24px_rgba(15,23,42,0.06)] dark:bg-slate-950/95 dark:shadow-[0_12px_28px_rgba(2,6,23,0.22)]">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="space-y-2">
+                                <h4 className="text-lg font-semibold">{detail.name}</h4>
+                                <p className="text-sm text-muted-foreground">{detail.businessRuleName}</p>
+                              </div>
+                              <Badge variant="approved">{detail.status}</Badge>
                             </div>
-                            <div>
-                              <p className="text-[12px] font-bold uppercase tracking-[0.12em] text-muted-foreground">Evidence</p>
-                              <p className="mt-2 text-sm text-muted-foreground">{detail.evidence}</p>
+                            <div className="flex flex-wrap gap-2">
+                              <Badge variant="neutral">{detail.businessRuleCategory}</Badge>
+                              <Badge variant="info">{detail.conditionMet}</Badge>
                             </div>
-                          </div>
-                        </Card>
-                      ))}
-                    </div>
-                  </section>
-                ))}
-              </div>
+                            <div className="space-y-3 rounded-[18px] border border-border-soft bg-surface-soft/80 p-4">
+                              <div>
+                                <div className="flex items-center justify-between gap-3">
+                                  <p className="text-[12px] font-bold uppercase tracking-[0.12em] text-muted-foreground">Response</p>
+                                  {detail.evidence ? <EvidenceTooltip evidence={detail.evidence} /> : null}
+                                </div>
+                                <p className={`mt-2 text-sm ${getResponseTextClass(detail.response)}`}>
+                                  {detail.response || 'No response captured.'}
+                                </p>
+                              </div>
+                            </div>
+                          </Card>
+                        ))}
+                      </div>
+                    </section>
+                  ))}
+                </div>
+              )
             ) : (
               aiCategory === 'All' ? (
                 <div className="overflow-hidden rounded-[24px] border border-border-soft">
@@ -1002,8 +1499,15 @@ export function InquiryWorkspacePage() {
                             <td className="px-4 py-4 text-sm font-semibold">{detail.name}</td>
                             <td className="px-4 py-4"><Badge variant="neutral">{detail.businessRuleCategory}</Badge></td>
                             <td className="px-4 py-4 text-sm text-muted-foreground">{detail.businessRuleName}</td>
-                            <td className="px-4 py-4 text-sm text-foreground/90">{detail.response || 'No response captured.'}</td>
-                            <td className="px-4 py-4 text-sm text-muted-foreground">{detail.evidence}</td>
+                            <td className="px-4 py-4">
+                              <div className="flex items-center gap-2">
+                                <span className={`text-sm ${getResponseTextClass(detail.response)}`}>
+                                  {detail.response || 'No response captured.'}
+                                </span>
+                                {detail.evidence ? <EvidenceTooltip evidence={detail.evidence} compact /> : null}
+                              </div>
+                            </td>
+                            <td className="px-4 py-4 text-sm text-muted-foreground">{detail.evidence || 'No evidence provided.'}</td>
                             <td className="px-4 py-4"><Badge variant="info">{detail.conditionMet}</Badge></td>
                             <td className="px-4 py-4"><Badge variant="approved">{detail.status}</Badge></td>
                           </tr>
@@ -1033,8 +1537,15 @@ export function InquiryWorkspacePage() {
                               <tr key={detail.id} className="border-b border-border-soft/80 bg-surface transition duration-150 hover:bg-primary/5">
                                 <td className="px-4 py-4 text-sm font-semibold">{detail.name}</td>
                                 <td className="px-4 py-4 text-sm text-muted-foreground">{detail.businessRuleName}</td>
-                                <td className="px-4 py-4 text-sm text-foreground/90">{detail.response || 'No response captured.'}</td>
-                                <td className="px-4 py-4 text-sm text-muted-foreground">{detail.evidence}</td>
+                                <td className="px-4 py-4">
+                                  <div className="flex items-center gap-2">
+                                    <span className={`text-sm ${getResponseTextClass(detail.response)}`}>
+                                      {detail.response || 'No response captured.'}
+                                    </span>
+                                    {detail.evidence ? <EvidenceTooltip evidence={detail.evidence} compact /> : null}
+                                  </div>
+                                </td>
+                                <td className="px-4 py-4 text-sm text-muted-foreground">{detail.evidence || 'No evidence provided.'}</td>
                                 <td className="px-4 py-4"><Badge variant="info">{detail.conditionMet}</Badge></td>
                                 <td className="px-4 py-4"><Badge variant="approved">{detail.status}</Badge></td>
                               </tr>
@@ -1063,7 +1574,12 @@ export function InquiryWorkspacePage() {
               </div>
               <ViewToggle value={riskView} onChange={setRiskView} />
             </div>
-            {inquiry.consequenceResults.length === 0 ? (
+            {isHydratingSupplementary ? (
+              <InlineSectionLoading
+                title="Loading action records"
+                description="Consequence and risk action records are still being prepared for this inquiry."
+              />
+            ) : inquiry.consequenceResults.length === 0 ? (
               <Card className="border-dashed border-border bg-surface-soft/70 text-center">
                 <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-warning/10 text-warning">
                   <GitBranch className="h-6 w-6" />
@@ -1179,9 +1695,34 @@ export function InquiryWorkspacePage() {
                 <h3 className="text-xl font-semibold">Quotes</h3>
                 <p className="mt-1 text-sm text-muted-foreground">Review linked quotes in either a compact table or a richer card layout.</p>
               </div>
-              <ViewToggle value={quoteView} onChange={setQuoteView} />
+              <div className="flex flex-wrap items-center gap-3">
+                <Button
+                  type="button"
+                  variant="primary"
+                  disabled={pendingAction === 'quote'}
+                  onClick={() => void handleCreateQuote()}
+                >
+                  Create Quote
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="bg-white dark:bg-[#1E293B]"
+                  disabled={!wonQuotes.length}
+                  onClick={openCopyQuotesModal}
+                >
+                  <CopyPlus className="h-4 w-4" />
+                  Copy Quotes
+                </Button>
+                <ViewToggle value={quoteView} onChange={setQuoteView} />
+              </div>
             </div>
-            {inquiry.quotes.length === 0 ? (
+            {isHydratingSupplementary ? (
+              <InlineSectionLoading
+                title="Loading linked quotes"
+                description="Quotes, pricing summaries, and quote status details are still syncing."
+              />
+            ) : inquiry.quotes.length === 0 ? (
               <Card className="border-dashed border-border bg-surface-soft/70 text-center">
                 <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
                   <FileStack className="h-6 w-6" />
@@ -1207,9 +1748,16 @@ export function InquiryWorkspacePage() {
                         <tr key={quote.id} className="border-b border-border-soft/80 bg-surface transition duration-150 hover:bg-primary/5">
                           <td className="px-4 py-4">
                             <div className="space-y-1">
-                              <Link to={`/quotes/${quote.id}/edit`} className="font-semibold text-primary transition hover:text-primary/80 hover:underline">
-                                {quote.name}
-                              </Link>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <Link to={`/quotes/${quote.id}/edit`} className="font-semibold text-primary transition hover:text-primary/80 hover:underline">
+                                  {quote.name}
+                                </Link>
+                                {isActiveQuoteVersion(quote) ? (
+                                  <span className="inline-flex items-center rounded-full bg-primary px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.08em] text-white">
+                                    Version
+                                  </span>
+                                ) : null}
+                              </div>
                               <p className="text-[12px] text-muted-foreground line-clamp-2">{quote.aiSummary}</p>
                             </div>
                           </td>
@@ -1337,6 +1885,136 @@ export function InquiryWorkspacePage() {
         </TabsContent>
       </Tabs>
 
+      {isCopyQuotesOpen ? (
+        <div className="fixed inset-0 z-50 m-0 mt-0 flex items-center justify-center bg-slate-950/50 px-4 py-6 backdrop-blur-md !mt-0">
+          <div
+            className="absolute inset-0"
+            onClick={() => {
+              if (copyQuotesBusy) return
+              setIsCopyQuotesOpen(false)
+            }}
+          />
+          <Card
+            variant="premium"
+            className="relative z-[1] w-full max-w-3xl overflow-hidden border border-primary/12 bg-[linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(245,248,252,0.96)_100%)] p-0 shadow-[0_32px_90px_rgba(15,23,42,0.28)] dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.98)_0%,rgba(15,23,42,0.94)_100%)]"
+          >
+            <div className="relative overflow-hidden border-b border-border-soft px-6 py-6">
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(37,99,235,0.12),transparent_42%),radial-gradient(circle_at_left,rgba(124,58,237,0.08),transparent_34%)]" />
+              <div className="relative flex items-start justify-between gap-4">
+                <div className="space-y-3">
+                  <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary shadow-[inset_0_1px_0_rgba(255,255,255,0.4)]">
+                    <CopyPlus className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <p className="text-[12px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Quote duplication</p>
+                    <h3 className="mt-1 text-2xl font-bold">Copy won quotes into this inquiry</h3>
+                    <p className="mt-2 max-w-2xl text-sm leading-7 text-muted-foreground">
+                      Select one or more won quotes from this product. We will duplicate the same quote details and linked lookups into fresh active quote records for this inquiry.
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="rounded-full bg-white/80 dark:bg-slate-900/60"
+                  disabled={copyQuotesBusy}
+                  onClick={() => setIsCopyQuotesOpen(false)}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+
+            <div className="space-y-5 px-6 py-6">
+              {copyQuotesError ? (
+                <div className="rounded-[18px] border border-danger/15 bg-danger/8 px-4 py-3 text-sm text-danger">
+                  {copyQuotesError}
+                </div>
+              ) : null}
+
+              <div className="max-h-[420px] overflow-y-auto pr-1">
+                <div className="space-y-3">
+                {wonQuotes.map((quote) => {
+                  const selected = selectedWonQuoteIds.includes(quote.id)
+                  return (
+                    <button
+                      key={quote.id}
+                      type="button"
+                      onClick={() => toggleWonQuoteSelection(quote.id)}
+                      className={`group w-full rounded-[24px] border px-5 py-4 text-left transition ${
+                        selected
+                          ? 'border-primary/30 bg-primary/6'
+                          : 'border-border-soft bg-white/92 hover:border-primary/20 hover:bg-primary/5 dark:bg-slate-950/35'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex min-w-0 items-start gap-4">
+                          <span
+                            className={`mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition ${
+                              selected
+                                ? 'border-primary bg-primary text-white'
+                                : 'border-border-soft bg-surface text-transparent group-hover:border-primary/30'
+                            }`}
+                          >
+                            <CheckCircle2 className="h-4 w-4" />
+                          </span>
+                          <div className="min-w-0 space-y-3">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="text-base font-semibold text-foreground">{quote.name}</p>
+                              <Badge variant="approved">Quote Won</Badge>
+                              <Badge variant="neutral">{quote.productName}</Badge>
+                            </div>
+                            <p className="text-sm font-medium text-muted-foreground">
+                              {formatCurrency(quote.totalPremium)}
+                            </p>
+                            {quote.aiSummary ? (
+                              <p className="line-clamp-2 max-w-[620px] text-sm leading-6 text-muted-foreground">
+                                {quote.aiSummary}
+                              </p>
+                            ) : null}
+                          </div>
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Status</p>
+                          <p className="mt-1 text-sm font-semibold">{quote.status}</p>
+                        </div>
+                      </div>
+                    </button>
+                  )
+                })}
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-3 border-t border-border-soft pt-5 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-sm text-muted-foreground">
+                  The duplicated quotes will be created as new <span className="font-semibold text-foreground">active</span> records for this inquiry.
+                </p>
+                <div className="flex flex-wrap gap-3">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="bg-white dark:bg-[#1E293B]"
+                    disabled={copyQuotesBusy}
+                    onClick={() => setIsCopyQuotesOpen(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="button"
+                    disabled={!selectedWonQuoteIds.length || copyQuotesBusy}
+                    onClick={() => void handleCopyQuotes()}
+                  >
+                    <CopyPlus className="h-4 w-4" />
+                    {copyQuotesBusy ? 'Copying...' : `Copy Quotes (${selectedWonQuoteIds.length})`}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </Card>
+        </div>
+      ) : null}
+
     </div>
   )
 }
@@ -1447,9 +2125,25 @@ function SectionHeader({ title, description }: { title: string; description: str
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="space-y-2">
-      <p className="text-[12px] font-bold uppercase tracking-[0.08em] text-muted-foreground">{label}</p>
+    <div className="space-y-2.5">
+      <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
       {children}
+    </div>
+  )
+}
+
+function ReadOnlyValue({ value }: { value: string }) {
+  return (
+    <div className="min-h-[46px] rounded-[16px] border border-border-soft bg-surface-soft/75 px-4 py-3 text-sm font-medium text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.35)]">
+      {value || 'Not provided'}
+    </div>
+  )
+}
+
+function ReadOnlyText({ value }: { value: string }) {
+  return (
+    <div className="min-h-28 whitespace-pre-wrap rounded-[16px] border border-border-soft bg-surface-soft/75 px-4 py-3 text-sm leading-7 text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.35)]">
+      {value || 'Not provided'}
     </div>
   )
 }
@@ -1488,6 +2182,76 @@ function RelatedCard({ label, value }: { label: string; value: string }) {
     <div className="rounded-2xl border border-border-soft bg-surface-soft p-4">
       <p className="text-[12px] font-bold uppercase tracking-[0.16em] text-muted-foreground">{label}</p>
       <p className="mt-2 text-sm font-medium">{value}</p>
+    </div>
+  )
+}
+
+function InlineSectionLoading({ title, description }: { title: string; description: string }) {
+  return (
+    <Card className="border border-border-soft bg-surface-soft/70">
+      <div className="space-y-4">
+        <div>
+          <p className="text-sm font-semibold">{title}</p>
+          <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+        </div>
+        <div className="grid gap-3">
+          {Array.from({ length: 3 }).map((_, index) => (
+            <div key={index} className="rounded-[20px] border border-border-soft bg-white/80 px-4 py-4 dark:bg-slate-950/55">
+              <div className="animate-pulse space-y-3">
+                <div className="h-4 w-40 rounded-full bg-surface-soft" />
+                <div className="h-3 w-28 rounded-full bg-surface-soft" />
+                <div className="h-16 rounded-[16px] bg-surface-soft" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </Card>
+  )
+}
+
+function CollapsedEmailRail({
+  emailCount,
+  inquiryNumber,
+  latestEmailSubject,
+  onExpand,
+}: {
+  emailCount: number
+  inquiryNumber: string
+  latestEmailSubject?: string
+  onExpand: () => void
+}) {
+  return (
+    <div className="sticky top-24">
+      <button
+        type="button"
+        onClick={onExpand}
+        className="group flex min-h-[92px] w-full items-center justify-between gap-4 rounded-[28px] border border-border-soft bg-[linear-gradient(180deg,rgba(255,255,255,0.96)_0%,rgba(245,248,252,0.92)_100%)] px-4 py-4 shadow-soft transition hover:border-primary/20 hover:bg-primary/5 dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.94)_0%,rgba(15,23,42,0.88)_100%)] xl:h-[520px] xl:flex-col xl:px-3 xl:py-5"
+      >
+        <div className="flex items-center gap-3 xl:flex-col">
+          <span className="flex h-14 w-14 items-center justify-center rounded-full bg-primary text-white shadow-[0_18px_35px_rgba(37,99,235,0.26)]">
+            <Mail className="h-6 w-6" />
+          </span>
+          <span className="rounded-full border border-primary/12 bg-primary/8 px-2.5 py-1 text-[11px] font-semibold text-primary">
+            {emailCount}
+          </span>
+          <span className="hidden text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground xl:block [writing-mode:vertical-rl]">
+            {inquiryNumber}
+          </span>
+        </div>
+        <div className="relative hidden h-full items-center xl:flex">
+          <div className="h-full w-[3px] rounded-full bg-gradient-to-b from-primary/70 via-primary/20 to-transparent" />
+          <span className="absolute left-1/2 top-10 h-3.5 w-3.5 -translate-x-1/2 rounded-full border-2 border-white bg-primary shadow-[0_0_0_6px_rgba(37,99,235,0.12)]" />
+        </div>
+        <div className="flex min-w-0 flex-1 items-center justify-between gap-3 xl:flex-none xl:flex-col">
+          <span className="line-clamp-2 text-left text-[11px] leading-5 text-muted-foreground xl:line-clamp-3 xl:text-center">
+            {latestEmailSubject || 'Expand to review linked inquiry emails.'}
+          </span>
+          <span className="flex h-10 w-10 items-center justify-center rounded-full border border-border-soft bg-white text-primary transition group-hover:border-primary/25 dark:bg-slate-900/70">
+            <ChevronLeft className="h-4 w-4" />
+          </span>
+        </div>
+      </button>
     </div>
   )
 }
@@ -1591,6 +2355,118 @@ function attachmentAccent(mimeType?: string) {
   }
 }
 
+function isActiveQuoteVersion(quote: InquiryDetail['quotes'][number]) {
+  return quote.status.trim().toLowerCase() === 'active'
+}
+
+function EvidenceTooltip({ evidence, compact = false }: { evidence: string; compact?: boolean }) {
+  const preview = evidence
+    .replace(/Document Name:\s*/gi, '')
+    .replace(/\s+Evidence:\s*/gi, '\n')
+    .trim()
+  const [open, setOpen] = useState(false)
+  const [hovered, setHovered] = useState(false)
+  const popoverRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!popoverRef.current?.contains(event.target as Node)) {
+        setOpen(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handlePointerDown)
+    return () => document.removeEventListener('mousedown', handlePointerDown)
+  }, [open])
+
+  return (
+    <div
+      ref={popoverRef}
+      className="relative inline-flex"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        onFocus={() => setHovered(true)}
+        onBlur={() => setHovered(false)}
+        className={`inline-flex items-center justify-center rounded-full border border-border-soft bg-white text-muted-foreground transition hover:border-primary/20 hover:text-primary dark:bg-slate-900 ${
+          compact ? 'h-7 w-7 shrink-0' : 'h-8 w-8'
+        }`}
+      >
+        <FileText className={compact ? 'h-3.5 w-3.5' : 'h-4 w-4'} />
+      </button>
+      {open || hovered ? (
+        <div className="absolute right-0 top-[calc(100%+0.8rem)] z-40 w-[380px]">
+          <div className="absolute right-5 top-[-10px] h-5 w-5 rotate-45 border-l border-t border-border-soft bg-white shadow-[-6px_-6px_18px_rgba(15,23,42,0.04)] dark:bg-[#102033]" />
+          <div className="overflow-hidden rounded-[24px] border border-border-soft bg-white shadow-[0_26px_55px_rgba(15,23,42,0.18)] dark:bg-[#102033]">
+            <div className="flex items-start justify-between gap-4 border-b border-border-soft bg-white px-4 py-3.5 dark:bg-[#102033]">
+              <div className="flex items-center gap-3">
+                <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-amber-100 text-amber-700 dark:bg-amber-300/15 dark:text-amber-200">
+                  <FileText className="h-4 w-4" />
+                </span>
+                <div>
+                  <p className="text-sm font-semibold text-foreground">Evidence Preview</p>
+                  <p className="text-xs text-muted-foreground">Extracted from document source</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border-soft bg-white text-muted-foreground transition hover:border-primary/20 hover:text-primary dark:bg-slate-900"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div
+              className="relative overflow-hidden rounded-b-[24px] bg-[#fbfaf5] px-5 py-5 dark:bg-[#f8f4ea]"
+              style={{
+                backgroundImage:
+                  'radial-gradient(circle at 20% 20%, rgba(255,255,255,0.7) 0, rgba(255,255,255,0) 22%), radial-gradient(circle at 80% 0%, rgba(0,0,0,0.02) 0, rgba(0,0,0,0) 24%)',
+              }}
+            >
+              <div className="absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-black/10 via-black/5 to-transparent" />
+
+              <div className="relative text-[13px] leading-6 text-slate-700/40">
+                <p className="blur-[2.3px]">
+                  This Tenancy Agreement is made by and between the parties stated herein, subject to applicable regulations, submitted schedules, and the related supporting documentation reviewed during underwriting.
+                </p>
+              </div>
+
+              <div className="relative mt-5">
+                <div className="absolute inset-y-1 left-0 right-0 rounded-[22px] bg-yellow-200/50 blur-xl" />
+                <div className="absolute inset-y-2 left-2 right-3 rounded-[18px] bg-yellow-100/80" />
+                <div className="relative px-1.5 font-serif text-[15px] leading-7 text-slate-900">
+                  {preview}
+                </div>
+              </div>
+
+              <div className="relative mt-5 text-[13px] leading-6 text-slate-700/40">
+                <p className="blur-[2.3px]">
+                  Interpretation of extracted language should be considered alongside the complete submission record, related attachments, endorsements, and the full originating document source.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function getResponseTextClass(response?: string) {
+  const normalized = (response ?? '').trim().toLowerCase()
+  if (normalized === 'no information provided') {
+    return 'inline-flex rounded-full border border-danger/20 bg-danger/10 px-3 py-1.5 font-medium text-danger'
+  }
+
+  return 'text-foreground/90'
+}
+
 function ViewToggle({
   value,
   onChange,
@@ -1634,6 +2510,7 @@ function buildFormState(
     productId?: string
     productName: string
     inquiryType: string
+    inquiryTypeValue?: number
     status: string
     inquiryStatusValue?: number
     planId?: string
@@ -1664,7 +2541,10 @@ function buildFormState(
   return {
     name: inquiry.name,
     productId: inquiry.productId ?? options.products.find((item) => item.name === inquiry.productName)?.id ?? '',
-    inquiryType: choiceValue(options.inquiryTypes, inquiry.inquiryType),
+    inquiryType:
+      inquiry.inquiryTypeValue !== undefined
+        ? String(inquiry.inquiryTypeValue)
+        : choiceValue(options.inquiryTypes, inquiry.inquiryType),
     inquiryStatus:
       inquiry.inquiryStatusValue !== undefined
         ? String(inquiry.inquiryStatusValue)
