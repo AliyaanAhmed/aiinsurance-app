@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { usePageRefreshVersion } from './usePageRefresh'
 
 export function useAsyncData<T>(
   load: () => Promise<T>,
@@ -7,6 +8,7 @@ export function useAsyncData<T>(
   const [data, setData] = useState<T | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const pageRefreshVersion = usePageRefreshVersion()
 
   useEffect(() => {
     let active = true
@@ -33,7 +35,7 @@ export function useAsyncData<T>(
     return () => {
       active = false
     }
-  }, deps)
+  }, [...deps, pageRefreshVersion])
 
   return { data, loading, error }
 }

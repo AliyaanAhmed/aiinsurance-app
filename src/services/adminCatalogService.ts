@@ -313,13 +313,33 @@ export async function getAdminCatalog(entity: AdminEntityKey): Promise<AdminCata
   }
 
   if (entity === 'contacts') {
-    const result = await ContactsService.getAll()
+    const [result, accountsResult] = await Promise.all([
+      ContactsService.getAll(),
+      AccountsService.getAll({
+        select: ['accountid', 'name'],
+        orderBy: ['name asc'],
+      }),
+    ])
+    const accountMap = new Map(
+      (accountsResult.data ?? []).map((account) => [
+        normalizeDataverseId(account.accountid),
+        account.name ?? 'Unnamed account',
+      ]),
+    )
     records = (result.data ?? []).map((contact) => ({
       id: contact.contactid,
       name: contact.fullname ?? (`${contact.firstname ?? ''} ${contact.lastname}`.trim() || contact.lastname),
       description: contact.jobtitle ?? contact.emailaddress1 ?? 'No role or email captured yet.',
       status: contact.statuscodename ?? 'Active',
-      context: contact.parentcustomeridname ?? contact.company ?? 'Unassigned',
+      context:
+        accountMap.get(
+          normalizeDataverseId(contact._msa_managingpartnerid_value ?? contact._accountid_value),
+        ) ??
+        contact.msa_managingpartneridname ??
+        contact.accountidname ??
+        contact.parentcustomeridname ??
+        contact.company ??
+        'Unassigned',
       detail: [contact.mobilephone ?? contact.telephone1, contact.jobtitle].filter(Boolean).join(' • ') || 'Contact record',
     }))
   }
@@ -458,7 +478,7 @@ export async function getAdminRecord(entity: AdminEntityKey, id: string): Promis
       phone: record.mobilephone ?? record.telephone1 ?? '',
       description: record.description ?? '',
       jobTitle: record.jobtitle ?? '',
-      company: record.parentcustomeridname ?? record.company ?? '',
+      company: record.msa_managingpartneridname ?? record.parentcustomeridname ?? record.company ?? '',
     }
   }
   if (entity === 'brokers') {
@@ -806,6 +826,10 @@ function findOptionKey(source: Record<number, string>, label?: string) {
   if (!label) return undefined
   const entry = Object.entries(source).find(([, value]) => value === label)
   return entry ? Number(entry[0]) : undefined
+}
+
+function normalizeDataverseId(value?: string) {
+  return (value ?? '').replace(/[{}]/g, '').toLowerCase()
 }
 
 async function createBusinessUnit(data: Record<string, unknown>) {

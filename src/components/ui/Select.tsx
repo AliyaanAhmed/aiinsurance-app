@@ -53,7 +53,7 @@ export function Select({
     >
       <SelectPrimitive.Trigger
         className={cn(
-          'flex h-12 w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-foreground shadow-sm outline-none ring-offset-white transition placeholder:text-[#94A3B8] focus:border-primary focus:ring-1 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50 data-[placeholder]:text-[#94A3B8] dark:border-white/10 dark:bg-[#1E293B] dark:text-[#F1F5F9]',
+          'form-field-surface flex h-12 w-full items-center justify-between rounded-xl border border-slate-200 px-3 py-2 text-sm text-foreground shadow-sm outline-none ring-offset-white transition placeholder:text-[#94A3B8] focus:border-primary focus:ring-1 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50 data-[placeholder]:text-[#94A3B8] dark:border-white/10 dark:text-[#F1F5F9]',
           className,
         )}
       >

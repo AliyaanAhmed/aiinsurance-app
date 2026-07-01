@@ -14,6 +14,8 @@ import { AccessDeniedPage } from '../pages/system/AccessDeniedPage'
 import { GuardedRoute } from '../components/system/GuardedRoute'
 import { AdminCatalogPage } from '../pages/admin/AdminCatalogPage'
 import { AdminDetailPage } from '../pages/admin/AdminDetailPage'
+import { AccountWorkspacePage } from '../pages/admin/AccountWorkspacePage'
+import { ContactWorkspacePage } from '../pages/admin/ContactWorkspacePage'
 import { DocumentTemplatePreviewPage } from '../pages/admin/DocumentTemplatePreviewPage'
 import { EmailTemplatesPage } from '../pages/admin/EmailTemplatesPage'
 import { DocumentTemplatesPage } from '../pages/admin/DocumentTemplatesPage'
@@ -259,7 +261,7 @@ export const router = createBrowserRouter([
         path: 'admin/accounts/:id',
         element: (
           <GuardedRoute bucket="admin">
-            <AdminDetailPage entity="accounts" />
+            <AccountWorkspacePage />
           </GuardedRoute>
         ),
       },
@@ -275,7 +277,7 @@ export const router = createBrowserRouter([
         path: 'admin/contacts/:id',
         element: (
           <GuardedRoute bucket="admin">
-            <AdminDetailPage entity="contacts" />
+            <ContactWorkspacePage />
           </GuardedRoute>
         ),
       },

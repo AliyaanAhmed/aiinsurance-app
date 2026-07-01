@@ -3,12 +3,14 @@ import { ActivitymimeattachmentsService } from '../generated/services/Activitymi
 import { Aur_business_rulesesService } from '../generated/services/Aur_business_rulesesService'
 import { Aur_consequences_resultsService } from '../generated/services/Aur_consequences_resultsService'
 import { Aur_consequencesesService } from '../generated/services/Aur_consequencesesService'
+import { Aur_customdocumenttemplatesesService } from '../generated/services/Aur_customdocumenttemplatesesService'
 import { Aur_plansService } from '../generated/services/Aur_plansService'
 import { Aur_productsesService } from '../generated/services/Aur_productsesService'
 import { Aur_quotes_detailsesService } from '../generated/services/Aur_quotes_detailsesService'
 import { Aur_quotesService } from '../generated/services/Aur_quotesService'
 import { Aur_quotesesService } from '../generated/services/Aur_quotesesService'
 import { ContactsService } from '../generated/services/ContactsService'
+import { Cr058_emailtemplatesService } from '../generated/services/Cr058_emailtemplatesService'
 import { EmailsService } from '../generated/services/EmailsService'
 import { Aur_business_rulesesaur_categories } from '../generated/models/Aur_business_rulesesModel'
 import type {
@@ -49,11 +51,22 @@ export async function listInquiries(scope?: string): Promise<InquirySummary[]> {
   const products = referenceData.products ?? []
   const plans = referenceData.plans ?? []
   const accounts = referenceData.accounts ?? []
-  const productMap = new Map(products.map((product) => [product.aur_productsid, product.aur_name]))
-  const planMap = new Map(plans.map((plan) => [plan.aur_planid, plan.aur_name ?? 'Unnamed plan']))
+  const productMap = new Map(products.map((product) => [normalizeDataverseId(product.aur_productsid), product.aur_name]))
+  const planMap = new Map(plans.map((plan) => [normalizeDataverseId(plan.aur_planid), plan.aur_name ?? 'Unnamed plan']))
+  const accountLookupIds = [...new Set(records.map((record) => normalizeDataverseId(record._aur_account_value)).filter(Boolean))]
+  const linkedAccounts = await Promise.all(
+    accountLookupIds.map(async (accountId) => {
+      try {
+        const result = await AccountsService.get(accountId)
+        return result.data
+      } catch {
+        return undefined
+      }
+    }),
+  )
   const accountMap = new Map(
-    accounts.map((account) => [
-      account.accountid,
+    [...accounts, ...linkedAccounts.filter((account): account is NonNullable<typeof account> => Boolean(account))].map((account) => [
+      normalizeDataverseId(account.accountid),
       {
         name: account.name,
         type: account.aur_account_typename,
@@ -86,11 +99,11 @@ export async function getInquiryDetailCore(id: string): Promise<InquiryDetail> {
     }).catch(() => ({ data: undefined })),
     getInquiryReferenceData(),
   ])
-  const productMap = new Map((referenceData.products ?? []).map((product) => [product.aur_productsid, product.aur_name]))
-  const planMap = new Map((referenceData.plans ?? []).map((plan) => [plan.aur_planid, plan.aur_name ?? 'Unnamed plan']))
+  const productMap = new Map((referenceData.products ?? []).map((product) => [normalizeDataverseId(product.aur_productsid), product.aur_name]))
+  const planMap = new Map((referenceData.plans ?? []).map((plan) => [normalizeDataverseId(plan.aur_planid), plan.aur_name ?? 'Unnamed plan']))
   const accountMap = new Map(
     (referenceData.accounts ?? []).map((account) => [
-      account.accountid,
+      normalizeDataverseId(account.accountid),
       {
         name: account.name,
         type: account.aur_account_typename,
@@ -206,15 +219,30 @@ export async function getInquiryDetailSupplementary(id: string): Promise<Partial
   })
 
   const businessRuleIds = [...new Set(rawQuoteDetails.map((detail) => normalizeDataverseId(detail._aur_business_rules_value)).filter(Boolean))]
+  const consequenceLookupIds = [
+    ...new Set(
+      (consequenceResultsResult.data ?? [])
+        .map((result) => normalizeDataverseId(result._aur_consequences_value))
+        .filter(Boolean),
+    ),
+  ]
+  const consequenceFilterParts = [
+    consequenceLookupIds.length
+      ? buildGuidOrFilter('aur_consequencesid', consequenceLookupIds)
+      : '',
+    businessRuleIds.length
+      ? buildGuidOrFilter('_aur_business_rule_value', businessRuleIds)
+      : '',
+  ].filter(Boolean)
   const [businessRulesResult, consequencesResult] = await Promise.all([
     businessRuleIds.length
       ? Aur_business_rulesesService.getAll({
           filter: buildGuidOrFilter('aur_business_rulesid', businessRuleIds),
         })
       : Promise.resolve({ data: [] }),
-    businessRuleIds.length
+    consequenceFilterParts.length
       ? Aur_consequencesesService.getAll({
-          filter: buildGuidOrFilter('_aur_business_rule_value', businessRuleIds),
+          filter: consequenceFilterParts.join(' or '),
         })
       : Promise.resolve({ data: [] }),
   ])
@@ -253,9 +281,12 @@ export async function getInquiryDetailSupplementary(id: string): Promise<Partial
     : { data: [] }
   const emailTimeline = buildInquiryEmails(inquiryId, emailsResult.data ?? [], attachmentsResult.data ?? [])
 
-  const consequences = buildConsequences(
-    quoteDetails,
-    consequencesResult.data ?? [],
+  const consequences = buildConsequences(consequencesResult.data ?? [])
+  const consequenceDefinitionMap = new Map(
+    consequences.map((consequence) => [
+      normalizeDataverseId(consequence.id),
+      consequence,
+    ]),
   )
   const consequenceCatalog = new Map(
     (consequencesResult.data ?? []).map((consequence) => [
@@ -265,20 +296,51 @@ export async function getInquiryDetailSupplementary(id: string): Promise<Partial
   )
   const consequenceResults = (consequenceResultsResult.data ?? [])
     .filter((result) => normalizeDataverseId(result._aur_inquiry_value) === inquiryId)
-    .map<ConsequenceResultSummary>((result) => ({
-      id: result.aur_consequences_resultid,
-      consequenceId: result._aur_consequences_value,
-      consequenceName:
-        (result._aur_consequences_value
-          ? consequenceCatalog.get(normalizeDataverseId(result._aur_consequences_value))
-          : undefined) ??
-        result.aur_consequencesname ??
-        'Unlinked consequence',
-      name: result.aur_name,
-      action: resolveConsequenceActionLabel(result.aur_actionname, result.aur_action),
-      type: resolveConsequenceTypeLabel(result.aur_typename, result.aur_type),
-      createdOn: result.createdon,
-    }))
+    .map<ConsequenceResultSummary>((result) => {
+      const linkedConsequence = result._aur_consequences_value
+        ? consequenceDefinitionMap.get(normalizeDataverseId(result._aur_consequences_value))
+        : undefined
+      const rawResult = result as typeof result & {
+        aur_action_status?: number | null
+        aur_action_statusname?: string
+      }
+
+      return {
+        id: result.aur_consequences_resultid,
+        consequenceId: result._aur_consequences_value,
+        consequenceName:
+          (result._aur_consequences_value
+            ? consequenceCatalog.get(normalizeDataverseId(result._aur_consequences_value))
+            : undefined) ??
+          result.aur_consequencesname ??
+          'Unlinked consequence',
+        name: result.aur_name,
+        action: resolveConsequenceActionLabel(result.aur_actionname, result.aur_action),
+        type: resolveConsequenceTypeLabel(result.aur_typename, result.aur_type),
+        typeValue: result.aur_type ? String(result.aur_type) : '',
+        actionStatusValue: rawResult.aur_action_status ? Number(rawResult.aur_action_status) : undefined,
+        actionStatusLabel: resolveActionStatusLabel(
+          rawResult.aur_action_statusname,
+          rawResult.aur_action_status ?? undefined,
+        ),
+        documentTemplateId: linkedConsequence?.documentTemplateId,
+        documentTemplateName: linkedConsequence?.documentTemplateName,
+        emailTemplateId: linkedConsequence?.emailTemplateId,
+        emailTemplateName: linkedConsequence?.emailTemplateName,
+        riskScore: linkedConsequence?.riskScore,
+        riskSummary: linkedConsequence?.riskSummary,
+        createdOn: result.createdon,
+      }
+    })
+  const notificationMessages = consequenceResults
+    .filter((result) => normalizeNotificationType(result.type, result.typeValue))
+    .map((result) =>
+      result.consequenceId
+        ? consequenceDefinitionMap.get(normalizeDataverseId(result.consequenceId))?.notificationText?.trim()
+        : undefined,
+    )
+    .filter((message): message is string => Boolean(message))
+  const uniqueNotificationMessages = [...new Set(notificationMessages)]
 
   const [account, contact, broker] = await Promise.all([
     inquiry._aur_account_value
@@ -313,6 +375,12 @@ export async function getInquiryDetailSupplementary(id: string): Promise<Partial
     consequences,
     consequenceResults,
     aiRuleGroups,
+    notificationNotice: uniqueNotificationMessages.length
+      ? {
+          title: uniqueNotificationMessages.length === 1 ? 'Notification' : 'Notifications',
+          messages: uniqueNotificationMessages,
+        }
+      : undefined,
     emailTimeline,
   }
 }
@@ -322,6 +390,100 @@ export async function getInquiryEditorOptions() {
     inquiryEditorOptionsPromise = getInquiryEditorOptionsUncached()
   }
   return inquiryEditorOptionsPromise
+}
+
+export interface ConsequenceTemplatePreview {
+  id: string
+  kind: 'document' | 'email'
+  name: string
+  status: string
+  content: string
+  subject?: string
+  description?: string
+  category?: string
+}
+
+export async function getConsequenceTemplatePreview(
+  kind: 'document' | 'email',
+  id: string,
+): Promise<ConsequenceTemplatePreview> {
+  if (kind === 'document') {
+    const record = (await Aur_customdocumenttemplatesesService.get(id)).data
+    if (!record) {
+      throw new Error('Document template not found.')
+    }
+
+    return {
+      id: record.aur_customdocumenttemplatesid,
+      kind,
+      name: record.aur_name,
+      status: record.statuscodename ?? (Number(record.statuscode) === 2 ? 'Inactive' : 'Active'),
+      content: record.aur_templatecontent ?? '',
+    }
+  }
+
+  const record = (await Cr058_emailtemplatesService.get(id)).data
+  if (!record) {
+    throw new Error('Email template not found.')
+  }
+
+  return {
+    id: record.cr058_emailtemplateid,
+    kind,
+    name: record.cr058_templatename,
+    subject: record.cr058_subject,
+    description: record.cr058_description ?? '',
+    category: record.cr058_categoryname ?? 'General',
+    status: record.statuscodename ?? (record.cr058_isactive ? 'Active' : 'Inactive'),
+    content: record.cr058_body ?? '',
+  }
+}
+
+export async function getConsequenceLinkedTemplatePreview(
+  consequenceId: string,
+  preferredKind: 'document' | 'email',
+): Promise<ConsequenceTemplatePreview> {
+  const normalizedConsequenceId = normalizeDataverseId(consequenceId)
+  const consequenceResult = await Aur_consequencesesService.getAll({
+    select: [
+      'aur_consequencesid',
+      '_aur_documenttemplate_value',
+      '_aur_emailtemplate_value',
+      'aur_action',
+      'aur_type',
+    ],
+    filter: `aur_consequencesid eq ${normalizedConsequenceId}`,
+  })
+
+  const consequence = consequenceResult.data?.[0] as ((typeof consequenceResult.data)[number] & {
+    _aur_emailtemplate_value?: string
+    _aur_documenttemplate_value?: string
+  }) | undefined
+
+  if (!consequence) {
+    throw new Error('Linked consequence was not found.')
+  }
+
+  const documentTemplateId = consequence._aur_documenttemplate_value
+  const emailTemplateId = consequence._aur_emailtemplate_value
+
+  if (preferredKind === 'document' && documentTemplateId) {
+    return getConsequenceTemplatePreview('document', documentTemplateId)
+  }
+
+  if (preferredKind === 'email' && emailTemplateId) {
+    return getConsequenceTemplatePreview('email', emailTemplateId)
+  }
+
+  if (documentTemplateId) {
+    return getConsequenceTemplatePreview('document', documentTemplateId)
+  }
+
+  if (emailTemplateId) {
+    return getConsequenceTemplatePreview('email', emailTemplateId)
+  }
+
+  throw new Error('No linked document or email template is configured on this consequence.')
 }
 
 async function getInquiryEditorOptionsUncached() {
@@ -347,10 +509,22 @@ async function getInquiryEditorOptionsUncached() {
       { value: 4, label: 'Claims' },
     ],
     inquiryStatuses: [
-      { value: 1, label: 'Decline' },
-      { value: 2, label: 'Refer to Underwriter' },
-      { value: 3, label: 'Escalate to Head of Aviation' },
-      { value: 4, label: 'Property or Reinsurance Team' },
+      { value: 1, label: 'Draft' },
+      { value: 751820001, label: 'AI Processing' },
+      { value: 2, label: 'Inactive' },
+      { value: 751820002, label: 'Ready to Generate Quote' },
+      { value: 751820004, label: 'Generating Quote' },
+      { value: 751820003, label: 'Quote Generated Successfully' },
+      { value: 751820005, label: 'Further Clarification Required' },
+      { value: 751820006, label: 'Inquiry Created' },
+      { value: 751820007, label: 'Product Match' },
+      { value: 751820008, label: 'Determined Inquiry' },
+      { value: 751820009, label: 'Awaiting Review' },
+      { value: 751820010, label: 'Refer to Underwriter' },
+      { value: 751820011, label: 'Decline' },
+      { value: 751820012, label: 'Quote Provided' },
+      { value: 751820013, label: 'Escalate to Head of Aviation' },
+      { value: 751820014, label: 'Property or Reinsurance Team' },
     ],
     coverTypes: [
       { value: 1, label: 'PAR All Risks' },
@@ -388,6 +562,7 @@ export async function saveInquiryDetail(
     paymentTerm?: number
     fee: number
     totalDeduction: number
+    riskSummary?: string
   },
 ) {
   const recordId = normalizeDataverseId(id)
@@ -397,7 +572,7 @@ export async function saveInquiryDetail(
     ...(payload.planId ? { 'aur_plan@odata.bind': `/aur_plans(${payload.planId})` } : {}),
     ...(payload.brokerId ? { 'aur_account@odata.bind': `/accounts(${payload.brokerId})` } : {}),
     ...(payload.inquiryType !== undefined ? { aur_inquiry_type: payload.inquiryType as never } : {}),
-    ...(payload.inquiryStatus !== undefined ? { aur_inquiry_status: payload.inquiryStatus as never } : {}),
+    ...(payload.inquiryStatus !== undefined ? { statuscode: payload.inquiryStatus as never } : {}),
     ...(payload.coverType !== undefined ? { aur_cover_type: payload.coverType as never } : {}),
     ...(payload.paymentTerm !== undefined ? { aur_payment_term: payload.paymentTerm as never } : {}),
     aur_risk_score: payload.riskScore,
@@ -410,6 +585,7 @@ export async function saveInquiryDetail(
     aur_gross_premium: payload.grossPremium,
     aur_fee: payload.fee,
     aur_total_deduction_pct: payload.totalDeduction,
+    ...(payload.riskSummary !== undefined ? { aur_risksummary: payload.riskSummary } : {}),
   }
 
   console.info('[Inquiry Debug] saveInquiryDetail payload', {
@@ -419,12 +595,6 @@ export async function saveInquiryDetail(
   })
 
   await Aur_quotesesService.update(recordId, updatePayload as never)
-
-  if (payload.inquiryStatus !== undefined) {
-    await Aur_quotesesService.update(recordId, {
-      aur_inquiry_status: payload.inquiryStatus as never,
-    })
-  }
 }
 
 function resolveInquiryRelations(
@@ -433,10 +603,14 @@ function resolveInquiryRelations(
   planMap: Map<string, string>,
   accountMap: Map<string, { name: string; type?: string; typeCode?: number }>,
 ) {
-  const account = inquiry._aur_account_value ? accountMap.get(inquiry._aur_account_value) : undefined
-  const brokerAccount = inquiry._aur_account_value ? accountMap.get(inquiry._aur_account_value) : undefined
+  const accountLookupId = normalizeDataverseId(inquiry._aur_account_value)
+  const productLookupId = normalizeDataverseId(inquiry._aur_product_value)
+  const planLookupId = normalizeDataverseId(inquiry._aur_plan_value)
+  const account = accountLookupId ? accountMap.get(accountLookupId) : undefined
+  const brokerAccount = accountLookupId ? accountMap.get(accountLookupId) : undefined
   const inferredBrokerName =
     inquiry.aur_brokername ??
+    inquiry.aur_accountname ??
     brokerAccount?.name
 
   return {
@@ -448,11 +622,11 @@ function resolveInquiryRelations(
     aur_productname:
       inquiry.aur_productname || !inquiry._aur_product_value
         ? inquiry.aur_productname
-        : productMap.get(inquiry._aur_product_value) ?? inquiry.aur_productname,
+        : productMap.get(productLookupId) ?? inquiry.aur_productname,
     aur_planname:
       inquiry.aur_planname || !inquiry._aur_plan_value
         ? inquiry.aur_planname
-        : planMap.get(inquiry._aur_plan_value) ?? inquiry.aur_planname,
+        : planMap.get(planLookupId) ?? inquiry.aur_planname,
     aur_brokername: inferredBrokerName,
   }
 }
@@ -480,15 +654,60 @@ export async function updateInquiryDisposition(
   disposition: 'Decline' | 'RefertoUnderwriter' | 'EscalatetoHeadofAviation' | 'PropertyorReinsuranceTeam',
 ) {
   const inquiryStatusMap = {
-    Decline: 1,
-    RefertoUnderwriter: 2,
-    EscalatetoHeadofAviation: 3,
-    PropertyorReinsuranceTeam: 4,
+    Decline: 751820011,
+    RefertoUnderwriter: 751820010,
+    EscalatetoHeadofAviation: 751820013,
+    PropertyorReinsuranceTeam: 751820014,
   } as const
 
   await Aur_quotesesService.update(id, {
-    aur_inquiry_status: inquiryStatusMap[disposition],
+    statuscode: inquiryStatusMap[disposition] as never,
   })
+}
+
+export async function applyInquiryConsequenceResult(input: {
+  inquiryId: string
+  consequenceResultId: string
+  statusCode?: number
+  riskScoreIncrement?: number
+  riskSummaryAppend?: string
+}) {
+  const inquiryResult = await Aur_quotesesService.get(input.inquiryId)
+  const inquiry = inquiryResult.data
+  if (!inquiry) {
+    throw new Error('Inquiry not found.')
+  }
+
+  const nextRiskScore =
+    input.riskScoreIncrement !== undefined
+      ? (inquiry.aur_risk_score ?? 0) + input.riskScoreIncrement
+      : inquiry.aur_risk_score ?? 0
+  const nextRiskSummary =
+    input.riskSummaryAppend !== undefined
+      ? appendRiskSummary(inquiry.aur_risksummary ?? '', input.riskSummaryAppend)
+      : inquiry.aur_risksummary ?? ''
+
+  const inquiryPayload = {
+    ...(input.statusCode !== undefined ? { statuscode: input.statusCode as never } : {}),
+    ...(input.riskScoreIncrement !== undefined ? { aur_risk_score: nextRiskScore } : {}),
+    ...(input.riskSummaryAppend !== undefined ? { aur_risksummary: nextRiskSummary } : {}),
+  }
+
+  await Promise.all([
+    Object.keys(inquiryPayload).length
+      ? Aur_quotesesService.update(input.inquiryId, inquiryPayload as never)
+      : Promise.resolve(),
+    Aur_consequences_resultsService.update(input.consequenceResultId, {
+      aur_action_status: 751820001,
+    } as never),
+  ])
+
+  return {
+    riskScore: nextRiskScore,
+    riskSummary: nextRiskSummary,
+    statusCode: input.statusCode,
+    actionStatusValue: 751820001,
+  }
 }
 
 export async function createQuoteFromInquiry(
@@ -709,26 +928,39 @@ export async function updateInquiryQuoteDetailResponse(
 }
 
 function buildConsequences(
-  responses: QuoteResponse[],
   consequences: Awaited<ReturnType<typeof Aur_consequencesesService.getAll>>['data'],
 ): ConsequenceDefinition[] {
-  const ruleIds = new Set(responses.map((response) => response.businessRuleId).filter(Boolean))
   return (consequences ?? [])
-    .filter((consequence) =>
-      consequence._aur_business_rule_value
-        ? ruleIds.has(consequence._aur_business_rule_value)
-        : false,
-    )
-    .map((consequence) => ({
-      id: consequence.aur_consequencesid,
-      businessRuleId: consequence._aur_business_rule_value,
-      businessRuleName: consequence.aur_business_rulename ?? 'Business Rule',
-      name: consequence.aur_name,
-      action: consequence.aur_actionname ?? 'Unknown action',
-      type: consequence.aur_typename ?? 'Unknown type',
-      notificationText: consequence.aur_notification_text ?? 'No notification text configured.',
-      documentTemplateName: consequence.aur_documenttemplatename,
-    }))
+    .map((consequence) => {
+      const consequenceRecord = consequence as typeof consequence & {
+        aur_riskscore?: number | null
+        aur_risksummary?: string | null
+      }
+
+      return {
+        id: consequence.aur_consequencesid,
+        businessRuleId: consequence._aur_business_rule_value,
+        businessRuleName: consequence.aur_business_rulename ?? 'Business Rule',
+        name: consequence.aur_name,
+        action: consequence.aur_actionname ?? 'Unknown action',
+        type: consequence.aur_typename ?? 'Unknown type',
+        notificationText: consequence.aur_notification_text ?? 'No notification text configured.',
+        documentTemplateId: consequence._aur_documenttemplate_value ?? undefined,
+        documentTemplateName: consequence.aur_documenttemplatename,
+        emailTemplateId:
+          (consequence as typeof consequence & { _aur_emailtemplate_value?: string })
+            ._aur_emailtemplate_value ?? undefined,
+        emailTemplateName:
+          (consequence as typeof consequence & { aur_emailtemplatename?: string })
+            .aur_emailtemplatename,
+        riskScore: consequenceRecord.aur_riskscore ?? undefined,
+        riskSummary: consequenceRecord.aur_risksummary ?? undefined,
+      }
+    })
+}
+
+function normalizeNotificationType(typeLabel?: string, typeValue?: string | number) {
+  return typeLabel?.trim().toLowerCase() === 'notification' || Number(typeValue) === 2
 }
 
 export function mergeInquiryWorkspace(
@@ -757,6 +989,13 @@ function resolveConsequenceActionLabel(formatted: string | undefined, raw: strin
 function resolveConsequenceTypeLabel(formatted: string | undefined, raw: string | number | undefined) {
   const label = consequenceTypeLabel(raw) || formatted?.trim()
   return label ? humanizePascalChoice(label) : 'Unknown type'
+}
+
+function resolveActionStatusLabel(formatted: string | undefined, raw: string | number | undefined) {
+  const numericValue = Number(raw)
+  if (numericValue === 751820000) return 'Not Applied'
+  if (numericValue === 751820001) return 'Applied'
+  return formatted?.trim() || 'Not Applied'
 }
 
 function consequenceActionLabel(value: string | number | undefined) {
@@ -815,6 +1054,17 @@ function humanizePascalChoice(value: string) {
 
 function normalizeDataverseId(value?: string) {
   return (value ?? '').replace(/[{}]/g, '').toLowerCase()
+}
+
+function appendRiskSummary(current: string, addition: string) {
+  const normalizedCurrent = current.trim()
+  const normalizedAddition = addition.trim()
+
+  if (!normalizedAddition) return normalizedCurrent
+  if (!normalizedCurrent) return normalizedAddition
+  if (normalizedCurrent.includes(normalizedAddition)) return normalizedCurrent
+
+  return `${normalizedCurrent}\n\n${normalizedAddition}`
 }
 
 function buildAiRuleGroups(
@@ -933,6 +1183,7 @@ async function listQuoteDetailsForInquiry(inquiryId: string) {
         'aur_quotes_detailsid',
         '_aur_business_rules_value',
         'aur_condition_met',
+        'aur_confidence_score',
         'aur_evidence',
         'aur_name',
         '_aur_quotes_value',

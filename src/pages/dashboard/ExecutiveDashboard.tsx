@@ -130,68 +130,79 @@ export function DashboardPage() {
 
       <div className="grid gap-6 xl:grid-cols-2">
         <MetricPanel
-          title="Broker Email Intake"
-          description="Inquiry-linked email activity, using the same Dataverse email stream visible inside inquiry workspaces."
-          eyebrow="Email activity"
+          title="Inquiry by Products"
+          description="Current inquiry volume contribution across products."
+          eyebrow="Product mix"
           stats={[
-            { label: 'Broker emails', value: formatCompactNumber(data.brokerEmailCount) },
+            { label: 'Products', value: formatCompactNumber(data.topProducts.length) },
             { label: 'Inquiries', value: formatCompactNumber(data.totalInquiries) },
           ]}
-          contentClassName="grid gap-5 lg:grid-cols-[1.15fr_0.85fr]"
+          contentClassName="grid gap-5 lg:grid-cols-[0.95fr_1.05fr]"
         >
-          {data.brokerEmailByInquiry.length === 0 ? (
+          {data.topProducts.length === 0 ? (
             <EmptyChartState
-              title="No inquiry-linked emails yet"
-              description="Once email activity is linked to inquiries, the intake board will start surfacing the busiest conversations here."
+              title="No product-linked inquiries yet"
+              description="Once inquiry records are linked with products, the mix will start showing here."
             />
           ) : (
             <>
-              <div className="h-[220px] overflow-hidden rounded-[22px] border border-border-soft bg-[linear-gradient(180deg,rgba(37,99,235,0.08)_0%,rgba(255,255,255,0.7)_100%)] p-3 dark:bg-[linear-gradient(180deg,rgba(37,99,235,0.12)_0%,rgba(15,23,42,0.58)_100%)]">
+              <div className="h-[220px] overflow-hidden rounded-[22px] border border-border-soft bg-surface-soft/80 p-3">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={data.brokerEmailByInquiry} layout="vertical" margin={{ top: 4, right: 6, bottom: 4, left: 6 }}>
+                  <PieChart>
+                    <Pie data={data.topProducts} dataKey="value" nameKey="label" innerRadius={52} outerRadius={88} paddingAngle={4}>
+                      {data.topProducts.map((_, index) => (
+                        <Cell key={index} fill={PRODUCT_COLORS[index % PRODUCT_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="space-y-3">
+                {data.topProducts.map((item, index) => (
+                  <LegendRow key={item.label} color={PRODUCT_COLORS[index % PRODUCT_COLORS.length]} label={item.label} value={`${item.value} inquiries`} />
+                ))}
+              </div>
+            </>
+          )}
+        </MetricPanel>
+
+        <MetricPanel
+          title="Inquiry by Brokers"
+          description="Inquiry volume grouped by broker accounts linked on the inquiry record."
+          eyebrow="Broker mix"
+          stats={[
+            { label: 'Brokers', value: formatCompactNumber(data.inquiryByBrokers.length) },
+            { label: 'Inquiries', value: formatCompactNumber(data.totalInquiries) },
+          ]}
+          contentClassName="grid gap-5 lg:grid-cols-[1fr_1fr]"
+        >
+          {data.inquiryByBrokers.length === 0 ? (
+            <EmptyChartState
+              title="No broker-linked inquiries yet"
+              description="As broker accounts are linked on inquiries, their intake share will start appearing here."
+            />
+          ) : (
+            <>
+              <div className="h-[220px] overflow-hidden rounded-[22px] border border-border-soft bg-surface-soft/80 p-3">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={data.inquiryByBrokers} layout="vertical" margin={{ top: 4, right: 6, bottom: 4, left: 6 }}>
                     <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="rgba(82,97,115,0.12)" />
                     <XAxis type="number" hide />
-                    <YAxis type="category" dataKey="label" width={72} tickLine={false} axisLine={false} />
-                    <Tooltip formatter={(value) => [`${Number(value ?? 0)} emails`, 'Volume']} />
+                    <YAxis type="category" dataKey="label" width={120} tickLine={false} axisLine={false} />
+                    <Tooltip formatter={(value) => [`${Number(value ?? 0)} inquiries`, 'Volume']} />
                     <Bar dataKey="value" radius={[0, 10, 10, 0]} maxBarSize={20}>
-                      {data.brokerEmailByInquiry.map((_, index) => (
-                        <Cell key={index} fill={PRODUCT_COLORS[index % PRODUCT_COLORS.length]} />
+                      {data.inquiryByBrokers.map((_, index) => (
+                        <Cell key={index} fill={PLAN_COLORS[index % PLAN_COLORS.length]} />
                       ))}
                     </Bar>
                   </BarChart>
                 </ResponsiveContainer>
               </div>
               <div className="space-y-3">
-                <div className="rounded-[22px] border border-border-soft bg-surface-soft/75 p-4">
-                  <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Status mix</p>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {data.emailStatusMix.map((item, index) => (
-                      <span key={item.label} className="inline-flex items-center gap-2 rounded-full border border-border-soft bg-surface px-3 py-2 text-sm">
-                        <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: PRODUCT_COLORS[index % PRODUCT_COLORS.length] }} />
-                        <span className="font-medium">{item.label}</span>
-                        <span className="text-muted-foreground">{item.value}</span>
-                      </span>
-                    ))}
-                  </div>
-                </div>
-                <div className="rounded-[22px] border border-border-soft bg-surface-soft/75 p-4">
-                  <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Recent activity trend</p>
-                  <div className="mt-3 h-[108px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={data.brokerEmailTrend} margin={{ top: 6, right: 4, left: -18, bottom: 0 }}>
-                        <defs>
-                          <linearGradient id="emailTrendFill" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor="#2563EB" stopOpacity={0.34} />
-                            <stop offset="100%" stopColor="#2563EB" stopOpacity={0.04} />
-                          </linearGradient>
-                        </defs>
-                        <XAxis dataKey="label" tickLine={false} axisLine={false} />
-                        <Tooltip />
-                        <Area type="monotone" dataKey="value" stroke="#2563EB" fill="url(#emailTrendFill)" strokeWidth={2.4} />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
+                {data.inquiryByBrokers.map((item, index) => (
+                  <LegendRow key={item.label} color={PLAN_COLORS[index % PLAN_COLORS.length]} label={item.label} value={`${item.value} inquiries`} />
+                ))}
               </div>
             </>
           )}
@@ -338,85 +349,6 @@ export function DashboardPage() {
               <div className="space-y-3">
                 {data.wonPremiumByPlan.slice(0, 5).map((item, index) => (
                   <LegendRow key={item.label} color={PLAN_COLORS[index % PLAN_COLORS.length]} label={item.label} value={formatCurrency(item.value)} />
-                ))}
-              </div>
-            </>
-          )}
-        </MetricPanel>
-
-        <MetricPanel
-          title="Inquiry by Products"
-          description="Current inquiry volume contribution across products."
-          eyebrow="Product mix"
-          stats={[
-            { label: 'Products', value: formatCompactNumber(data.topProducts.length) },
-            { label: 'Inquiries', value: formatCompactNumber(data.totalInquiries) },
-          ]}
-          contentClassName="grid gap-5 lg:grid-cols-[0.95fr_1.05fr]"
-        >
-          {data.topProducts.length === 0 ? (
-            <EmptyChartState
-              title="No product-linked inquiries yet"
-              description="Once inquiry records are linked with products, the mix will start showing here."
-            />
-          ) : (
-            <>
-              <div className="h-[220px] overflow-hidden rounded-[22px] border border-border-soft bg-surface-soft/80 p-3">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie data={data.topProducts} dataKey="value" nameKey="label" innerRadius={52} outerRadius={88} paddingAngle={4}>
-                      {data.topProducts.map((_, index) => (
-                        <Cell key={index} fill={PRODUCT_COLORS[index % PRODUCT_COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-              <div className="space-y-3">
-                {data.topProducts.map((item, index) => (
-                  <LegendRow key={item.label} color={PRODUCT_COLORS[index % PRODUCT_COLORS.length]} label={item.label} value={`${item.value} inquiries`} />
-                ))}
-              </div>
-            </>
-          )}
-        </MetricPanel>
-
-        <MetricPanel
-          title="Inquiry by Brokers"
-          description="Inquiry volume grouped by broker accounts linked on the inquiry record."
-          eyebrow="Broker mix"
-          stats={[
-            { label: 'Brokers', value: formatCompactNumber(data.inquiryByBrokers.length) },
-            { label: 'Inquiries', value: formatCompactNumber(data.totalInquiries) },
-          ]}
-          contentClassName="grid gap-5 lg:grid-cols-[1fr_1fr]"
-        >
-          {data.inquiryByBrokers.length === 0 ? (
-            <EmptyChartState
-              title="No broker-linked inquiries yet"
-              description="As broker accounts are linked on inquiries, their intake share will start appearing here."
-            />
-          ) : (
-            <>
-              <div className="h-[220px] overflow-hidden rounded-[22px] border border-border-soft bg-surface-soft/80 p-3">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={data.inquiryByBrokers} layout="vertical" margin={{ top: 4, right: 6, bottom: 4, left: 6 }}>
-                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="rgba(82,97,115,0.12)" />
-                    <XAxis type="number" hide />
-                    <YAxis type="category" dataKey="label" width={120} tickLine={false} axisLine={false} />
-                    <Tooltip formatter={(value) => [`${Number(value ?? 0)} inquiries`, 'Volume']} />
-                    <Bar dataKey="value" radius={[0, 10, 10, 0]} maxBarSize={20}>
-                      {data.inquiryByBrokers.map((_, index) => (
-                        <Cell key={index} fill={PLAN_COLORS[index % PLAN_COLORS.length]} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-              <div className="space-y-3">
-                {data.inquiryByBrokers.map((item, index) => (
-                  <LegendRow key={item.label} color={PLAN_COLORS[index % PLAN_COLORS.length]} label={item.label} value={`${item.value} inquiries`} />
                 ))}
               </div>
             </>

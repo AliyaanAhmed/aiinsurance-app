@@ -21,6 +21,7 @@
     --info: 190 90% 38%;
     --muted: 215 32% 94%;
     --muted-foreground: 215 15% 42%;
+    --field-surface: 216 65.79% 92.15%;
   }
 
   .dark {
@@ -41,6 +42,7 @@
     --info: 188 86% 53%;
     --muted: 210 50% 18%;
     --muted-foreground: 212 24% 73%;
+    --field-surface: 209 44% 24%;
   }
 
   * {
@@ -76,5 +78,11 @@
 
   .scrollbar-hidden::-webkit-scrollbar {
     display: none;
+  }
+}
+
+@layer components {
+  .form-field-surface {
+    background-color: hsl(var(--field-surface) / 0.79);
   }
 }

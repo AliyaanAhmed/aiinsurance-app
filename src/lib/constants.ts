@@ -85,6 +85,13 @@ export const APP_ROUTES: RouteDefinition[] = [
     group: 'Policy Management',
   },
   {
+    path: '/admin/policies',
+    label: 'Policies',
+    bucket: 'admin',
+    icon: NotebookTabs,
+    group: 'Policy Management',
+  },
+  {
     path: '/renewals',
     label: 'Renewal Watchlist',
     bucket: 'leads',
@@ -160,13 +167,6 @@ export const APP_ROUTES: RouteDefinition[] = [
     bucket: 'products',
     icon: FilePenLine,
     group: 'Product Management',
-  },
-  {
-    path: '/admin/policies',
-    label: 'Policies',
-    bucket: 'admin',
-    icon: NotebookTabs,
-    group: 'Administration',
   },
   {
     path: '/admin/business-units',

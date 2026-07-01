@@ -25,6 +25,7 @@ import { Select } from '../../components/ui/Select'
 import { useAsyncData } from '../../hooks/useAsyncData'
 import {
   BUSINESS_RULE_CATEGORY_OPTIONS,
+  BUSINESS_RULE_INQUIRY_TYPE_OPTIONS,
   CONSEQUENCE_ACTION_OPTIONS,
   CONSEQUENCE_ACTIONS_BY_TYPE,
   CONSEQUENCE_TYPE_OPTIONS,
@@ -40,6 +41,7 @@ interface BusinessRuleFormState {
   name: string
   categoryValue: string
   parentRuleId: string
+  inquiryTypeValue: string
 }
 
 interface ConsequenceEditorState {
@@ -90,6 +92,7 @@ export function BusinessRuleWorkspacePage() {
       name: data.rule?.name ?? '',
       categoryValue: data.rule?.categoryValue ?? '',
       parentRuleId: data.rule?.parentRuleId ?? '',
+      inquiryTypeValue: data.rule?.inquiryTypeValue ?? '',
     })
     setConsequenceEditor(emptyConsequenceEditor)
     setConsequenceError(null)
@@ -190,6 +193,7 @@ export function BusinessRuleWorkspacePage() {
         name: formState.name,
         categoryValue: formState.categoryValue,
         parentRuleId: formState.parentRuleId,
+        inquiryTypeValue: formState.inquiryTypeValue,
       })
 
       if (options?.showSuccess) {
@@ -432,6 +436,23 @@ export function BusinessRuleWorkspacePage() {
                 />
               </Field>
 
+              <Field label="Inquiry Type">
+                <Select
+                  value={formState.inquiryTypeValue}
+                  onValueChange={(value) =>
+                    setForm((current) => (current ? { ...current, inquiryTypeValue: value } : current))
+                  }
+                  placeholder="Select inquiry type"
+                  options={[
+                    { value: '', label: 'All inquiry types' },
+                    ...BUSINESS_RULE_INQUIRY_TYPE_OPTIONS.map((option) => ({
+                      value: option.value,
+                      label: option.label,
+                    })),
+                  ]}
+                />
+              </Field>
+
             </div>
           </form>
         </Card>
@@ -454,6 +475,13 @@ export function BusinessRuleWorkspacePage() {
                 label="Property"
                 value={
                   selectedPropertyRuleName || 'No property rule selected'
+                }
+              />
+              <SummaryRow
+                label="Inquiry Type"
+                value={
+                  BUSINESS_RULE_INQUIRY_TYPE_OPTIONS.find((option) => option.value === formState.inquiryTypeValue)
+                    ?.label ?? 'All inquiry types'
                 }
               />
               <SummaryRow label="Consequences" value={String(data?.consequences.length ?? 0)} />
@@ -609,7 +637,7 @@ export function BusinessRuleWorkspacePage() {
                           riskSummary: event.target.value,
                         }))
                       }
-                      className="min-h-[110px] w-full rounded-[18px] border border-border bg-surface px-4 py-3 text-sm outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10"
+                      className="form-field-surface min-h-[110px] w-full rounded-[18px] border border-border px-4 py-3 text-sm outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10"
                       placeholder="Enter the risk summary that should be applied."
                     />
                   </Field>
@@ -665,7 +693,7 @@ export function BusinessRuleWorkspacePage() {
                           notificationText: event.target.value,
                         }))
                       }
-                      className="min-h-[110px] w-full rounded-[18px] border border-border bg-surface px-4 py-3 text-sm outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10"
+                      className="form-field-surface min-h-[110px] w-full rounded-[18px] border border-border px-4 py-3 text-sm outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10"
                       placeholder="Enter the message that should be used when this rule requests missing information."
                     />
                   </Field>

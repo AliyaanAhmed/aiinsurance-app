@@ -102,6 +102,7 @@ export interface ProductWorkspace {
     emailAddress: string
     order: string
     status: 'draft' | 'publish'
+    applyActionAutomatically: boolean
   }
   availablePlans: AdminCatalogItem[]
   availableRules: AdminCatalogItem[]
@@ -153,6 +154,10 @@ export interface InquiryDetail extends InquirySummary {
   consequences: ConsequenceDefinition[]
   consequenceResults: ConsequenceResultSummary[]
   aiRuleGroups: InquiryRuleGroup[]
+  notificationNotice?: {
+    title: string
+    messages: string[]
+  }
   productRuleLinkNotice?: string
   emailTimeline: InquiryEmailSummary[]
 }
@@ -228,6 +233,7 @@ export interface QuoteResponse {
   evidence: string
   conditionMet: string
   status: string
+  confidenceScore?: number
 }
 
 export interface RenewalSummary {
@@ -295,7 +301,12 @@ export interface ConsequenceDefinition {
   action: string
   type: string
   notificationText: string
+  documentTemplateId?: string
   documentTemplateName?: string
+  emailTemplateId?: string
+  emailTemplateName?: string
+  riskScore?: number
+  riskSummary?: string
 }
 
 export interface ConsequenceResultSummary {
@@ -305,6 +316,15 @@ export interface ConsequenceResultSummary {
   name: string
   action: string
   type: string
+  typeValue?: string
+  actionStatusValue?: number
+  actionStatusLabel?: string
+  documentTemplateId?: string
+  documentTemplateName?: string
+  emailTemplateId?: string
+  emailTemplateName?: string
+  riskScore?: number
+  riskSummary?: string
   createdOn?: string
 }
 

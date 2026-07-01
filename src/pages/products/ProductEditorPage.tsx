@@ -17,7 +17,6 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
-import { PageHeader } from '../../components/layout/PageHeader'
 import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/Tabs'
@@ -32,6 +31,7 @@ import {
   removeProductRuleAssociation,
   saveProductWorkspace,
   saveProductRuleAssociations,
+  updateProductAutoActionSetting,
   updateProductPlan,
 } from '../../services/productWorkspaceService'
 import { formatCompactNumber } from '../../lib/formatters'
@@ -51,6 +51,7 @@ interface ProductFormState {
   remarks: string
   order: string
   status: 'draft' | 'publish'
+  applyActionAutomatically: boolean
 }
 
 interface PlanDraftState {
@@ -85,6 +86,8 @@ export function ProductEditorPage() {
   const [selectedRuleIds, setSelectedRuleIds] = useState<string[]>([])
   const [isRuleModalOpen, setIsRuleModalOpen] = useState(false)
   const [rulesSaving, setRulesSaving] = useState(false)
+  const [autoActionSaving, setAutoActionSaving] = useState(false)
+  const [autoActionError, setAutoActionError] = useState<string | null>(null)
   const [expandedRuleGroups, setExpandedRuleGroups] = useState<Record<string, boolean>>({
     'Mandatory Field': false,
     'Required Document': false,
@@ -117,6 +120,7 @@ export function ProductEditorPage() {
       remarks: workspace.metadata?.remarks ?? '',
       order: workspace.metadata?.order ?? '',
       status: workspace.metadata?.status ?? 'draft',
+      applyActionAutomatically: workspace.metadata?.applyActionAutomatically ?? false,
     })
     return workspace
   }, [id, isCreate, refreshKey])
@@ -280,28 +284,128 @@ export function ProductEditorPage() {
     }
   }
 
+  async function handleAutoActionToggle(nextValue: boolean) {
+    if (!form) return
+
+    setForm((current) => (current ? { ...current, applyActionAutomatically: nextValue } : current))
+    setAutoActionError(null)
+
+    if (isCreate || !id) {
+      return
+    }
+
+    try {
+      setAutoActionSaving(true)
+      await updateProductAutoActionSetting(id, nextValue)
+      setRefreshKey((value) => value + 1)
+    } catch (cause) {
+      setForm((current) => (current ? { ...current, applyActionAutomatically: !nextValue } : current))
+      setAutoActionError(
+        cause instanceof Error ? cause.message : 'Unable to update the auto-action setting.',
+      )
+    } finally {
+      setAutoActionSaving(false)
+    }
+  }
+
   return (
     <div className="space-y-6">
-      <PageHeader
-        icon={PackagePlus}
-        eyebrow="Product Workspace"
-        title={isCreate ? 'Create Product' : data?.summary?.name ?? 'Product Editor'}
-        description="Manage product metadata, direct child plans, and grouped business-rule assignment from one premium product workspace."
-        actions={
-          <>
-            <Button variant="secondary" className="bg-white dark:bg-[#1E293B]" asChild>
-              <Link to="/admin/products">
-                <ArrowLeft className="h-4 w-4" />
-                Back to Products
-              </Link>
-            </Button>
-            <Button type="submit" form="product-editor-form" disabled={saving || !form}>
-              <Save className="h-4 w-4" />
-              {saving ? 'Saving...' : 'Save Product'}
-            </Button>
-          </>
-        }
-      />
+      <Card className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+        <div className="flex items-start gap-4">
+          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-white shadow-glow">
+            <PackagePlus className="h-6 w-6" />
+          </div>
+          <div className="space-y-1">
+            <p className="text-[12px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
+              Product Workspace
+            </p>
+            <h1 className="text-[28px] font-bold leading-tight">
+              {isCreate ? 'Create Product' : data?.summary?.name ?? 'Product Editor'}
+            </h1>
+            <p className="max-w-3xl text-sm text-muted-foreground">
+              Manage product metadata, direct child plans, and grouped business-rule assignment from one premium product workspace.
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-col items-start gap-3 lg:items-end">
+          <div className="flex flex-wrap items-center gap-3">
+          <Button variant="secondary" className="bg-white dark:bg-[#1E293B]" asChild>
+            <Link to="/admin/products">
+              <ArrowLeft className="h-4 w-4" />
+              Back to Products
+            </Link>
+          </Button>
+          <Button type="submit" form="product-editor-form" disabled={saving || !form}>
+            <Save className="h-4 w-4" />
+            {saving ? 'Saving...' : 'Save Product'}
+          </Button>
+          </div>
+          {form ? (
+            <div className="rounded-[20px] border border-border-soft bg-white/92 px-3 py-3 dark:border-white/10 dark:bg-[#1E293B]">
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
+                    Auto Apply Actions
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Decide whether linked actions should run automatically.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                      form.applyActionAutomatically
+                        ? 'border-primary/18 bg-primary text-white shadow-[0_12px_26px_rgba(37,99,235,0.18)]'
+                        : 'border-border-soft bg-white text-muted-foreground hover:bg-surface-soft dark:bg-[#243247]'
+                    }`}
+                    disabled={autoActionSaving}
+                    onClick={() => void handleAutoActionToggle(true)}
+                  >
+                    <span
+                      className={`flex h-5 w-5 items-center justify-center rounded-full ${
+                        form.applyActionAutomatically
+                          ? 'bg-white/20 text-white'
+                          : 'bg-surface-soft text-muted-foreground'
+                      }`}
+                    >
+                      <Check className="h-3.5 w-3.5" />
+                    </span>
+                    Yes
+                  </button>
+                  <button
+                    type="button"
+                    className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                      !form.applyActionAutomatically
+                        ? 'border-primary/18 bg-primary text-white shadow-[0_12px_26px_rgba(37,99,235,0.18)]'
+                        : 'border-border-soft bg-white text-muted-foreground hover:bg-surface-soft dark:bg-[#243247]'
+                    }`}
+                    disabled={autoActionSaving}
+                    onClick={() => void handleAutoActionToggle(false)}
+                  >
+                    <span
+                      className={`flex h-5 w-5 items-center justify-center rounded-full ${
+                        !form.applyActionAutomatically
+                          ? 'bg-white/20 text-white'
+                          : 'bg-surface-soft text-muted-foreground'
+                      }`}
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </span>
+                    No
+                  </button>
+                </div>
+              </div>
+              {autoActionSaving ? (
+                <p className="mt-2 text-[11px] font-medium text-primary">Updating auto-action setting...</p>
+              ) : null}
+              {autoActionError ? (
+                <p className="mt-2 text-[11px] font-medium text-danger">{autoActionError}</p>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      </Card>
 
       <div className="grid gap-4 lg:grid-cols-3">
         {linkedStats.map((stat) => (
@@ -373,7 +477,7 @@ export function ProductEditorPage() {
 
                 <Field label="Detailed Description">
                   <textarea
-                    className="min-h-32 w-full rounded-[16px] border border-border bg-surface px-3 py-3 text-sm outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10"
+                    className="form-field-surface min-h-32 w-full rounded-[16px] border border-border px-3 py-3 text-sm outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10"
                     value={form.details}
                     onChange={(event) => setForm({ ...form, details: event.target.value })}
                     placeholder="Long-form product positioning and operational detail"
@@ -382,7 +486,7 @@ export function ProductEditorPage() {
 
                 <Field label="Slogan">
                   <textarea
-                    className="min-h-24 w-full rounded-[16px] border border-border bg-surface px-3 py-3 text-sm outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10"
+                    className="form-field-surface min-h-24 w-full rounded-[16px] border border-border px-3 py-3 text-sm outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10"
                     value={form.slogan}
                     onChange={(event) => setForm({ ...form, slogan: event.target.value })}
                     placeholder="Short premium marketing or internal slogan"
@@ -391,7 +495,7 @@ export function ProductEditorPage() {
 
                 <Field label="Remarks">
                   <textarea
-                    className="min-h-24 w-full rounded-[16px] border border-border bg-surface px-3 py-3 text-sm outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10"
+                    className="form-field-surface min-h-24 w-full rounded-[16px] border border-border px-3 py-3 text-sm outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10"
                     value={form.remarks}
                     onChange={(event) => setForm({ ...form, remarks: event.target.value })}
                     placeholder="Internal operational notes or product remarks"
@@ -400,7 +504,7 @@ export function ProductEditorPage() {
 
                 <Field label="Terms and Conditions">
                   <textarea
-                    className="min-h-32 w-full rounded-[16px] border border-border bg-surface px-3 py-3 text-sm outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10"
+                    className="form-field-surface min-h-32 w-full rounded-[16px] border border-border px-3 py-3 text-sm outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10"
                     value={form.terms}
                     onChange={(event) => setForm({ ...form, terms: event.target.value })}
                     placeholder="Optional terms, constraints, or underwriting conditions"
@@ -768,7 +872,7 @@ export function ProductEditorPage() {
               </Field>
               <Field label="Description">
                 <textarea
-                  className="min-h-28 w-full rounded-[16px] border border-border bg-surface px-3 py-3 text-sm outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10"
+                  className="form-field-surface min-h-28 w-full rounded-[16px] border border-border px-3 py-3 text-sm outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10"
                   value={planDraft.description}
                   onChange={(event) => setPlanDraft((current) => ({ ...current, description: event.target.value }))}
                 />

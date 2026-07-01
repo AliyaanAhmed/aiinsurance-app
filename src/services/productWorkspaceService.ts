@@ -63,14 +63,15 @@ export async function getProductWorkspace(productId?: string): Promise<ProductWo
           shortDetails: current.aur_short_details ?? '',
           heading: current.aur_heading ?? '',
           buyHeading: current.aur_buy_heading ?? '',
-          buyButton: current.aur_buy_button ?? '',
-          slogan: current.aur_slogan ?? '',
-          remarks: current.aur_remarks ?? '',
-          terms: current.aur_terms_conditions ?? '',
-          emailAddress: current.aur_incomingemailaddress ?? '',
-          order: current.aur_order ?? '',
-          status: current.aur_product_statusname?.toLowerCase().includes('publish') ? 'publish' : 'draft',
-        }
+        buyButton: current.aur_buy_button ?? '',
+        slogan: current.aur_slogan ?? '',
+        remarks: current.aur_remarks ?? '',
+        terms: current.aur_terms_conditions ?? '',
+        emailAddress: current.aur_incomingemailaddress ?? '',
+        order: current.aur_order ?? '',
+        status: current.aur_product_statusname?.toLowerCase().includes('publish') ? 'publish' : 'draft',
+        applyActionAutomatically: Boolean((current as typeof current & { aur_apply_action_automatically?: boolean | null }).aur_apply_action_automatically),
+      }
       : {
           arabicName: '',
           premiumPercentage: '',
@@ -85,6 +86,7 @@ export async function getProductWorkspace(productId?: string): Promise<ProductWo
           emailAddress: '',
           order: '',
           status: 'draft',
+          applyActionAutomatically: false,
         },
     availablePlans: (plansResult.data ?? [])
       .filter((plan) => !productId || plan._aur_product_value === productId)
@@ -111,6 +113,7 @@ export async function saveProductWorkspace(payload: {
   order?: string
   premiumPercentage?: string
   status?: 'draft' | 'publish'
+  applyActionAutomatically?: boolean
 }) {
   const productStatus: 751820000 | 751820001 =
     payload.status === 'publish' ? 751820001 : 751820000
@@ -131,6 +134,7 @@ export async function saveProductWorkspace(payload: {
     aur_premium: payload.premiumPercentage,
     aur_product_status: productStatus,
     statuscode: statusCode,
+    aur_apply_action_automatically: payload.applyActionAutomatically ?? false,
   }
 
   if (payload.id) {
@@ -139,6 +143,15 @@ export async function saveProductWorkspace(payload: {
   }
 
   await Aur_productsesService.create(record as never)
+}
+
+export async function updateProductAutoActionSetting(productId: string, applyAutomatically: boolean) {
+  await Aur_productsesService.update(
+    productId,
+    {
+      aur_apply_action_automatically: applyAutomatically,
+    } as never,
+  )
 }
 
 export async function createProductPlan(productId: string, input: { name: string; description: string }) {

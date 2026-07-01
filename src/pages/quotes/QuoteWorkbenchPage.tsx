@@ -1,5 +1,5 @@
 import { useState, type ReactNode, type FormEvent } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, Link, useLocation } from 'react-router-dom'
 import { ArrowLeft, BadgeCheck, CheckCircle2, ChevronDown, ChevronUp, Download, FileText, FileWarning, Gem, Layers3, Pencil, Save, ShieldAlert, ShieldCheck, TicketSlash, Trash2, XCircle } from 'lucide-react'
 import { useAsyncData } from '../../hooks/useAsyncData'
 import {
@@ -42,6 +42,11 @@ interface QuoteFormState {
 
 export function QuoteWorkbenchPage() {
   const { id = '' } = useParams()
+  const location = useLocation()
+  const fromInquiryId =
+    (location.state as { fromInquiryId?: string } | null)?.fromInquiryId ?? ''
+  const backTarget = fromInquiryId ? `/inquiries/${fromInquiryId}` : '/quotes'
+  const backLabel = fromInquiryId ? 'Back to Inquiry' : 'Back to Quotes'
   const [refreshKey, setRefreshKey] = useState(0)
   const [form, setForm] = useState<QuoteFormState | null>(null)
   const [saving, setSaving] = useState(false)
@@ -198,9 +203,9 @@ export function QuoteWorkbenchPage() {
   return (
     <div className="space-y-6">
       <Button asChild variant="ghost" size="sm">
-        <Link to="/quotes">
+        <Link to={backTarget}>
           <ArrowLeft className="h-4 w-4" />
-          Back to quotes
+          {backLabel}
         </Link>
       </Button>
       <Card variant="premium" className="space-y-3">
@@ -282,14 +287,14 @@ export function QuoteWorkbenchPage() {
                 </div>
                 <Field label="Outcome Reason">
                   <textarea
-                    className="min-h-24 w-full rounded-[16px] border border-border bg-surface px-3 py-3 text-sm outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10"
+                    className="form-field-surface min-h-24 w-full rounded-[16px] border border-border px-3 py-3 text-sm outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10"
                     value={form.reason}
                     onChange={(event) => setForm({ ...form, reason: event.target.value })}
                   />
                 </Field>
                 <Field label="AI Summary">
                   <textarea
-                    className="min-h-32 w-full rounded-[16px] border border-border bg-surface px-3 py-3 text-sm outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10"
+                    className="form-field-surface min-h-32 w-full rounded-[16px] border border-border px-3 py-3 text-sm outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10"
                     value={form.aiSummary}
                     onChange={(event) => setForm({ ...form, aiSummary: event.target.value })}
                   />

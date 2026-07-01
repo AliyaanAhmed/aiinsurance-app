@@ -1,6 +1,5 @@
 import type {
   Aur_quoteses,
-  Aur_quotesesaur_inquiry_status,
   Aur_quotesesaur_inquiry_type,
 } from '../generated/models/Aur_quotesesModel'
 import type { Aur_quotes } from '../generated/models/Aur_quotesModel'
@@ -50,10 +49,10 @@ export function mapInquirySummary(record: Aur_quoteses): InquirySummary {
     id: record.aur_quotesid,
     name: record.aur_name,
     inquiryNumber: record.aur_quote_number ?? `INQ-${record.aur_quotesid.slice(0, 8).toUpperCase()}`,
-    inquiryType: record.aur_inquiry_typename ?? inquiryTypeLabel(record.aur_inquiry_type) ?? 'New',
+    inquiryType: record.aur_inquiry_typename ?? inquiryTypeLabel(record.aur_inquiry_type) ?? '',
     inquiryTypeValue: record.aur_inquiry_type ? Number(record.aur_inquiry_type) : undefined,
-    status: record.aur_inquiry_statusname ?? inquiryStatusLabel(record.aur_inquiry_status) ?? record.statuscodename ?? 'Draft',
-    inquiryStatusValue: record.aur_inquiry_status ? Number(record.aur_inquiry_status) : undefined,
+    status: inquiryLifecycleStatusLabel(record.statuscodename, record.statuscode) ?? record.statuscodename ?? 'Draft',
+    inquiryStatusValue: record.statuscode ? Number(record.statuscode) : undefined,
     accountId: record._aur_account_value,
     accountName,
     contactName: record.aur_contactname ?? 'No contact linked',
@@ -116,7 +115,7 @@ export function mapInquiryDetail(
     accountName: resolvedAccountName,
     contactName: resolvedContactName,
     brokerName: resolvedBrokerName,
-    riskDescription: record.aur_risk_description ?? 'Risk explanation not captured yet.',
+    riskDescription: record.aur_risksummary ?? '',
     paymentTerm: record.aur_payment_termname ?? 'Annual',
     territorialScope: record.aur_territorial_scope ?? 'Not specified',
     coverType: record.aur_cover_typename ?? 'Not specified',
@@ -181,6 +180,10 @@ export function mapQuoteDetail(
 }
 
 export function mapQuoteResponse(record: Aur_quotes_detailses): QuoteResponse {
+  const rawRecord = record as Aur_quotes_detailses & {
+    aur_confidence_score?: number | string | null
+  }
+
   return {
     id: record.aur_quotes_detailsid,
     businessRuleId: record._aur_business_rules_value,
@@ -191,7 +194,19 @@ export function mapQuoteResponse(record: Aur_quotes_detailses): QuoteResponse {
     evidence: record.aur_evidence ?? 'No evidence captured.',
     conditionMet: record.aur_condition_met ?? 'Pending evaluation',
     status: record.statuscodename ?? record.statecodename ?? 'Active',
+    confidenceScore: parseConfidenceScore(rawRecord.aur_confidence_score),
   }
+}
+
+function parseConfidenceScore(value: number | string | null | undefined) {
+  if (value === null || value === undefined || value === '') return undefined
+  if (typeof value === 'number') return Number.isNaN(value) ? undefined : value
+
+  const normalized = value.trim()
+  if (!normalized) return undefined
+
+  const numericValue = Number.parseFloat(normalized.replace('%', '').trim())
+  return Number.isNaN(numericValue) ? undefined : numericValue
 }
 
 export function mapRelatedParty(
@@ -294,12 +309,51 @@ function inquiryTypeLabel(value?: Aur_quotesesaur_inquiry_type) {
   return undefined
 }
 
-function inquiryStatusLabel(value?: Aur_quotesesaur_inquiry_status) {
-  if (value === 1) return 'Decline'
-  if (value === 2) return 'Refer to Underwriter'
-  if (value === 3) return 'Escalate to Head of Aviation'
-  if (value === 4) return 'Property or Reinsurance Team'
-  return undefined
+function inquiryLifecycleStatusLabel(formatted?: string, raw?: number | string) {
+  const numericValue = Number(raw)
+  switch (numericValue) {
+    case 1:
+      return 'Draft'
+    case 2:
+      return 'Inactive'
+    case 751820001:
+      return 'AI Processing'
+    case 751820002:
+      return 'Ready to Generate Quote'
+    case 751820003:
+      return 'Quote Generated Successfully'
+    case 751820004:
+      return 'Generating Quote'
+    case 751820005:
+      return 'Further Clarification Required'
+    case 751820006:
+      return 'Inquiry Created'
+    case 751820007:
+      return 'Product Match'
+    case 751820008:
+      return 'Determined Inquiry'
+    case 751820009:
+      return 'Awaiting Review'
+    case 751820010:
+      return 'Refer to Underwriter'
+    case 751820011:
+      return 'Decline'
+    case 751820012:
+      return 'Quote Provided'
+    case 751820013:
+      return 'Escalate to Head of Aviation'
+    case 751820014:
+      return 'Property or Reinsurance Team'
+    default:
+      break
+  }
+
+  return formatted
+    ? formatted
+        .replace(/([a-z])([A-Z])/g, '$1 $2')
+        .replace(/\s+/g, ' ')
+        .trim()
+    : undefined
 }
 
 function quoteStatusLabel(value?: number) {

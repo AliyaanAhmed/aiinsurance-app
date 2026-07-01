@@ -1,21 +1,24 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { Archive, ArrowLeft, Bold, CheckCircle2, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, CopyPlus, FileImage, FileSpreadsheet, FileStack, FileText, FolderOpen, GitBranch, History, Italic, LayoutGrid, List, Mail, MailCheck, MailPlus, Paperclip, Rows3, Save, SendHorizontal, ShieldAlert, Sparkles, Underline, X } from 'lucide-react'
+import { createPortal } from 'react-dom'
+import { Archive, ArrowLeft, BellRing, Bold, CheckCircle2, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, CopyPlus, FileImage, FileSpreadsheet, FileStack, FileText, FolderOpen, GitBranch, History, Italic, LayoutGrid, List, LoaderCircle, Mail, MailCheck, MailPlus, Paperclip, Rows3, Save, SendHorizontal, ShieldAlert, Sparkles, Underline, X } from 'lucide-react'
 import type { InquiryDetail } from '../../domain/app'
 import { useAsyncData } from '../../hooks/useAsyncData'
 import { useRole } from '../../hooks/useRole'
 import {
+  applyInquiryConsequenceResult,
   copyQuotesToInquiry,
   createQuoteFromInquiry,
   createInquiryEmail,
+  getConsequenceLinkedTemplatePreview,
   getInquiryDetailCore,
   getInquiryDetailSupplementary,
   getInquiryEditorOptions,
   listWonQuotesForProduct,
   saveInquiryDetail,
   updateInquiryQuoteDetailResponse,
-  updateInquiryDisposition,
 } from '../../services/inquiriesService'
+import type { ConsequenceTemplatePreview } from '../../services/inquiriesService'
 import { Card } from '../../components/ui/Card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/Tabs'
 import { Badge } from '../../components/ui/Badge'
@@ -65,6 +68,8 @@ const emptyEditorOptions = {
 
 export function InquiryWorkspacePage() {
   const composerEditorRef = useRef<HTMLDivElement | null>(null)
+  const composerSectionRef = useRef<HTMLDivElement | null>(null)
+  const notificationMenuRef = useRef<HTMLDivElement | null>(null)
   const { user } = useRole()
   const { id = '' } = useParams()
   const [supplementaryRefreshKey, setSupplementaryRefreshKey] = useState(0)
@@ -87,7 +92,6 @@ export function InquiryWorkspacePage() {
   const [emailPanelMode, setEmailPanelMode] = useState<'expanded' | 'collapsed'>('expanded')
   const [isNarrowViewport, setIsNarrowViewport] = useState(false)
   const [aiCategory, setAiCategory] = useState('All')
-  const [riskView, setRiskView] = useState<'card' | 'table'>('card')
   const [quoteView, setQuoteView] = useState<'card' | 'table'>('table')
   const [isCopyQuotesOpen, setIsCopyQuotesOpen] = useState(false)
   const [selectedWonQuoteIds, setSelectedWonQuoteIds] = useState<string[]>([])
@@ -98,6 +102,11 @@ export function InquiryWorkspacePage() {
   const [quoteDetailSaveState, setQuoteDetailSaveState] = useState<
     Record<string, { saving?: boolean; success?: string | null; error?: string | null }>
   >({})
+  const [isNotificationMenuOpen, setIsNotificationMenuOpen] = useState(false)
+  const [expandedActionGroups, setExpandedActionGroups] = useState<Record<string, boolean>>({})
+  const [templatePreview, setTemplatePreview] = useState<ConsequenceTemplatePreview | null>(null)
+  const [templatePreviewBusy, setTemplatePreviewBusy] = useState(false)
+  const [templatePreviewError, setTemplatePreviewError] = useState<string | null>(null)
   const [composer, setComposer] = useState<EmailComposerState>({
     sender: 'underwriting@insureai.com',
     toRecipients: '',
@@ -147,6 +156,8 @@ export function InquiryWorkspacePage() {
     setCopyQuotesError(null)
     setQuoteDetailDrafts({})
     setQuoteDetailSaveState({})
+    setIsNotificationMenuOpen(false)
+    setExpandedActionGroups({})
     setEmailPanelMode(isNarrowViewport ? 'collapsed' : 'expanded')
     setComposer({
       sender: user.email ?? 'underwriting@insureai.com',
@@ -194,11 +205,52 @@ export function InquiryWorkspacePage() {
   }, [inquiryState?.quoteDetails])
 
   useEffect(() => {
+    if (!inquiryState?.consequenceResults?.length) {
+      setAppliedConsequenceIds([])
+      return
+    }
+
+    setAppliedConsequenceIds(
+      inquiryState.consequenceResults
+        .filter((result) => isConsequenceApplied(result.actionStatusValue))
+        .map((result) => result.id),
+    )
+  }, [inquiryState?.consequenceResults])
+
+  useEffect(() => {
     if (!isComposerOpen || !composerEditorRef.current) return
     if (composerEditorRef.current.innerHTML !== composer.description) {
       composerEditorRef.current.innerHTML = composer.description
     }
   }, [composer.description, isComposerOpen])
+
+  useEffect(() => {
+    if (!isComposerOpen || emailPanelMode !== 'expanded') return
+
+    const timeoutId = window.setTimeout(() => {
+      composerSectionRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+        inline: 'nearest',
+      })
+      composerEditorRef.current?.focus()
+    }, 220)
+
+    return () => window.clearTimeout(timeoutId)
+  }, [isComposerOpen, emailPanelMode, composerEditorVersion])
+
+  useEffect(() => {
+    if (!isNotificationMenuOpen) return
+
+    function handlePointerDown(event: MouseEvent) {
+      if (!notificationMenuRef.current) return
+      if (notificationMenuRef.current.contains(event.target as Node)) return
+      setIsNotificationMenuOpen(false)
+    }
+
+    document.addEventListener('mousedown', handlePointerDown)
+    return () => document.removeEventListener('mousedown', handlePointerDown)
+  }, [isNotificationMenuOpen])
 
   const detailSource = inquiryState ?? coreLoad.data
   const quoteDetails = detailSource?.quoteDetails ?? []
@@ -250,6 +302,44 @@ export function InquiryWorkspacePage() {
     if (aiCategory === 'All') return quoteDetails
     return visibleQuoteDetailGroups.flatMap((group) => group.items)
   }, [aiCategory, quoteDetails, visibleQuoteDetailGroups])
+  const consequenceResults = detailSource?.consequenceResults ?? []
+  const groupedConsequenceResults = useMemo(() => {
+    const groups = new Map<
+      string,
+      { ruleName: string; results: typeof consequenceResults; actionableCount: number }
+    >()
+
+    for (const result of consequenceResults) {
+      const ruleName = getConsequenceRuleName(result.name)
+      const existing = groups.get(ruleName)
+      const actionable = canApplyConsequence(result.type, result.action) ? 1 : 0
+
+      if (existing) {
+        existing.results.push(result)
+        existing.actionableCount += actionable
+      } else {
+        groups.set(ruleName, {
+          ruleName,
+          results: [result],
+          actionableCount: actionable,
+        })
+      }
+    }
+
+    return Array.from(groups.values())
+  }, [consequenceResults])
+
+  const quoteVersionById = useMemo(() => {
+    const sortedQuotes = [...(detailSource?.quotes ?? [])].sort((left, right) => {
+      const leftTime = left.createdOn ? new Date(left.createdOn).getTime() : 0
+      const rightTime = right.createdOn ? new Date(right.createdOn).getTime() : 0
+      return leftTime - rightTime
+    })
+
+    return Object.fromEntries(
+      sortedQuotes.map((quote, index) => [quote.id, `1.${index}`]),
+    ) as Record<string, string>
+  }, [detailSource?.quotes])
 
   const missingQuoteDetails = useMemo(
     () =>
@@ -279,6 +369,10 @@ export function InquiryWorkspacePage() {
 
   const inquiry = detailSource
   const inquiryRecordId = inquiry.id || id
+  const notifications = inquiry.notificationNotice?.messages.map((message, index) => ({
+    serial: index + 1,
+    message,
+  })) ?? []
   const options = optionsLoad.data ?? emptyEditorOptions
   const isHydratingSupplementary =
     supplementaryLoad.loading &&
@@ -324,7 +418,6 @@ export function InquiryWorkspacePage() {
             }
           : current,
       )
-      setActionSuccess(`Inquiry status updated to ${nextStatus}.`)
     } catch (cause) {
       setActionError(cause instanceof Error ? cause.message : 'Unable to update inquiry disposition.')
     } finally {
@@ -419,11 +512,8 @@ export function InquiryWorkspacePage() {
         paymentTerm: form.paymentTerm ? Number(form.paymentTerm) : undefined,
         fee: Number(form.fee) || 0,
         totalDeduction: Number(form.totalDeduction) || 0,
+        riskSummary: form.riskDescription,
       })
-      const selectedDisposition = dispositionForInquiryStatusValue(Number(form.inquiryStatus))
-      if (selectedDisposition) {
-        await updateInquiryDisposition(inquiryRecordId, selectedDisposition)
-      }
       setIsEditing(false)
       setInquiryState((current) =>
         current
@@ -443,6 +533,7 @@ export function InquiryWorkspacePage() {
               coverType: findOptionLabel(options.coverTypes, form.coverType, current.coverType),
               riskScore: Number(form.riskScore) || 0,
               riskDescription: form.riskDescription,
+              aiSummary: form.riskDescription,
               totalInsured: Number(form.totalSumInsured) || 0,
               territorialScope: form.territorialScope,
               totalCharge: Number(form.premiumToBeCharged) || 0,
@@ -476,15 +567,18 @@ export function InquiryWorkspacePage() {
           throw new Error('This case control consequence cannot be applied to inquiry status.')
         }
 
-        await saveInquiryDetail(inquiryRecordId, buildInquirySavePayload(form, {
-          inquiryStatus: inquiryStatusValueForDisposition(disposition),
-        }))
+        const nextStatusCode = inquiryStatusValueForDisposition(disposition)
+        await applyInquiryConsequenceResult({
+          inquiryId: inquiryRecordId,
+          consequenceResultId: consequenceId,
+          statusCode: nextStatusCode,
+        })
         const nextStatusLabel = inquiryStatusLabelForDisposition(disposition)
         setForm((current) =>
           current
             ? {
                 ...current,
-                inquiryStatus: String(inquiryStatusValueForAction(record.action)),
+                inquiryStatus: String(nextStatusCode),
               }
             : current,
         )
@@ -493,33 +587,90 @@ export function InquiryWorkspacePage() {
             ? {
                 ...current,
                 status: nextStatusLabel,
-                inquiryStatusValue: inquiryStatusValueForDisposition(disposition),
+                inquiryStatusValue: nextStatusCode,
+                consequenceResults: current.consequenceResults.map((item) =>
+                  item.id === consequenceId
+                    ? {
+                        ...item,
+                        actionStatusValue: APPLIED_ACTION_STATUS_VALUE,
+                        actionStatusLabel: 'Applied',
+                      }
+                    : item,
+                ),
               }
             : current,
         )
         setActionSuccess(`Applied ${record.action} to inquiry status.`)
       } else if (record.type === 'Risk') {
-        const nextRiskScore = (Number(form.riskScore) || 0) + 10
-        await saveInquiryDetail(inquiryRecordId, buildInquirySavePayload(form, {
-          riskScore: nextRiskScore,
-        }))
-        setForm((current) =>
-          current
-            ? {
-                ...current,
-                riskScore: String(nextRiskScore),
-              }
-            : current,
-        )
-        setInquiryState((current) =>
-          current
-            ? {
-                ...current,
-                riskScore: nextRiskScore,
-              }
-            : current,
-        )
-        setActionSuccess(`Applied risk consequence. Risk Score updated to ${nextRiskScore}.`)
+        if (record.action === 'Update Risk Score') {
+          const increment = Number(record.riskScore ?? 0)
+          if (!increment) {
+            throw new Error('This risk-score consequence does not have a risk score configured.')
+          }
+
+          const updated = await applyInquiryConsequenceResult({
+            inquiryId: inquiryRecordId,
+            consequenceResultId: consequenceId,
+            riskScoreIncrement: increment,
+          })
+
+          setForm((current) =>
+            current
+              ? {
+                  ...current,
+                  riskScore: String(updated.riskScore),
+                }
+              : current,
+          )
+          setInquiryState((current) =>
+            current
+              ? {
+                  ...current,
+                  riskScore: updated.riskScore,
+                  consequenceResults: current.consequenceResults.map((item) =>
+                    item.id === consequenceId
+                      ? {
+                          ...item,
+                          actionStatusValue: APPLIED_ACTION_STATUS_VALUE,
+                          actionStatusLabel: 'Applied',
+                        }
+                      : item,
+                  ),
+                }
+              : current,
+          )
+          setActionSuccess(`Applied risk consequence. Risk Score updated to ${updated.riskScore}.`)
+        } else if (record.action === 'Update Risk Summary') {
+          const appendedSummary = record.riskSummary?.trim()
+          if (!appendedSummary) {
+            throw new Error('This risk-summary consequence does not have a risk summary configured.')
+          }
+
+          const updated = await applyInquiryConsequenceResult({
+            inquiryId: inquiryRecordId,
+            consequenceResultId: consequenceId,
+            riskSummaryAppend: appendedSummary,
+          })
+
+          setInquiryState((current) =>
+            current
+              ? {
+                  ...current,
+                  aiSummary: updated.riskSummary,
+                  consequenceResults: current.consequenceResults.map((item) =>
+                    item.id === consequenceId
+                      ? {
+                          ...item,
+                          actionStatusValue: APPLIED_ACTION_STATUS_VALUE,
+                          actionStatusLabel: 'Applied',
+                        }
+                      : item,
+                  ),
+                }
+              : current,
+          )
+          setActionSuccess('Applied risk consequence. Risk summary has been appended to the inquiry.')
+        }
       }
 
       setAppliedConsequenceIds((current) => [...new Set([...current, consequenceId])])
@@ -629,6 +780,7 @@ export function InquiryWorkspacePage() {
     setComposeError(null)
     setComposerEditorVersion((value) => value + 1)
     setActiveTab('details')
+    setEmailPanelMode('expanded')
     setIsComposerOpen(true)
   }
 
@@ -714,6 +866,25 @@ export function InquiryWorkspacePage() {
     }
   }
 
+  async function handleOpenConsequenceTemplate(
+    consequenceId: string,
+    preferredKind: 'document' | 'email',
+  ) {
+    try {
+      setTemplatePreviewBusy(true)
+      setTemplatePreviewError(null)
+      const result = await getConsequenceLinkedTemplatePreview(consequenceId, preferredKind)
+      setTemplatePreview(result)
+    } catch (cause) {
+      setTemplatePreview(null)
+      setTemplatePreviewError(
+        cause instanceof Error ? cause.message : 'Unable to load the linked template.',
+      )
+    } finally {
+      setTemplatePreviewBusy(false)
+    }
+  }
+
   function toggleEmailPanel() {
     setEmailPanelMode((current) => (current === 'expanded' ? 'collapsed' : 'expanded'))
   }
@@ -728,7 +899,7 @@ export function InquiryWorkspacePage() {
       </Button>
 
       <section className="space-y-5 rounded-[28px] border border-border-soft bg-[linear-gradient(180deg,rgba(255,255,255,0.96)_0%,rgba(245,248,252,0.9)_100%)] px-6 py-6 shadow-soft dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.9)_0%,rgba(15,23,42,0.78)_100%)]">
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_420px] xl:items-start">
           <div className="space-y-4">
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant="new">{inquiry.inquiryNumber}</Badge>
@@ -736,22 +907,22 @@ export function InquiryWorkspacePage() {
               <Badge variant="pending">{inquiry.status}</Badge>
             </div>
             <div>
-              <h1 className="text-[24px] font-bold tracking-[-0.02em]">{inquiry.name}</h1>
+              <h1 className="text-[22px] font-bold tracking-[-0.02em]">{inquiry.name}</h1>
               <p className="mt-1.5 text-sm text-muted-foreground">
                 {inquiry.productName} - {inquiry.planName} - {formatDate(inquiry.createdOn)}
               </p>
             </div>
           </div>
-          <div className="space-y-3 lg:min-w-[280px]">
-            <div className="rounded-[22px] border border-primary/12 bg-white/70 p-4 shadow-soft dark:bg-slate-950/35">
+          <div className="space-y-3">
+            <div className="rounded-[20px] border border-primary/12 bg-white/70 px-4 py-3 shadow-soft dark:bg-slate-950/35">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-[12px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
                     Overall Completeness
                   </p>
-                  <p className="mt-2 text-3xl font-bold">{formatPercent(inquiry.readiness[0]?.value ?? 0)}</p>
+                  <p className="mt-1 text-[34px] font-bold leading-none">{formatPercent(inquiry.readiness[0]?.value ?? 0)}</p>
                 </div>
-                <div className="h-14 w-14 rounded-full border-4 border-primary/12 p-1">
+                <div className="h-12 w-12 rounded-full border-[3px] border-primary/12 p-1">
                   <div
                     className="h-full rounded-full bg-gradient-to-br from-primary to-info"
                     style={{ clipPath: `inset(${100 - (inquiry.readiness[0]?.value ?? 0)}% 0 0 0)` }}
@@ -759,13 +930,13 @@ export function InquiryWorkspacePage() {
                 </div>
               </div>
             </div>
-            <div className="flex flex-wrap gap-2 lg:justify-end">
+            <div className="flex flex-wrap items-center gap-2 xl:justify-end">
               {isEditing ? (
                 <>
-                  <Button type="button" variant="secondary" disabled={saveBusy} onClick={resetForm}>
+                  <Button type="button" variant="secondary" size="sm" disabled={saveBusy} onClick={resetForm}>
                     Cancel
                   </Button>
-                  <Button type="button" disabled={saveBusy} onClick={() => void handleSaveDetails()}>
+                  <Button type="button" size="sm" disabled={saveBusy} onClick={() => void handleSaveDetails()}>
                     <Save className="h-4 w-4" />
                     {saveBusy ? 'Saving...' : 'Save Inquiry'}
                   </Button>
@@ -773,8 +944,9 @@ export function InquiryWorkspacePage() {
               ) : (
                 <Button
                   type="button"
+                  size="sm"
                   variant="secondary"
-                  className="bg-white hover:bg-surface"
+                  className="bg-white hover:bg-surface dark:bg-surface dark:hover:bg-surface-soft"
                   onClick={() => setIsEditing(true)}
                 >
                   Edit Inquiry
@@ -782,7 +954,8 @@ export function InquiryWorkspacePage() {
               )}
               <Button
                 variant="secondary"
-                className="bg-white hover:bg-surface"
+                size="sm"
+                className="bg-white hover:bg-surface dark:bg-surface dark:hover:bg-surface-soft"
                 disabled={pendingAction === 'refer'}
                 onClick={() => void handleDisposition('RefertoUnderwriter', 'refer')}
               >
@@ -790,21 +963,92 @@ export function InquiryWorkspacePage() {
               </Button>
               <Button
                 variant="outline"
-                className="bg-white hover:bg-surface"
+                size="sm"
+                className="bg-white hover:bg-surface dark:bg-surface dark:hover:bg-surface-soft"
                 disabled={pendingAction === 'escalate'}
                 onClick={() => void handleDisposition('EscalatetoHeadofAviation', 'escalate')}
               >
                 Escalate
               </Button>
               <Button
+                variant="outline"
+                size="sm"
+                className="bg-white hover:bg-surface dark:bg-surface dark:hover:bg-surface-soft"
+                disabled={pendingAction === 'decline'}
+                onClick={() => void handleDisposition('Decline', 'decline')}
+              >
+                Decline
+              </Button>
+              <Button
                 variant="secondary"
-                className="bg-white hover:bg-surface"
+                size="sm"
+                className="bg-white hover:bg-surface dark:bg-surface dark:hover:bg-surface-soft"
                 disabled={!wonQuotes.length}
                 onClick={openCopyQuotesModal}
               >
                 <CopyPlus className="h-4 w-4" />
                 Copy Quotes
               </Button>
+              {notifications.length ? (
+                <div ref={notificationMenuRef} className="relative">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    className="relative gap-2 rounded-full border border-primary/12 bg-white text-foreground hover:border-primary/20 hover:bg-primary/[0.04] dark:border-white/10 dark:bg-surface dark:text-slate-100 dark:hover:bg-surface-soft"
+                    onClick={() => setIsNotificationMenuOpen((current) => !current)}
+                  >
+                    <BellRing className="h-4 w-4 text-primary" />
+                    Notifications
+                    <span className="inline-flex min-w-[1.4rem] items-center justify-center rounded-full bg-primary px-1.5 py-0.5 text-[11px] font-bold text-white shadow-soft">
+                      {notifications.length}
+                    </span>
+                  </Button>
+                  {isNotificationMenuOpen ? (
+                    <div className="absolute right-0 top-[calc(100%+0.7rem)] z-50 w-[360px] overflow-hidden rounded-[24px] border border-border-soft bg-white shadow-[0_22px_48px_rgba(15,23,42,0.16)] dark:border-white/10 dark:bg-[#1E293B]">
+                      <div className="border-b border-border-soft bg-[linear-gradient(180deg,rgba(245,248,252,0.95)_0%,rgba(255,255,255,0.92)_100%)] px-4 py-4 dark:border-white/10 dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.92)_0%,rgba(30,41,59,0.82)_100%)]">
+                        <div className="flex items-start gap-3">
+                          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary shadow-[inset_0_1px_0_rgba(255,255,255,0.5)]">
+                            <BellRing className="h-4 w-4" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold text-foreground">Notifications</p>
+                            <p className="mt-0.5 text-xs text-muted-foreground">
+                              {notifications.length} active workflow item{notifications.length === 1 ? '' : 's'}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="max-h-[282px] overflow-y-auto bg-[linear-gradient(180deg,rgba(248,250,252,0.9)_0%,rgba(255,255,255,0.96)_100%)] p-3 dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.8)_0%,rgba(15,23,42,0.56)_100%)]">
+                        {notifications.map((notification) => {
+                          return (
+                            <div
+                              key={notification.serial}
+                              className="mb-3 rounded-2xl border border-border-soft bg-white/95 p-4 shadow-[0_10px_24px_rgba(15,23,42,0.05)] transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/15 hover:shadow-[0_14px_30px_rgba(37,99,235,0.12)] dark:border-white/10 dark:bg-white/5"
+                            >
+                              <div className="space-y-3">
+                                <div className="flex items-center gap-3">
+                                  <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-sm font-bold text-primary">
+                                    {notification.serial}
+                                  </span>
+                                  <div className="flex min-w-0 items-center gap-2">
+                                    <span className="inline-flex rounded-full border border-primary/12 bg-primary/[0.06] px-2.5 py-1 text-[11px] font-semibold text-primary dark:border-primary/20 dark:bg-primary/15 dark:text-slate-100">
+                                      Workflow notice
+                                    </span>
+                                  </div>
+                                </div>
+                                <p className="text-sm font-medium leading-6 text-foreground">
+                                  {notification.message}
+                                </p>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
             {actionError ? <p className="text-sm text-danger lg:text-right">{actionError}</p> : null}
             {saveError ? <p className="text-sm text-danger lg:text-right">{saveError}</p> : null}
@@ -915,17 +1159,19 @@ export function InquiryWorkspacePage() {
                           <ReadOnlyValue value={form.noOfItems || 'Not provided'} />
                         )}
                       </Field>
-                      <Field label="Risk Description">
-                        {isEditing ? (
-                          <textarea
-                            className="min-h-28 w-full rounded-[16px] border border-border bg-surface px-3 py-3 text-sm outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10"
-                            value={form.riskDescription}
-                            onChange={(event) => setForm({ ...form, riskDescription: event.target.value })}
-                          />
-                        ) : (
-                          <ReadOnlyText value={form.riskDescription} />
-                        )}
-                      </Field>
+                      <div className="md:col-span-2">
+                        <Field label="Risk Summary">
+                          {isEditing ? (
+                            <textarea
+                              className="form-field-surface min-h-28 w-full rounded-[16px] border border-border px-3 py-3 text-sm outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10"
+                              value={form.riskDescription}
+                              onChange={(event) => setForm({ ...form, riskDescription: event.target.value })}
+                            />
+                          ) : (
+                            <ReadOnlyText value={form.riskDescription} />
+                          )}
+                        </Field>
+                      </div>
                     </div>
                   </Card>
 
@@ -977,24 +1223,55 @@ export function InquiryWorkspacePage() {
                     </div>
                   </Card>
 
-                  <Card className="space-y-5 border-[rgba(56,189,248,0.14)] bg-[linear-gradient(180deg,rgba(239,246,255,0.88)_0%,rgba(255,255,255,0.98)_22%,rgba(255,255,255,0.98)_100%)] dark:border-[rgba(56,189,248,0.18)] dark:bg-[linear-gradient(180deg,rgba(12,74,110,0.26)_0%,rgba(15,23,42,0.96)_24%,rgba(15,23,42,0.96)_100%)]">
-                    <div className="flex flex-col gap-4 border-b border-border-soft pb-5 md:flex-row md:items-start md:justify-between">
+                  <Card className="mt-5 space-y-5 rounded-[28px] border border-[#E9D5FF] bg-gradient-to-b from-[#FDF7FF] via-white to-white p-4 dark:border-white/10 dark:from-[#2A123D] dark:via-[#231735] dark:to-[#1E293B] sm:p-5">
+                    <div className="flex flex-col gap-4 border-b border-[#E9D5FF] pb-5 md:flex-row md:items-start md:justify-between dark:border-white/10">
                       <div className="flex items-center gap-3">
-                        <Sparkles className="h-6 w-6 text-[rgb(14,165,233)]" />
+                        <Sparkles className="h-6 w-6 text-[#A855F7]" />
                         <div>
                           <h3 className="text-xl font-semibold">AI Extracted Response</h3>
                           <p className="text-sm text-muted-foreground">Editable underwriting responses captured against this inquiry.</p>
                         </div>
                       </div>
-                      {missingQuoteDetails.length ? (
-                        <Button type="button" variant="secondary" className="bg-white dark:bg-[#1E293B]" onClick={handleMakeDraft}>
-                          <MailPlus className="h-4 w-4" />
-                          Request a Draft
-                        </Button>
-                      ) : null}
+                      <div className="flex flex-wrap items-center gap-2 md:justify-end">
+                        {missingQuoteDetails.length ? (
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            className="whitespace-nowrap border-[#E9D5FF] bg-white text-[#7E22CE] hover:bg-[#FDF4FF] dark:border-white/10 dark:bg-[#1E293B] dark:text-[#E9D5FF]"
+                            onClick={handleMakeDraft}
+                          >
+                            <MailPlus className="h-4 w-4" />
+                            Request a Draft
+                          </Button>
+                        ) : null}
+                        <div className="inline-flex items-center gap-1 rounded-full border border-[#E9D5FF] bg-white/90 p-1 shadow-[0_8px_22px_rgba(168,85,247,0.08)] dark:border-white/10 dark:bg-[#241533]/90">
+                          <Button
+                            type="button"
+                            variant={aiView === 'card' ? 'ai' : 'ghost'}
+                            size="sm"
+                            className={aiView === 'card' ? 'h-9 w-9 rounded-full px-0' : 'h-9 w-9 rounded-full px-0 text-[#A855F7] hover:bg-[#F5E8FF] hover:text-[#7E22CE] dark:text-[#E9D5FF] dark:hover:bg-white/10'}
+                            onClick={() => setAiView('card')}
+                            aria-label="Card view"
+                            title="Card view"
+                          >
+                            <LayoutGrid className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            type="button"
+                            variant={aiView === 'table' ? 'ai' : 'ghost'}
+                            size="sm"
+                            className={aiView === 'table' ? 'h-9 w-9 rounded-full px-0' : 'h-9 w-9 rounded-full px-0 text-[#A855F7] hover:bg-[#F5E8FF] hover:text-[#7E22CE] dark:text-[#E9D5FF] dark:hover:bg-white/10'}
+                            onClick={() => setAiView('table')}
+                            aria-label="Table view"
+                            title="Table view"
+                          >
+                            <Rows3 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
                     </div>
 
-                    <div className="rounded-[22px] border border-border-soft bg-white px-5 py-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)] dark:bg-slate-950/70">
+                    <div className="rounded-[22px] border border-[#E9D5FF] bg-[linear-gradient(180deg,rgba(255,255,255,0.95)_0%,rgba(253,247,255,0.98)_100%)] px-5 py-4 shadow-[0_10px_26px_rgba(168,85,247,0.08)] dark:border-[#6D28D9]/30 dark:bg-[linear-gradient(180deg,rgba(42,18,61,0.96)_0%,rgba(30,41,59,0.94)_100%)]">
                       <p className="text-[12px] font-bold uppercase tracking-[0.16em] text-muted-foreground">AI Generated Summary</p>
                       <p className="mt-3 text-sm leading-7 text-foreground/90">
                         {inquiry.summary || 'No AI generated summary is available for this inquiry yet.'}
@@ -1006,15 +1283,21 @@ export function InquiryWorkspacePage() {
                         <Button
                           key={filter.label}
                           type="button"
-                          variant={aiCategory === filter.label ? 'primary' : 'secondary'}
+                          variant={aiCategory === filter.label ? 'ai' : 'secondary'}
                           size="sm"
-                          className="rounded-full"
+                          className={
+                            aiCategory === filter.label
+                              ? 'rounded-full'
+                              : 'rounded-full border-[#E9D5FF] bg-white/90 text-[#7E22CE] hover:bg-[#FDF4FF] dark:border-white/10 dark:bg-[#241533]/85 dark:text-[#E9D5FF] dark:hover:bg-white/10'
+                          }
                           onClick={() => setAiCategory(filter.label)}
                         >
                           {filter.label}
                           <span
                             className={`rounded-full px-1.5 py-0.5 text-[11px] ${
-                              aiCategory === filter.label ? 'bg-white/20 text-white' : 'bg-surface text-muted-foreground'
+                              aiCategory === filter.label
+                                ? 'bg-white/20 text-white'
+                                : 'bg-[#F5E8FF] text-[#7E22CE] dark:bg-white/10 dark:text-[#E9D5FF]'
                             }`}
                           >
                             {filter.count}
@@ -1046,14 +1329,99 @@ export function InquiryWorkspacePage() {
                           No AI extracted responses match the selected category filter right now.
                         </p>
                       </Card>
+                    ) : aiView === 'card' ? (
+                      <div
+                        className={`grid items-stretch gap-3 ${
+                          emailPanelMode === 'expanded'
+                            ? 'md:grid-cols-1 xl:grid-cols-2'
+                            : 'md:grid-cols-2 2xl:grid-cols-3'
+                        }`}
+                      >
+                        {visibleQuoteDetails.map((detail) => {
+                          const draftValue = quoteDetailDrafts[detail.id] ?? detail.response ?? ''
+                          const dirty = draftValue !== (detail.response ?? '')
+                          const saveState = quoteDetailSaveState[detail.id]
+                          const highlighted = draftValue.trim().toLowerCase() === 'no information provided'
+
+                          return (
+                            <div key={detail.id} className="relative z-0 h-full hover:z-30 focus-within:z-30">
+                              <Card
+                                variant="interactive"
+                                className={`overflow-visible flex h-full flex-col gap-3 rounded-[20px] border px-3.5 py-3.5 shadow-[0_10px_24px_rgba(168,85,247,0.08)] transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_14px_30px_rgba(168,85,247,0.12)] dark:shadow-[0_10px_24px_rgba(2,6,23,0.22)] dark:hover:shadow-[0_14px_30px_rgba(76,29,149,0.26)] ${
+                                  highlighted
+                                    ? 'border-[#F3C4CF] bg-[#FFF1F4] dark:border-rose-400/25 dark:bg-rose-950/30'
+                                    : 'border-[#E9D5FF] bg-[linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(250,245,255,0.96)_100%)] dark:border-white/10 dark:bg-[linear-gradient(180deg,rgba(44,26,63,0.92)_0%,rgba(30,41,59,0.96)_100%)]'
+                                }`}
+                              >
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="min-w-0 flex-1">
+                                    <div className="min-w-0">
+                                      <div className="flex items-start gap-2">
+                                        <p className={`line-clamp-2 text-sm font-semibold leading-5 ${highlighted ? 'text-rose-700 dark:text-rose-300' : 'text-foreground'}`}>
+                                          {detail.name}
+                                        </p>
+                                        {detail.evidence ? <EvidenceTooltip evidence={detail.evidence} compact /> : null}
+                                      </div>
+                                      <div className="mt-1 flex flex-wrap gap-2">
+                                        <span className="inline-flex items-center rounded-full border border-[#E9D5FF] bg-[#F9F1FF] px-2 py-0.5 text-[10px] font-semibold text-[#7E22CE] dark:border-white/10 dark:bg-white/10 dark:text-[#E9D5FF]">
+                                          {detail.businessRuleCategory}
+                                        </span>
+                                        {dirty ? <span className="inline-flex items-center rounded-full border border-[#D8B4FE] bg-[#F5E8FF] px-2 py-0.5 text-[10px] font-semibold text-[#7E22CE] dark:border-white/10 dark:bg-white/10 dark:text-[#E9D5FF]">Unsaved</span> : null}
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div className="flex shrink-0 flex-col items-center gap-1">
+                                    <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#A855F7] dark:text-[#E9D5FF]">
+                                      Confidence
+                                    </span>
+                                    {detail.confidenceScore !== undefined ? (
+                                      <ConfidenceScoreIndicator score={detail.confidenceScore} />
+                                    ) : null}
+                                  </div>
+                                </div>
+
+                                <div className="space-y-1">
+                                  <textarea
+                                    className={`min-h-[54px] w-full resize-y rounded-[14px] border px-3 py-2 text-sm leading-5 outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10 ${
+                                      highlighted
+                                        ? 'border-[#F3C4CF] bg-[#FFF1F4] text-rose-700 placeholder:text-rose-400 focus:border-rose-300 focus:ring-rose-100 dark:border-rose-400/25 dark:bg-rose-950/25 dark:text-rose-200'
+                                        : 'border-[#E9D5FF] bg-[#FCF7FF] text-[#4C1D95] placeholder:text-[#A78BFA] focus:border-[#C084FC] focus:ring-[#E9D5FF] dark:border-white/10 dark:bg-[#261738] dark:text-[#F3E8FF] dark:placeholder:text-[#C4B5FD]'
+                                    }`}
+                                    value={draftValue}
+                                    onChange={(event) => handleQuoteDetailDraftChange(detail.id, event.target.value)}
+                                  />
+                                  <div className="min-h-[12px] text-xs leading-4">
+                                    {saveState?.error ? <span className="text-danger">{saveState.error}</span> : null}
+                                    {!saveState?.error && saveState?.success ? <span className="text-success">{saveState.success}</span> : null}
+                                  </div>
+                                </div>
+
+                                <div className="mt-auto flex items-center justify-end pt-0">
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    className="rounded-full"
+                                    disabled={!dirty || saveState?.saving}
+                                    onClick={() => void handleSaveQuoteDetailResponse(detail.id)}
+                                  >
+                                    <Save className="h-4 w-4" />
+                                    {saveState?.saving ? 'Saving...' : 'Save'}
+                                  </Button>
+                                </div>
+                              </Card>
+                            </div>
+                          )
+                        })}
+                      </div>
                     ) : (
-                      <div className="overflow-hidden rounded-[24px] border border-border-soft bg-white dark:bg-slate-950/92">
+                      <div className="overflow-hidden rounded-[24px] border border-[#E9D5FF] bg-white/96 shadow-[0_10px_26px_rgba(168,85,247,0.08)] dark:border-white/10 dark:bg-[#20152E]/88">
                         <div className="overflow-x-auto">
                           <table className="min-w-[1180px] w-full border-collapse">
-                            <thead className="bg-white dark:bg-slate-950/96">
+                            <thead className="bg-[#FCF7FF] dark:bg-[#261738]">
                               <tr>
                                 <th className="px-4 py-3 text-left text-[12px] font-bold uppercase tracking-[0.08em] text-muted-foreground">Quote Detail</th>
                                 <th className="px-4 py-3 text-left text-[12px] font-bold uppercase tracking-[0.08em] text-muted-foreground">Category</th>
+                                <th className="px-4 py-3 text-left text-[12px] font-bold uppercase tracking-[0.08em] text-muted-foreground">Confidence</th>
                                 <th className="px-4 py-3 text-left text-[12px] font-bold uppercase tracking-[0.08em] text-muted-foreground">Response</th>
                                 <th className="px-4 py-3 text-left text-[12px] font-bold uppercase tracking-[0.08em] text-muted-foreground">Source</th>
                                 <th className="px-4 py-3 text-left text-[12px] font-bold uppercase tracking-[0.08em] text-muted-foreground">Action</th>
@@ -1067,20 +1435,31 @@ export function InquiryWorkspacePage() {
                                 const highlighted = draftValue.trim().toLowerCase() === 'no information provided'
 
                                 return (
-                                  <tr key={detail.id} className="border-b border-border-soft/80 bg-surface align-top transition duration-150 hover:bg-primary/5">
+                                  <tr key={detail.id} className="border-b border-[#F3E8FF] bg-white/90 align-top transition duration-150 hover:bg-[#FDF4FF] dark:border-white/10 dark:bg-transparent dark:hover:bg-white/5">
                                     <td className="px-4 py-3">
                                       <div className="space-y-0.5">
-                                        <p className={`text-sm font-semibold ${highlighted ? 'text-red-600' : 'text-foreground'}`}>{detail.name}</p>
+                                        <p className={`text-sm font-semibold ${highlighted ? 'text-rose-700 dark:text-rose-300' : 'text-foreground'}`}>{detail.name}</p>
                                         <Badge variant="approved">{detail.status}</Badge>
                                       </div>
                                     </td>
-                                    <td className="px-4 py-3"><Badge variant="neutral">{detail.businessRuleCategory}</Badge></td>
+                                    <td className="px-4 py-3">
+                                      <span className="inline-flex items-center rounded-full border border-[#E9D5FF] bg-[#F9F1FF] px-2.5 py-1 text-[12px] font-semibold text-[#7E22CE] dark:border-white/10 dark:bg-white/10 dark:text-[#E9D5FF]">
+                                        {detail.businessRuleCategory}
+                                      </span>
+                                    </td>
+                                    <td className="px-4 py-3">
+                                      {detail.confidenceScore !== undefined ? (
+                                        <ConfidenceScoreIndicator score={detail.confidenceScore} />
+                                      ) : (
+                                        <span className="text-xs text-muted-foreground">N/A</span>
+                                      )}
+                                    </td>
                                     <td className="px-4 py-3">
                                       <textarea
-                                        className={`min-h-[72px] w-full min-w-[240px] rounded-[16px] border bg-surface px-3 py-2 text-sm leading-5 outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10 ${
+                                        className={`min-h-[72px] w-full min-w-[240px] rounded-[16px] border px-3 py-2 text-sm leading-5 outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10 ${
                                           highlighted
-                                            ? 'border-red-300 bg-white text-red-600 placeholder:text-red-400 focus:border-red-400 focus:ring-red-200'
-                                            : 'border-border text-foreground'
+                                            ? 'border-[#F3C4CF] bg-[#FFF1F4] text-rose-700 placeholder:text-rose-400 focus:border-rose-300 focus:ring-rose-100 dark:border-rose-400/25 dark:bg-rose-950/25 dark:text-rose-200'
+                                            : 'border-[#E9D5FF] bg-[#FCF7FF] text-[#4C1D95] placeholder:text-[#A78BFA] focus:border-[#C084FC] focus:ring-[#E9D5FF] dark:border-white/10 dark:bg-[#261738] dark:text-[#F3E8FF] dark:placeholder:text-[#C4B5FD]'
                                         }`}
                                         value={draftValue}
                                         onChange={(event) => handleQuoteDetailDraftChange(detail.id, event.target.value)}
@@ -1153,6 +1532,7 @@ export function InquiryWorkspacePage() {
                     </div>
 
                     {isComposerOpen ? (
+                      <div ref={composerSectionRef}>
                       <Card className="space-y-4 border border-primary/12 bg-[linear-gradient(180deg,rgba(37,99,235,0.06)_0%,rgba(255,255,255,0.6)_100%)] dark:bg-[linear-gradient(180deg,rgba(37,99,235,0.08)_0%,rgba(15,23,42,0.4)_100%)]">
                         <div className="flex items-center justify-between gap-3">
                           <div>
@@ -1220,6 +1600,7 @@ export function InquiryWorkspacePage() {
                           </Button>
                         </div>
                       </Card>
+                      </div>
                     ) : null}
 
                     {isHydratingSupplementary ? (
@@ -1366,7 +1747,7 @@ export function InquiryWorkspacePage() {
                 <ViewToggle value={aiView} onChange={setAiView} />
               </div>
             </div>
-            <div className="rounded-[22px] border border-border-soft bg-surface-soft/70 px-5 py-4">
+            <div className="rounded-[22px] border border-border-soft bg-surface-soft/70 px-5 py-4 dark:border-white/10 dark:bg-[linear-gradient(180deg,rgba(35,23,53,0.96)_0%,rgba(30,41,59,0.92)_100%)]">
               <p className="text-[12px] font-bold uppercase tracking-[0.16em] text-muted-foreground">AI Generated Summary</p>
               <p className="mt-3 text-sm leading-7 text-foreground/90">
                 {inquiry.summary || 'No AI generated summary is available for this inquiry yet.'}
@@ -1572,7 +1953,7 @@ export function InquiryWorkspacePage() {
                   <p className="text-sm text-muted-foreground">Operational consequences and risk-control actions available for this inquiry.</p>
                 </div>
               </div>
-              <ViewToggle value={riskView} onChange={setRiskView} />
+              <Badge variant="neutral">{groupedConsequenceResults.length} rule groups</Badge>
             </div>
             {isHydratingSupplementary ? (
               <InlineSectionLoading
@@ -1587,103 +1968,163 @@ export function InquiryWorkspacePage() {
                 <h4 className="mt-4 text-lg font-semibold">No action records found</h4>
                 <p className="mt-2 text-sm text-muted-foreground">No consequence or risk action records are available for this inquiry yet.</p>
               </Card>
-            ) : riskView === 'card' ? (
-              <div className="grid gap-4 xl:grid-cols-3">
-                {inquiry.consequenceResults.map((result) => (
-                  <Card key={result.id} variant="interactive" className="space-y-4 rounded-[24px] border border-border-soft bg-white shadow-[0_10px_24px_rgba(15,23,42,0.06)] dark:bg-slate-950/95 dark:shadow-[0_12px_28px_rgba(2,6,23,0.22)]">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="space-y-2">
-                        <p className="text-[12px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
-                          Result Record
-                        </p>
-                        <h4 className="text-lg font-semibold">{result.name}</h4>
-                      </div>
-                      <Badge variant="info">{result.action}</Badge>
-                    </div>
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <RelatedCard label="Consequence" value={result.consequenceName} />
-                      <RelatedCard label="Type" value={result.type} />
-                    </div>
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="text-[12px] text-muted-foreground">
-                        {canApplyConsequence(result.type, result.action)
-                          ? appliedConsequenceIds.includes(result.id)
-                            ? 'Applied to the inquiry.'
-                            : result.type === 'Risk'
-                              ? 'Updates the inquiry risk score by 10.'
-                              : 'Updates the inquiry status to match this action.'
-                          : `Recorded on ${formatDate(result.createdOn)}`}
-                      </div>
-                      {canApplyConsequence(result.type, result.action) ? (
-                        appliedConsequenceIds.includes(result.id) ? (
-                          <Badge variant="approved">Applied</Badge>
-                        ) : (
-                          <Button
-                            type="button"
-                            variant="primary"
-                            size="sm"
-                            className="rounded-full"
-                            disabled={pendingAction === result.id}
-                            onClick={() => void handleApplyConsequence(result.id)}
-                          >
-                            {pendingAction === result.id ? 'Applying...' : 'Apply'}
-                          </Button>
-                        )
-                      ) : null}
-                    </div>
-                    <div className="rounded-[18px] border border-border-soft bg-surface-soft/80 px-4 py-3 text-[12px] text-muted-foreground">
-                      Recorded on {formatDate(result.createdOn)}
-                    </div>
-                  </Card>
-                ))}
-              </div>
             ) : (
-              <div className="overflow-hidden rounded-[24px] border border-border-soft">
-                <div className="overflow-x-auto">
-                  <table className="min-w-full border-collapse">
-                    <thead className="bg-surface-muted/80">
-                      <tr>
-                        <th className="px-4 py-4 text-left text-[12px] font-bold uppercase tracking-[0.08em] text-muted-foreground">Name</th>
-                        <th className="px-4 py-4 text-left text-[12px] font-bold uppercase tracking-[0.08em] text-muted-foreground">Consequence</th>
-                        <th className="px-4 py-4 text-left text-[12px] font-bold uppercase tracking-[0.08em] text-muted-foreground">Type</th>
-                        <th className="px-4 py-4 text-left text-[12px] font-bold uppercase tracking-[0.08em] text-muted-foreground">Action</th>
-                        <th className="px-4 py-4 text-left text-[12px] font-bold uppercase tracking-[0.08em] text-muted-foreground">Apply</th>
-                        <th className="px-4 py-4 text-left text-[12px] font-bold uppercase tracking-[0.08em] text-muted-foreground">Created</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {inquiry.consequenceResults.map((result) => (
-                        <tr key={result.id} className="border-b border-border-soft/80 bg-surface transition duration-150 hover:bg-primary/5">
-                          <td className="px-4 py-4 text-sm font-semibold">{result.name}</td>
-                          <td className="px-4 py-4 text-sm text-muted-foreground">{result.consequenceName}</td>
-                          <td className="px-4 py-4"><Badge variant="review">{result.type}</Badge></td>
-                          <td className="px-4 py-4"><Badge variant="info">{result.action}</Badge></td>
-                          <td className="px-4 py-4">
-                            {canApplyConsequence(result.type, result.action) ? (
-                              appliedConsequenceIds.includes(result.id) ? (
-                                <Badge variant="approved">Applied</Badge>
-                              ) : (
-                                <Button
-                                  type="button"
-                                  variant="primary"
-                                  size="sm"
-                                  className="rounded-full"
-                                  disabled={pendingAction === result.id}
-                                  onClick={() => void handleApplyConsequence(result.id)}
-                                >
-                                  {pendingAction === result.id ? 'Applying...' : 'Apply'}
-                                </Button>
-                              )
-                            ) : (
-                              <span className="text-[12px] text-muted-foreground">N/A</span>
-                            )}
-                          </td>
-                          <td className="px-4 py-4 text-sm text-muted-foreground">{formatDate(result.createdOn)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+              <div className="space-y-4">
+                {groupedConsequenceResults.map((group) => {
+                  const expanded = expandedActionGroups[group.ruleName] ?? false
+
+                  return (
+                    <Card key={group.ruleName} className="overflow-hidden rounded-[24px] border border-border-soft p-0">
+                      <button
+                        type="button"
+                        className="flex w-full items-start justify-between gap-4 px-5 py-4 text-left transition hover:bg-primary/4"
+                        onClick={() =>
+                          setExpandedActionGroups((current) => ({
+                            ...current,
+                            [group.ruleName]: !expanded,
+                          }))
+                        }
+                      >
+                        <div className="min-w-0 space-y-2">
+                          <p className="text-[12px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
+                            Business Rule
+                          </p>
+                          <h4 className="text-base font-semibold leading-7">{group.ruleName}</h4>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-3">
+                          <Badge variant="neutral">{group.results.length} actions</Badge>
+                          {group.actionableCount ? <Badge variant="info">{group.actionableCount} apply</Badge> : null}
+                          {expanded ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+                        </div>
+                      </button>
+
+                      {expanded ? (
+                        <div className="border-t border-border-soft px-5 py-5">
+                          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                            {group.results.map((result) => (
+                              <Card
+                                key={result.id}
+                                variant="interactive"
+                                className="flex h-full flex-col gap-3 rounded-[20px] border border-border-soft bg-white px-4 py-4 shadow-[0_8px_20px_rgba(15,23,42,0.05)] dark:bg-slate-950/90 dark:shadow-[0_10px_22px_rgba(2,6,23,0.18)]"
+                              >
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="min-w-0 space-y-1">
+                                    <p className="line-clamp-2 text-sm font-semibold leading-6">{result.consequenceName}</p>
+                                    <div className="flex flex-wrap gap-2">
+                                      <Badge variant="review" className="px-2 py-0.5 text-[10px]">
+                                        {result.type}
+                                      </Badge>
+                                      <Badge variant="info" className="max-w-[180px] px-2 py-0.5 text-[10px]">
+                                        <span className="truncate">{result.action}</span>
+                                      </Badge>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {result.type === 'Risk' && result.action === 'Update Risk Score' ? (
+                                  <div className="rounded-[16px] border border-border-soft bg-surface-soft/70 px-3.5 py-3">
+                                    <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Risk Score</p>
+                                    <p className="mt-1 text-sm font-semibold">{String(result.riskScore ?? 0)}</p>
+                                  </div>
+                                ) : null}
+
+                                {result.type === 'Risk' && result.action === 'Update Risk Summary' ? (
+                                  <div className="rounded-[16px] border border-border-soft bg-surface-soft/70 px-3.5 py-3">
+                                    <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Risk Summary</p>
+                                    <p className="mt-1 text-sm leading-6 text-foreground/90">
+                                      {result.riskSummary?.trim() || 'No risk summary configured'}
+                                    </p>
+                                  </div>
+                                ) : null}
+
+                                {result.consequenceId &&
+                                isConsequenceTemplateResult(result.type, result.action) ? (
+                                  <div className="rounded-[16px] border border-border-soft bg-surface-soft/70 px-3.5 py-3">
+                                    <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
+                                      {result.type === 'Email' || result.action === 'Email'
+                                        ? 'Email Template'
+                                        : 'Document Template'}
+                                    </p>
+                                    <div className="mt-3 flex flex-wrap gap-2.5">
+                                      <button
+                                        type="button"
+                                        className="inline-flex max-w-full items-center gap-2 rounded-full border border-border-soft bg-white px-3 py-2 text-left transition hover:border-primary/25 hover:bg-primary/5 dark:bg-slate-950/70"
+                                        onClick={() =>
+                                          void handleOpenConsequenceTemplate(
+                                            result.consequenceId!,
+                                            result.type === 'Email' || result.action === 'Email'
+                                              ? 'email'
+                                              : 'document',
+                                          )
+                                        }
+                                      >
+                                        <span
+                                          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
+                                            result.type === 'Email' || result.action === 'Email'
+                                              ? 'bg-primary/10 text-primary'
+                                              : 'bg-danger/10 text-danger'
+                                          }`}
+                                        >
+                                          {result.type === 'Email' || result.action === 'Email' ? (
+                                            <Mail className="h-4 w-4" />
+                                          ) : (
+                                            <FileText className="h-4 w-4" />
+                                          )}
+                                        </span>
+                                        <div className="min-w-0">
+                                          <p className="truncate text-sm font-semibold">
+                                            {result.type === 'Email' || result.action === 'Email'
+                                              ? result.emailTemplateName || 'Open email template'
+                                              : result.documentTemplateName || 'Open document template'}
+                                          </p>
+                                          <p className="text-[11px] text-muted-foreground">Click to preview</p>
+                                        </div>
+                                      </button>
+                                    </div>
+                                  </div>
+                                ) : null}
+
+                                <div className="rounded-[16px] border border-border-soft bg-surface-soft/65 px-3.5 py-3 text-[12px] leading-6 text-muted-foreground">
+                                  {canApplyConsequence(result.type, result.action)
+                                    ? isConsequenceApplied(result.actionStatusValue) || appliedConsequenceIds.includes(result.id)
+                                      ? 'Applied to the inquiry.'
+                                      : result.type === 'Risk' && result.action === 'Update Risk Score'
+                                        ? `Adds ${result.riskScore ?? 0} to the inquiry risk score.`
+                                        : result.type === 'Risk' && result.action === 'Update Risk Summary'
+                                          ? 'Appends the configured risk summary to the inquiry.'
+                                        : 'Updates the inquiry status to match this action.'
+                                    : 'Outcome recorded for reference only.'}
+                                </div>
+
+                                <div className="mt-auto flex items-center justify-between gap-3">
+                                  <span className="text-[12px] text-muted-foreground">Recorded on {formatDate(result.createdOn)}</span>
+                                  {canApplyConsequence(result.type, result.action) ? (
+                                    isConsequenceApplied(result.actionStatusValue) || appliedConsequenceIds.includes(result.id) ? (
+                                      <Button type="button" variant="secondary" size="sm" className="rounded-full bg-white" disabled>
+                                        Applied
+                                      </Button>
+                                    ) : (
+                                      <Button
+                                        type="button"
+                                        variant="primary"
+                                        size="sm"
+                                        className="rounded-full"
+                                        disabled={pendingAction === result.id}
+                                        onClick={() => void handleApplyConsequence(result.id)}
+                                      >
+                                        {pendingAction === result.id ? 'Applying...' : 'Apply'}
+                                      </Button>
+                                    )
+                                  ) : null}
+                                </div>
+                              </Card>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+                    </Card>
+                  )
+                })}
               </div>
             )}
           </Card>
@@ -1736,6 +2177,7 @@ export function InquiryWorkspacePage() {
                   <table className="min-w-full border-collapse">
                     <thead className="bg-surface-muted/80">
                       <tr>
+                        <th className="px-4 py-4 text-left text-[12px] font-bold uppercase tracking-[0.08em] text-muted-foreground">Version</th>
                         <th className="px-4 py-4 text-left text-[12px] font-bold uppercase tracking-[0.08em] text-muted-foreground">Quote</th>
                         <th className="px-4 py-4 text-left text-[12px] font-bold uppercase tracking-[0.08em] text-muted-foreground">Plan</th>
                         <th className="px-4 py-4 text-left text-[12px] font-bold uppercase tracking-[0.08em] text-muted-foreground">Premium</th>
@@ -1746,18 +2188,18 @@ export function InquiryWorkspacePage() {
                     <tbody>
                       {inquiry.quotes.map((quote) => (
                         <tr key={quote.id} className="border-b border-border-soft/80 bg-surface transition duration-150 hover:bg-primary/5">
+                          <td className="px-4 py-4 text-sm font-semibold text-foreground/85">
+                            {quoteVersionById[quote.id] ?? '1.0'}
+                          </td>
                           <td className="px-4 py-4">
                             <div className="space-y-1">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <Link to={`/quotes/${quote.id}/edit`} className="font-semibold text-primary transition hover:text-primary/80 hover:underline">
-                                  {quote.name}
-                                </Link>
-                                {isActiveQuoteVersion(quote) ? (
-                                  <span className="inline-flex items-center rounded-full bg-primary px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.08em] text-white">
-                                    Version
-                                  </span>
-                                ) : null}
-                              </div>
+                              <Link
+                                to={`/quotes/${quote.id}/edit`}
+                                state={{ fromInquiryId: inquiry.id }}
+                                className="font-semibold text-primary transition hover:text-primary/80 hover:underline"
+                              >
+                                {quote.name}
+                              </Link>
                               <p className="text-[12px] text-muted-foreground line-clamp-2">{quote.aiSummary}</p>
                             </div>
                           </td>
@@ -1785,7 +2227,9 @@ export function InquiryWorkspacePage() {
                       <MetricCard label="Premium" value={formatCurrency(quote.totalPremium)} />
                     </div>
                     <Button variant="secondary" asChild>
-                      <Link to={`/quotes/${quote.id}/edit`}>Open Quote Workbench</Link>
+                      <Link to={`/quotes/${quote.id}/edit`} state={{ fromInquiryId: inquiry.id }}>
+                        Open Quote Workbench
+                      </Link>
                     </Button>
                   </Card>
                 ))}
@@ -2015,6 +2459,104 @@ export function InquiryWorkspacePage() {
         </div>
       ) : null}
 
+      {(templatePreview || templatePreviewBusy || templatePreviewError) ? (
+        <div
+          className="fixed inset-0 z-[70] !mt-0 flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm"
+          onClick={() => {
+            if (templatePreviewBusy) return
+            setTemplatePreview(null)
+            setTemplatePreviewError(null)
+          }}
+        >
+          <div
+            className="max-h-[90vh] w-full max-w-[860px] overflow-hidden rounded-[30px] border border-border-soft bg-surface shadow-[0_40px_90px_rgba(15,23,42,0.28)]"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-4 border-b border-border-soft px-6 py-5">
+              <div className="flex items-start gap-3">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                  {templatePreview?.kind === 'document' ? (
+                    <FileText className="h-5 w-5" />
+                  ) : (
+                    <Mail className="h-5 w-5" />
+                  )}
+                </div>
+                <div>
+                  <p className="text-[12px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
+                    {templatePreview?.kind === 'document' ? 'Document Template' : 'Email Template'}
+                  </p>
+                  <h3 className="mt-1 text-2xl font-semibold">
+                    {templatePreview?.name || 'Loading template preview'}
+                  </h3>
+                  {templatePreview?.subject ? (
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Subject: {templatePreview.subject}
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={() => {
+                  if (templatePreviewBusy) return
+                  setTemplatePreview(null)
+                  setTemplatePreviewError(null)
+                }}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+
+            <div className="max-h-[calc(90vh-92px)] overflow-y-auto px-6 py-5">
+              {templatePreviewBusy ? (
+                <div className="flex min-h-[260px] items-center justify-center">
+                  <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                    <LoaderCircle className="h-5 w-5 animate-spin text-primary" />
+                    Loading linked template...
+                  </div>
+                </div>
+              ) : templatePreviewError ? (
+                <Card className="rounded-[22px] border border-danger/20 bg-danger/5">
+                  <p className="font-semibold text-danger">{templatePreviewError}</p>
+                </Card>
+              ) : templatePreview ? (
+                <div className="space-y-5">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="approved">{templatePreview.status}</Badge>
+                    {templatePreview.category ? <Badge variant="review">{templatePreview.category}</Badge> : null}
+                  </div>
+                  {templatePreview.description ? (
+                    <Card className="rounded-[22px] border border-border-soft bg-surface-soft/70">
+                      <p className="text-[12px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
+                        Description
+                      </p>
+                      <p className="mt-2 text-sm leading-7 text-foreground/90">
+                        {templatePreview.description}
+                      </p>
+                    </Card>
+                  ) : null}
+                  <Card className="rounded-[22px] border border-border-soft bg-white dark:bg-slate-950/85">
+                    <p className="text-[12px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
+                      Preview
+                    </p>
+                    <div
+                      className="prose prose-sm mt-4 max-w-none text-foreground dark:prose-invert"
+                      dangerouslySetInnerHTML={{
+                        __html:
+                          templatePreview.content?.trim() ||
+                          '<p>No template content available.</p>',
+                      }}
+                    />
+                  </Card>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
     </div>
   )
 }
@@ -2134,7 +2676,7 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 
 function ReadOnlyValue({ value }: { value: string }) {
   return (
-    <div className="min-h-[46px] rounded-[16px] border border-border-soft bg-surface-soft/75 px-4 py-3 text-sm font-medium text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.35)]">
+    <div className="form-field-surface min-h-[46px] rounded-[16px] border border-border-soft px-4 py-3 text-sm font-medium text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.35)]">
       {value || 'Not provided'}
     </div>
   )
@@ -2142,7 +2684,7 @@ function ReadOnlyValue({ value }: { value: string }) {
 
 function ReadOnlyText({ value }: { value: string }) {
   return (
-    <div className="min-h-28 whitespace-pre-wrap rounded-[16px] border border-border-soft bg-surface-soft/75 px-4 py-3 text-sm leading-7 text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.35)]">
+    <div className="form-field-surface min-h-28 whitespace-pre-wrap rounded-[16px] border border-border-soft px-4 py-3 text-sm leading-7 text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.35)]">
       {value || 'Not provided'}
     </div>
   )
@@ -2177,15 +2719,6 @@ function SelectField({
   )
 }
 
-function RelatedCard({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-2xl border border-border-soft bg-surface-soft p-4">
-      <p className="text-[12px] font-bold uppercase tracking-[0.16em] text-muted-foreground">{label}</p>
-      <p className="mt-2 text-sm font-medium">{value}</p>
-    </div>
-  )
-}
-
 function InlineSectionLoading({ title, description }: { title: string; description: string }) {
   return (
     <Card className="border border-border-soft bg-surface-soft/70">
@@ -2207,6 +2740,17 @@ function InlineSectionLoading({ title, description }: { title: string; descripti
         </div>
       </div>
     </Card>
+  )
+}
+
+function isConsequenceTemplateResult(type: string, action: string) {
+  const normalizedType = type.trim().toLowerCase()
+  const normalizedAction = action.trim().toLowerCase()
+  return (
+    normalizedType === 'document' ||
+    normalizedType === 'email' ||
+    normalizedAction === 'document' ||
+    normalizedAction === 'email'
   )
 }
 
@@ -2271,21 +2815,15 @@ function toDisposition(action: string) {
   return null
 }
 
-function inquiryStatusValueForAction(action: string) {
-  if (action === 'Decline') return 1
-  if (action === 'Refer to Underwriter') return 2
-  if (action === 'Escalate to Head of Aviation') return 3
-  if (action === 'Property or Reinsurance Team') return 4
-  return 0
-}
+const APPLIED_ACTION_STATUS_VALUE = 751820001
 
 function inquiryStatusValueForDisposition(
   disposition: 'Decline' | 'RefertoUnderwriter' | 'EscalatetoHeadofAviation' | 'PropertyorReinsuranceTeam',
 ) {
-  if (disposition === 'Decline') return 1
-  if (disposition === 'RefertoUnderwriter') return 2
-  if (disposition === 'EscalatetoHeadofAviation') return 3
-  if (disposition === 'PropertyorReinsuranceTeam') return 4
+  if (disposition === 'Decline') return 751820011
+  if (disposition === 'RefertoUnderwriter') return 751820010
+  if (disposition === 'EscalatetoHeadofAviation') return 751820013
+  if (disposition === 'PropertyorReinsuranceTeam') return 751820014
   return 0
 }
 
@@ -2299,12 +2837,8 @@ function inquiryStatusLabelForDisposition(
   return 'Draft'
 }
 
-function dispositionForInquiryStatusValue(value: number) {
-  if (value === 1) return 'Decline' as const
-  if (value === 2) return 'RefertoUnderwriter' as const
-  if (value === 3) return 'EscalatetoHeadofAviation' as const
-  if (value === 4) return 'PropertyorReinsuranceTeam' as const
-  return null
+function isConsequenceApplied(value?: number) {
+  return value === APPLIED_ACTION_STATUS_VALUE
 }
 
 function findOptionLabel(
@@ -2355,10 +2889,6 @@ function attachmentAccent(mimeType?: string) {
   }
 }
 
-function isActiveQuoteVersion(quote: InquiryDetail['quotes'][number]) {
-  return quote.status.trim().toLowerCase() === 'active'
-}
-
 function EvidenceTooltip({ evidence, compact = false }: { evidence: string; compact?: boolean }) {
   const preview = evidence
     .replace(/Document Name:\s*/gi, '')
@@ -2366,29 +2896,62 @@ function EvidenceTooltip({ evidence, compact = false }: { evidence: string; comp
     .trim()
   const [open, setOpen] = useState(false)
   const [hovered, setHovered] = useState(false)
+  const [position, setPosition] = useState<{ top: number; left: number } | null>(null)
   const popoverRef = useRef<HTMLDivElement | null>(null)
+  const triggerRef = useRef<HTMLButtonElement | null>(null)
 
   useEffect(() => {
-    if (!open) return
+    if (!open && !hovered) return
+
+    const updatePosition = () => {
+      if (!triggerRef.current) return
+      const rect = triggerRef.current.getBoundingClientRect()
+      const popoverWidth = 380
+      const viewportPadding = 16
+      const left = Math.min(
+        Math.max(viewportPadding, rect.right - popoverWidth),
+        window.innerWidth - popoverWidth - viewportPadding,
+      )
+
+      setPosition({
+        top: rect.bottom + 12,
+        left,
+      })
+    }
 
     const handlePointerDown = (event: MouseEvent) => {
-      if (!popoverRef.current?.contains(event.target as Node)) {
+      const target = event.target as Node
+      if (
+        popoverRef.current?.contains(target) ||
+        triggerRef.current?.contains(target)
+      ) {
+        return
+      }
+      if (!popoverRef.current?.contains(target)) {
         setOpen(false)
       }
     }
 
+    updatePosition()
+    window.addEventListener('resize', updatePosition)
+    window.addEventListener('scroll', updatePosition, true)
     document.addEventListener('mousedown', handlePointerDown)
-    return () => document.removeEventListener('mousedown', handlePointerDown)
-  }, [open])
+    return () => {
+      window.removeEventListener('resize', updatePosition)
+      window.removeEventListener('scroll', updatePosition, true)
+      document.removeEventListener('mousedown', handlePointerDown)
+    }
+  }, [open, hovered])
 
   return (
     <div
       ref={popoverRef}
-      className="relative inline-flex"
+      className={`relative inline-flex ${open || hovered ? 'z-[120]' : 'z-[2]'}`}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => setOpen((current) => !current)}
         onFocus={() => setHovered(true)}
@@ -2399,61 +2962,69 @@ function EvidenceTooltip({ evidence, compact = false }: { evidence: string; comp
       >
         <FileText className={compact ? 'h-3.5 w-3.5' : 'h-4 w-4'} />
       </button>
-      {open || hovered ? (
-        <div className="absolute right-0 top-[calc(100%+0.8rem)] z-40 w-[380px]">
-          <div className="absolute right-5 top-[-10px] h-5 w-5 rotate-45 border-l border-t border-border-soft bg-white shadow-[-6px_-6px_18px_rgba(15,23,42,0.04)] dark:bg-[#102033]" />
-          <div className="overflow-hidden rounded-[24px] border border-border-soft bg-white shadow-[0_26px_55px_rgba(15,23,42,0.18)] dark:bg-[#102033]">
-            <div className="flex items-start justify-between gap-4 border-b border-border-soft bg-white px-4 py-3.5 dark:bg-[#102033]">
-              <div className="flex items-center gap-3">
-                <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-amber-100 text-amber-700 dark:bg-amber-300/15 dark:text-amber-200">
-                  <FileText className="h-4 w-4" />
-                </span>
-                <div>
-                  <p className="text-sm font-semibold text-foreground">Evidence Preview</p>
-                  <p className="text-xs text-muted-foreground">Extracted from document source</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setOpen(false)}
-                className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border-soft bg-white text-muted-foreground transition hover:border-primary/20 hover:text-primary dark:bg-slate-900"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
+      {(open || hovered) && position
+        ? createPortal(
             <div
-              className="relative overflow-hidden rounded-b-[24px] bg-[#fbfaf5] px-5 py-5 dark:bg-[#f8f4ea]"
-              style={{
-                backgroundImage:
-                  'radial-gradient(circle at 20% 20%, rgba(255,255,255,0.7) 0, rgba(255,255,255,0) 22%), radial-gradient(circle at 80% 0%, rgba(0,0,0,0.02) 0, rgba(0,0,0,0) 24%)',
-              }}
+              className="fixed z-[160] w-[380px]"
+              style={{ top: position.top, left: position.left }}
+              onMouseEnter={() => setHovered(true)}
+              onMouseLeave={() => setHovered(false)}
             >
-              <div className="absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-black/10 via-black/5 to-transparent" />
+              <div className="absolute right-5 top-[-10px] h-5 w-5 rotate-45 border-l border-t border-border-soft bg-white shadow-[-6px_-6px_18px_rgba(15,23,42,0.04)] dark:bg-[#102033]" />
+              <div className="overflow-hidden rounded-[24px] border border-border-soft bg-white shadow-[0_26px_55px_rgba(15,23,42,0.18)] dark:bg-[#102033]">
+                <div className="flex items-start justify-between gap-4 border-b border-border-soft bg-white px-4 py-3.5 dark:bg-[#102033]">
+                  <div className="flex items-center gap-3">
+                    <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-amber-100 text-amber-700 dark:bg-amber-300/15 dark:text-amber-200">
+                      <FileText className="h-4 w-4" />
+                    </span>
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">Evidence Preview</p>
+                      <p className="text-xs text-muted-foreground">Extracted from document source</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setOpen(false)}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border-soft bg-white text-muted-foreground transition hover:border-primary/20 hover:text-primary dark:bg-slate-900"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
 
-              <div className="relative text-[13px] leading-6 text-slate-700/40">
-                <p className="blur-[2.3px]">
-                  This Tenancy Agreement is made by and between the parties stated herein, subject to applicable regulations, submitted schedules, and the related supporting documentation reviewed during underwriting.
-                </p>
-              </div>
+                <div
+                  className="relative overflow-hidden rounded-b-[24px] bg-[#fbfaf5] px-5 py-5 dark:bg-[#f8f4ea]"
+                  style={{
+                    backgroundImage:
+                      'radial-gradient(circle at 20% 20%, rgba(255,255,255,0.7) 0, rgba(255,255,255,0) 22%), radial-gradient(circle at 80% 0%, rgba(0,0,0,0.02) 0, rgba(0,0,0,0) 24%)',
+                  }}
+                >
+                  <div className="absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-black/10 via-black/5 to-transparent" />
 
-              <div className="relative mt-5">
-                <div className="absolute inset-y-1 left-0 right-0 rounded-[22px] bg-yellow-200/50 blur-xl" />
-                <div className="absolute inset-y-2 left-2 right-3 rounded-[18px] bg-yellow-100/80" />
-                <div className="relative px-1.5 font-serif text-[15px] leading-7 text-slate-900">
-                  {preview}
+                  <div className="relative text-[13px] leading-6 text-slate-700/40">
+                    <p className="blur-[2.3px]">
+                      This Tenancy Agreement is made by and between the parties stated herein, subject to applicable regulations, submitted schedules, and the related supporting documentation reviewed during underwriting.
+                    </p>
+                  </div>
+
+                  <div className="relative mt-5">
+                    <div className="absolute inset-y-1 left-0 right-0 rounded-[22px] bg-yellow-200/50 blur-xl" />
+                    <div className="absolute inset-y-2 left-2 right-3 rounded-[18px] bg-yellow-100/80" />
+                    <div className="relative px-1.5 font-serif text-[15px] leading-7 text-slate-900">
+                      {preview}
+                    </div>
+                  </div>
+
+                  <div className="relative mt-5 text-[13px] leading-6 text-slate-700/40">
+                    <p className="blur-[2.3px]">
+                      Interpretation of extracted language should be considered alongside the complete submission record, related attachments, endorsements, and the full originating document source.
+                    </p>
+                  </div>
                 </div>
               </div>
-
-              <div className="relative mt-5 text-[13px] leading-6 text-slate-700/40">
-                <p className="blur-[2.3px]">
-                  Interpretation of extracted language should be considered alongside the complete submission record, related attachments, endorsements, and the full originating document source.
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   )
 }
@@ -2465,6 +3036,78 @@ function getResponseTextClass(response?: string) {
   }
 
   return 'text-foreground/90'
+}
+
+function ConfidenceScoreIndicator({ score }: { score: number }) {
+  const normalizedScore = normalizeConfidenceScore(score)
+  const circumference = 2 * Math.PI * 16
+  const dashOffset = circumference * (1 - normalizedScore / 100)
+  const accent = getConfidenceAccent(normalizedScore)
+
+  return (
+    <div
+      className="flex h-12 w-12 items-center justify-center rounded-full border"
+      aria-label={`Confidence score ${normalizedScore}`}
+      style={{
+        borderColor: accent.border,
+        backgroundColor: accent.background,
+      }}
+      title={`Confidence score ${normalizedScore}`}
+    >
+      <div className="relative h-10 w-10">
+        <svg className="h-10 w-10 -rotate-90" viewBox="0 0 40 40" aria-hidden="true">
+          <circle cx="20" cy="20" r="16" fill="none" stroke="rgba(148,163,184,0.16)" strokeWidth="4" />
+          <circle
+            cx="20"
+            cy="20"
+            r="16"
+            fill="none"
+            stroke={accent.stroke}
+            strokeWidth="4"
+            strokeLinecap="round"
+            strokeDasharray={circumference}
+            strokeDashoffset={dashOffset}
+          />
+        </svg>
+        <div
+          className="absolute inset-0 flex items-center justify-center text-[11px] font-bold"
+          style={{ color: accent.stroke }}
+        >
+          {normalizedScore}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function normalizeConfidenceScore(score?: number) {
+  if (score === undefined || Number.isNaN(score)) return 0
+  if (score <= 1) return Math.round(Math.max(0, score) * 100)
+  return Math.max(0, Math.min(100, Math.round(score)))
+}
+
+function getConfidenceAccent(score: number) {
+  if (score >= 85) {
+    return {
+      stroke: '#A855F7',
+      border: 'rgba(168,85,247,0.22)',
+      background: 'rgba(245,232,255,0.95)',
+    }
+  }
+
+  if (score >= 65) {
+    return {
+      stroke: '#C084FC',
+      border: 'rgba(192,132,252,0.22)',
+      background: 'rgba(250,245,255,0.96)',
+    }
+  }
+
+  return {
+    stroke: '#F472B6',
+    border: 'rgba(244,114,182,0.2)',
+    background: 'rgba(253,242,248,0.96)',
+  }
 }
 
 function ViewToggle({
@@ -2521,6 +3164,7 @@ function buildFormState(
     coverType: string
     riskScore?: number
     riskDescription: string
+    aiSummary: string
     totalInsured?: number
     territorialScope: string
     totalCharge?: number
@@ -2667,4 +3311,14 @@ function getSharePointFolderName(value: string) {
   if (!clean) return ''
   const parts = clean.split('/')
   return parts[parts.length - 1] ?? clean
+}
+
+function getConsequenceRuleName(value: string) {
+  const trimmed = value.trim()
+  if (!trimmed) return 'Unnamed Business Rule'
+
+  const separatorIndex = trimmed.lastIndexOf('-')
+  if (separatorIndex <= 0) return trimmed
+
+  return trimmed.slice(0, separatorIndex).trim().replace(/[.]+$/, '').trim() || trimmed
 }

@@ -12,9 +12,12 @@ export interface BusinessRuleListItem {
   name: string
   categoryLabel: string
   parentRuleName: string
+  inquiryTypeLabel: string
+  inquiryTypeValue: string
   status: string
   identifier: string
   consequenceCount: number
+  createdOn?: string
 }
 
 export interface BusinessRuleWorkspace {
@@ -23,6 +26,7 @@ export interface BusinessRuleWorkspace {
     name: string
     categoryValue: string
     parentRuleId: string
+    inquiryTypeValue: string
     parentRuleName: string
     status: string
     createdOn?: string
@@ -76,6 +80,7 @@ export interface SaveBusinessRuleInput {
   name: string
   categoryValue?: string
   parentRuleId?: string
+  inquiryTypeValue?: string
 }
 
 export interface SaveConsequenceInput {
@@ -90,6 +95,20 @@ export interface SaveConsequenceInput {
   emailTemplateId?: string
 }
 
+export interface BusinessRuleImportIssue {
+  rowNumber: number
+  message: string
+}
+
+export interface BusinessRuleImportResult {
+  createdIds: string[]
+  createdNames: string[]
+  confirmedNames: string[]
+  missingNames: string[]
+  issues: BusinessRuleImportIssue[]
+  processedRows: number
+}
+
 export const BUSINESS_RULE_CATEGORY_OPTIONS = [
   { value: '1', label: 'Eligibility & Appetite' },
   { value: '2', label: 'Domicile' },
@@ -98,6 +117,13 @@ export const BUSINESS_RULE_CATEGORY_OPTIONS = [
   { value: '5', label: 'History' },
   { value: '6', label: 'Financial & Capacity Limits' },
   { value: '7', label: 'Contractual Terms & Clauses' },
+] as const
+
+export const BUSINESS_RULE_INQUIRY_TYPE_OPTIONS = [
+  { value: '1', label: 'New' },
+  { value: '2', label: 'Renewal' },
+  { value: '3', label: 'Endorsement' },
+  { value: '4', label: 'Claims' },
 ] as const
 
 export const CONSEQUENCE_TYPE_OPTIONS = [
@@ -145,6 +171,9 @@ export async function getBusinessRulesCatalog() {
 
   const rules = rulesResult.data ?? []
   const consequences = consequencesResult.data ?? []
+  const ruleNameById = new Map(
+    rules.map((rule) => [normalizeDataverseId(rule.aur_business_rulesid), rule.aur_name]),
+  )
   const consequenceCountByRule = consequences.reduce((map, consequence) => {
     const ruleId = normalizeDataverseId(consequence._aur_business_rule_value)
     if (!ruleId) return map
@@ -157,12 +186,27 @@ export async function getBusinessRulesCatalog() {
       id: rule.aur_business_rulesid,
       name: rule.aur_name,
       categoryLabel: resolveRuleCategoryLabel(rule.aur_categories),
-      parentRuleName: rule.aur_categoryname ?? '',
+      parentRuleName:
+        (rule._aur_category_value
+          ? ruleNameById.get(normalizeDataverseId(rule._aur_category_value))
+          : undefined) ??
+        rule.aur_categoryname ??
+        '',
+      inquiryTypeLabel:
+        BUSINESS_RULE_INQUIRY_TYPE_OPTIONS.find(
+          (option) => option.value === getBusinessRuleInquiryTypeValue(rule as unknown as { aur_inquiry_type?: unknown }),
+        )?.label ?? 'All inquiry types',
+      inquiryTypeValue: getBusinessRuleInquiryTypeValue(rule as unknown as { aur_inquiry_type?: unknown }),
       status: rule.statuscodename ?? 'Active',
       identifier: shortIdentifier(rule.aur_business_rulesid),
       consequenceCount: consequenceCountByRule.get(normalizeDataverseId(rule.aur_business_rulesid)) ?? 0,
+      createdOn: rule.createdon,
     }))
-    .sort((left, right) => left.name.localeCompare(right.name))
+    .sort((left, right) => {
+      const leftTime = left.createdOn ? new Date(left.createdOn).getTime() : 0
+      const rightTime = right.createdOn ? new Date(right.createdOn).getTime() : 0
+      return rightTime - leftTime
+    })
 }
 
 export async function getBusinessRuleWorkspace(ruleId?: string): Promise<BusinessRuleWorkspace> {
@@ -186,6 +230,7 @@ export async function getBusinessRuleWorkspace(ruleId?: string): Promise<Busines
       id: rule.aur_business_rulesid,
       name: rule.aur_name,
       categoryValue: rule.aur_categories ? String(rule.aur_categories) : '',
+      inquiryTypeValue: getBusinessRuleInquiryTypeValue(rule as unknown as { aur_inquiry_type?: unknown }),
       categoryLabel: resolveRuleCategoryLabel(rule.aur_categories),
       parentRuleId: rule._aur_category_value ?? '',
       parentRuleName: rule.aur_categoryname ?? '',
@@ -216,6 +261,9 @@ export async function getBusinessRuleWorkspace(ruleId?: string): Promise<Busines
           id: currentRule.aur_business_rulesid,
           name: currentRule.aur_name,
           categoryValue: currentRule.aur_categories ? String(currentRule.aur_categories) : '',
+          inquiryTypeValue: getBusinessRuleInquiryTypeValue(
+            currentRule as unknown as { aur_inquiry_type?: unknown },
+          ),
           parentRuleId: currentRule._aur_category_value ?? '',
           parentRuleName: currentRule.aur_categoryname ?? '',
           status: currentRule.statuscodename ?? 'Active',
@@ -247,6 +295,7 @@ export async function saveBusinessRule(input: SaveBusinessRuleInput) {
   const payload = {
     aur_name: input.name.trim(),
     ...(input.categoryValue ? { aur_categories: Number(input.categoryValue) as keyof typeof Aur_business_rulesesaur_categories } : {}),
+    ...(input.inquiryTypeValue ? { aur_inquiry_type: Number(input.inquiryTypeValue) } : { aur_inquiry_type: null }),
     ...(input.parentRuleId ? { 'aur_category@odata.bind': `/aur_business_ruleses(${input.parentRuleId})` } : { 'aur_category@odata.bind': null }),
   }
 
@@ -261,6 +310,97 @@ export async function saveBusinessRule(input: SaveBusinessRuleInput) {
     throw new Error('Business rule was created, but no record id was returned.')
   }
   return createdId
+}
+
+export async function importBusinessRulesWorkbook(file: File): Promise<BusinessRuleImportResult> {
+  const XLSX = await import('xlsx')
+  const buffer = await file.arrayBuffer()
+  const workbook = XLSX.read(buffer, { type: 'array' })
+  const firstSheet = workbook.SheetNames[0]
+
+  if (!firstSheet) {
+    throw new Error('The uploaded workbook does not contain any sheets.')
+  }
+
+  const worksheet = workbook.Sheets[firstSheet]
+  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(worksheet, { defval: '' })
+
+  if (!rows.length) {
+    throw new Error('The uploaded workbook is empty. Add at least one business rule row.')
+  }
+
+  const [workspace, existingCatalog] = await Promise.all([
+    getBusinessRuleWorkspace(),
+    getBusinessRulesCatalog(),
+  ])
+  const existingNames = new Set(existingCatalog.map((item) => normalizeImportHeader(item.name)))
+  const createdIds: string[] = []
+  const createdNames: string[] = []
+  const issues: BusinessRuleImportIssue[] = []
+  let processedRows = 0
+
+  for (const [index, row] of rows.entries()) {
+    const rowNumber = index + 2
+    const ruleName = getImportCellValue(row, ['Rule Name', 'Rule', 'Name'])
+
+    if (!ruleName) {
+      continue
+    }
+
+    processedRows += 1
+
+    try {
+      const categoryValue = resolveImportOptionValue(
+        getImportCellValue(row, ['Category Value']),
+        getImportCellValue(row, ['Category']),
+        BUSINESS_RULE_CATEGORY_OPTIONS,
+        'Category',
+      )
+      const inquiryTypeValue = resolveImportOptionValue(
+        getImportCellValue(row, ['Inquiry Type Value']),
+        getImportCellValue(row, ['Inquiry Type']),
+        BUSINESS_RULE_INQUIRY_TYPE_OPTIONS,
+        'Inquiry Type',
+      )
+      const propertyRuleId = resolvePropertyRuleId(
+        getImportCellValue(row, ['Property Rule Name', 'Property']),
+        workspace.parentRuleOptions,
+      )
+
+      const createdId = await saveBusinessRule({
+        name: ruleName,
+        categoryValue,
+        parentRuleId: propertyRuleId,
+        inquiryTypeValue,
+      })
+
+      createdIds.push(createdId)
+      createdNames.push(ruleName)
+    } catch (cause) {
+      issues.push({
+        rowNumber,
+        message: cause instanceof Error ? cause.message : 'Unable to create the business rule from this row.',
+      })
+    }
+  }
+
+  if (!processedRows) {
+    throw new Error('No data rows were found. Add values under the template headers and upload again.')
+  }
+
+  const confirmedNames = await verifyImportedBusinessRules(createdNames, existingNames)
+  const missingNames = createdNames.filter(
+    (name) => !confirmedNames.some((confirmedName) => normalizeImportHeader(confirmedName) === normalizeImportHeader(name)),
+  )
+
+  return {
+    createdIds,
+    createdNames,
+    confirmedNames,
+    missingNames,
+    issues,
+    processedRows,
+  }
 }
 
 export async function saveBusinessRuleConsequence(input: SaveConsequenceInput) {
@@ -387,6 +527,111 @@ function humanizeToken(value: string) {
     .trim()
 }
 
+function getBusinessRuleInquiryTypeValue(rule: { aur_inquiry_type?: unknown }) {
+  const rawValue = rule.aur_inquiry_type
+  if (rawValue === null || rawValue === undefined || rawValue === '') {
+    return ''
+  }
+  return String(rawValue)
+}
+
 function normalizeDataverseId(value?: string | null) {
   return value?.replace(/[{}]/g, '').toLowerCase() ?? ''
+}
+
+function getImportCellValue(row: Record<string, unknown>, headerCandidates: string[]) {
+  const entries = Object.entries(row)
+  for (const header of headerCandidates) {
+    const normalizedHeader = normalizeImportHeader(header)
+    const match = entries.find(([key]) => normalizeImportHeader(key) === normalizedHeader)
+    if (!match) continue
+    const value = String(match[1] ?? '').trim()
+    if (value) {
+      return value
+    }
+  }
+  return ''
+}
+
+function resolveImportOptionValue(
+  explicitValue: string,
+  labelValue: string,
+  options: readonly { value: string; label: string }[],
+  fieldLabel: string,
+) {
+  if (explicitValue) {
+    const matchedByValue = options.find((option) => option.value === explicitValue.trim())
+    if (matchedByValue) {
+      return matchedByValue.value
+    }
+    throw new Error(`${fieldLabel} value "${explicitValue}" is not valid.`)
+  }
+
+  if (labelValue) {
+    const normalizedLabel = normalizeImportHeader(labelValue)
+    const matchedByLabel = options.find(
+      (option) => normalizeImportHeader(option.label) === normalizedLabel,
+    )
+    if (matchedByLabel) {
+      return matchedByLabel.value
+    }
+    throw new Error(`${fieldLabel} label "${labelValue}" is not valid.`)
+  }
+
+  return ''
+}
+
+function resolvePropertyRuleId(
+  propertyName: string,
+  propertyOptions: Array<{ value: string; label: string }>,
+) {
+  if (!propertyName) return ''
+  const normalizedName = normalizeImportHeader(propertyName)
+  const matchedOption = propertyOptions.find(
+    (option) => normalizeImportHeader(option.label) === normalizedName || normalizeDataverseId(option.value) === normalizeDataverseId(propertyName),
+  )
+
+  if (!matchedOption) {
+    throw new Error(`Property "${propertyName}" is not available in the current Business Rule setup.`)
+  }
+
+  return matchedOption.value
+}
+
+function normalizeImportHeader(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+}
+
+async function verifyImportedBusinessRules(createdNames: string[], existingNames: Set<string>) {
+  if (!createdNames.length) return []
+
+  const targetNames = createdNames.map((name) => normalizeImportHeader(name))
+  let confirmed = new Set<string>()
+
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const catalog = await getBusinessRulesCatalog()
+    confirmed = new Set(
+      catalog
+        .map((item) => item.name)
+        .filter((name) => {
+          const normalizedName = normalizeImportHeader(name)
+          return targetNames.includes(normalizedName) && !existingNames.has(normalizedName)
+        }),
+    )
+
+    if (confirmed.size >= createdNames.length) {
+      break
+    }
+
+    await delay(700)
+  }
+
+  return Array.from(confirmed)
+}
+
+function delay(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms))
 }

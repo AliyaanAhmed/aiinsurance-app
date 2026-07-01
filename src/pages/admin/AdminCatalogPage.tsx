@@ -152,7 +152,7 @@ export function AdminCatalogPage({ entity, icon }: AdminCatalogPageProps) {
         ),
       },
       {
-        header: 'Context',
+        header: entity === 'contacts' ? 'Account' : 'Context',
         cell: ({ row }) => (
           <div className="space-y-1">
             <p className="text-sm font-medium">{row.original.context || 'Unassigned'}</p>
@@ -787,7 +787,7 @@ export function AdminCatalogPage({ entity, icon }: AdminCatalogPageProps) {
 
               <Field label="Description">
                 <textarea
-                  className="min-h-28 w-full rounded-[16px] border border-border bg-surface px-3 py-3 text-sm outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10"
+                  className="form-field-surface min-h-28 w-full rounded-[16px] border border-border px-3 py-3 text-sm outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10"
                   value={editor.description}
                   onChange={(event) => setEditor((current) => ({ ...current, description: event.target.value }))}
                   placeholder="Add the operational description for this record"
@@ -814,7 +814,7 @@ export function AdminCatalogPage({ entity, icon }: AdminCatalogPageProps) {
                     </div>
                     <Field label="Email Body">
                       <textarea
-                        className="min-h-40 w-full rounded-[16px] border border-border bg-surface px-3 py-3 text-sm outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10"
+                        className="form-field-surface min-h-40 w-full rounded-[16px] border border-border px-3 py-3 text-sm outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10"
                         value={editor.body}
                         onChange={(event) => setEditor((current) => ({ ...current, body: event.target.value }))}
                         placeholder="Write the reusable email body"
@@ -853,7 +853,7 @@ export function AdminCatalogPage({ entity, icon }: AdminCatalogPageProps) {
                     </div>
                     <Field label="Template Content">
                       <textarea
-                        className="min-h-44 w-full rounded-[16px] border border-border bg-surface px-3 py-3 text-sm outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10"
+                        className="form-field-surface min-h-44 w-full rounded-[16px] border border-border px-3 py-3 text-sm outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10"
                         value={editor.content}
                         onChange={(event) => setEditor((current) => ({ ...current, content: event.target.value }))}
                         placeholder="Write the reusable document template content"

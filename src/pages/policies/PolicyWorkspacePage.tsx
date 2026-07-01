@@ -254,7 +254,7 @@ export function PolicyWorkspacePage() {
             <Card className="space-y-4">
               <h3 className="text-xl font-semibold">Servicing Notes</h3>
               <textarea
-                className="min-h-40 w-full rounded-[16px] border border-border bg-surface px-3 py-3 text-sm outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10"
+                className="form-field-surface min-h-40 w-full rounded-[16px] border border-border px-3 py-3 text-sm outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10"
                 value={form.notes}
                 onChange={(event) => setForm({ ...form, notes: event.target.value })}
                 placeholder="Capture renewal servicing notes, exceptions, or policy commentary."

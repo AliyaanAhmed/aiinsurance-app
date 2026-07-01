@@ -20,9 +20,11 @@ import {
   Save,
   Search,
   Sparkles,
+  Trash2,
   Type,
   Underline,
   Upload,
+  X,
 } from 'lucide-react'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
@@ -123,6 +125,9 @@ export function DocumentTemplatesPage() {
   const [saveError, setSaveError] = useState<string | null>(null)
   const [extractionPhase, setExtractionPhase] = useState<ExtractionPhase>('idle')
   const [extractionProgress, setExtractionProgress] = useState(0)
+  const [deleteTemplate, setDeleteTemplate] = useState<SavedTemplateRecord | null>(null)
+  const [deleteBusy, setDeleteBusy] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   const { data, loading, error } = useAsyncData(async () => {
     const [quotesResult, rulesResult, productsResult, templatesResult] = await Promise.all([
@@ -393,6 +398,30 @@ export function DocumentTemplatesPage() {
     setExtractionProgress(0)
     setSaveMessage(null)
     setSaveError(null)
+  }
+
+  async function handleDeleteTemplateConfirmed() {
+    if (!deleteTemplate) return
+
+    try {
+      setDeleteBusy(true)
+      setDeleteError(null)
+      setSaveMessage(null)
+      await Aur_customdocumenttemplatesesService.delete(deleteTemplate.id)
+
+      const deletedTemplateName = deleteTemplate.name
+      const deletedTemplateId = deleteTemplate.id
+      setDeleteTemplate(null)
+      if (selectedTemplateId === deletedTemplateId) {
+        resetWorkspace()
+      }
+      setSaveMessage(`${deletedTemplateName} deleted successfully.`)
+      setRefreshKey((value) => value + 1)
+    } catch (cause) {
+      setDeleteError(cause instanceof Error ? cause.message : 'Unable to delete the document template.')
+    } finally {
+      setDeleteBusy(false)
+    }
   }
 
   function handleDropOnEditor(event: DragEvent<HTMLDivElement>) {
@@ -875,6 +904,19 @@ export function DocumentTemplatesPage() {
                           <Eye className="h-4 w-4" />
                           Load in workspace
                         </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="bg-white text-danger hover:bg-danger/10 hover:text-danger dark:bg-[#1E293B]"
+                          onClick={() => {
+                            setDeleteError(null)
+                            setDeleteTemplate(template)
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          Delete
+                        </Button>
                       </div>
                     </td>
                   </tr>
@@ -895,6 +937,93 @@ export function DocumentTemplatesPage() {
           <p className="font-semibold text-danger">{saveError}</p>
         </Card>
       ) : null}
+
+      <ModalShell
+        open={Boolean(deleteTemplate)}
+        onClose={() => {
+          if (deleteBusy) return
+          setDeleteTemplate(null)
+          setDeleteError(null)
+        }}
+        widthClassName="max-w-[520px]"
+      >
+        {deleteTemplate ? (
+          <div className="space-y-5">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-[28px] font-semibold tracking-[-0.02em]">Delete Document Template</h2>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Are you sure you want to delete <span className="font-semibold text-foreground">{deleteTemplate.name}</span>? This action cannot be undone.
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={() => {
+                  if (deleteBusy) return
+                  setDeleteTemplate(null)
+                  setDeleteError(null)
+                }}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+
+            {deleteError ? <p className="text-sm text-danger">{deleteError}</p> : null}
+
+            <div className="flex flex-wrap justify-end gap-3">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => {
+                  if (deleteBusy) return
+                  setDeleteTemplate(null)
+                  setDeleteError(null)
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                disabled={deleteBusy}
+                onClick={() => void handleDeleteTemplateConfirmed()}
+              >
+                {deleteBusy ? 'Deleting...' : 'Delete'}
+              </Button>
+            </div>
+          </div>
+        ) : null}
+      </ModalShell>
+    </div>
+  )
+}
+
+function ModalShell({
+  open,
+  onClose,
+  widthClassName,
+  children,
+}: {
+  open: boolean
+  onClose: () => void
+  widthClassName: string
+  children: ReactNode
+}) {
+  if (!open) return null
+
+  return (
+    <div className="fixed inset-0 z-50 !mt-0 flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm" onClick={onClose}>
+      <div
+        className={cn(
+          'max-h-[92vh] w-full overflow-hidden rounded-[30px] border border-border-soft bg-surface shadow-[0_40px_90px_rgba(15,23,42,0.28)]',
+          widthClassName,
+        )}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="max-h-[92vh] overflow-y-auto p-6">{children}</div>
+      </div>
     </div>
   )
 }
