@@ -9,7 +9,7 @@ import { landingTemplates } from '../../generative-ui/templates'
 import type { TemplateRecommendation } from '../../generative-ui/schemas'
 
 export function ChatPanel() {
-  const { messages, suggestions, stage, blocks, designSystem, addMessage, applyServerResponse, loadTemplate, applyPaletteRecommendation, setError, lastError } = useLandingPageStore()
+  const { messages, suggestions, stage, blocks, designSystem, templateRecommendations, paletteRecommendations, addMessage, applyServerResponse, loadTemplate, applyPaletteRecommendation, setError, lastError } = useLandingPageStore()
   const [draft, setDraft] = useState('')
   const [pending, setPending] = useState(false)
   const [showDesignSystem, setShowDesignSystem] = useState(false)
@@ -19,8 +19,7 @@ export function ChatPanel() {
   const stageOrder = ['intro', 'identity', 'hero', 'navbar', 'services', 'leadForm', 'trust', 'faq', 'footer', 'review', 'enhance']
   const stageIndex = Math.max(0, stageOrder.indexOf(stage))
   const stageProgress = Math.round(((stageIndex + 1) / stageOrder.length) * 100)
-  const recommendationCount = [...messages].reverse().find((message) => message.paletteRecommendations?.length || message.templateRecommendations?.length)
-  const themeCount = recommendationCount?.paletteRecommendations?.length ?? recommendationCount?.templateRecommendations?.length ?? 1
+  const themeCount = templateRecommendations.length || paletteRecommendations.length
 
   useEffect(() => {
     messageListRef.current?.scrollTo({
@@ -93,7 +92,16 @@ export function ChatPanel() {
           <span>{themeCount}</span>
         </button>
       </div>
-      {showDesignSystem ? <DesignSystemPanel designSystem={designSystem} onPrompt={sendMessage} /> : null}
+      {showDesignSystem ? (
+        <DesignSystemPanel
+          designSystem={designSystem}
+          templateRecommendations={templateRecommendations}
+          paletteRecommendations={paletteRecommendations}
+          onSelectTemplate={selectRecommendation}
+          onSelectPalette={applyPaletteRecommendation}
+          onPrompt={sendMessage}
+        />
+      ) : null}
       <div className="message-list" ref={messageListRef}>
         {messages.map((message, index) => (
           <MessageBubble key={`${message.role}-${index}`} message={message} onAnswer={sendMessage} onSelectTemplate={selectRecommendation} onSelectPalette={applyPaletteRecommendation} />

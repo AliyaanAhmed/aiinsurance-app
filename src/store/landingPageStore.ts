@@ -17,6 +17,8 @@ type LandingPageState = {
   messages: ChatMessage[]
   suggestions: string[]
   designSystem: DesignSystem
+  templateRecommendations: TemplateRecommendation[]
+  paletteRecommendations: PaletteRecommendation[]
   focusBlockId?: string
   lastError?: string
   addMessage: (message: ChatMessage) => void
@@ -107,6 +109,8 @@ export const useLandingPageStore = create<LandingPageState>()(
       ],
       suggestions: fixtureResponse.suggestions,
       designSystem: fixtureResponse.design_system!,
+      templateRecommendations: fixtureResponse.template_recommendations,
+      paletteRecommendations: fixtureResponse.palette_recommendations,
       addMessage: (message) => set((state) => ({ messages: [...state.messages, message] })),
       setError: (message) => set({ lastError: message }),
       setFocusBlockId: (blockId) => set({ focusBlockId: blockId }),
@@ -128,6 +132,8 @@ export const useLandingPageStore = create<LandingPageState>()(
               { role: 'assistant', content: response.assistant_markdown, questions: response.questions, templateRecommendations: response.template_recommendations, paletteRecommendations: response.palette_recommendations },
             ],
             suggestions: response.suggestions,
+            templateRecommendations: response.template_recommendations.length ? response.template_recommendations : state.templateRecommendations,
+            paletteRecommendations: response.palette_recommendations.length ? response.palette_recommendations : state.paletteRecommendations,
             lastError: undefined,
           }
         }),
@@ -139,6 +145,8 @@ export const useLandingPageStore = create<LandingPageState>()(
           focusBlockId: response.ui_blocks.find((block) => block.type === 'hero')?.id,
           messages: [...state.messages, { role: 'assistant', content: response.assistant_markdown, questions: response.questions, templateRecommendations: response.template_recommendations, paletteRecommendations: response.palette_recommendations }],
           suggestions: response.suggestions,
+          templateRecommendations: response.template_recommendations.length ? response.template_recommendations : state.templateRecommendations,
+          paletteRecommendations: response.palette_recommendations.length ? response.palette_recommendations : state.paletteRecommendations,
           lastError: undefined,
         })),
       applyPaletteRecommendation: (recommendation) =>
@@ -154,7 +162,13 @@ export const useLandingPageStore = create<LandingPageState>()(
         })),
     }),
     {
-      partialize: (state) => ({ blocks: state.blocks, stage: state.stage, designSystem: state.designSystem }),
+      partialize: (state) => ({
+        blocks: state.blocks,
+        stage: state.stage,
+        designSystem: state.designSystem,
+        templateRecommendations: state.templateRecommendations,
+        paletteRecommendations: state.paletteRecommendations,
+      }),
     },
   ),
 )
