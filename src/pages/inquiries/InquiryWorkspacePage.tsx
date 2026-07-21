@@ -19,6 +19,7 @@ import {
   updateInquiryQuoteDetailResponse,
 } from '../../services/inquiriesService'
 import type { ConsequenceTemplatePreview } from '../../services/inquiriesService'
+import { getPlanRatingPricingOrder, type PlanPricingOrderItem } from '../../services/adminCatalogService'
 import { Card } from '../../components/ui/Card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/Tabs'
 import { Badge } from '../../components/ui/Badge'
@@ -41,6 +42,7 @@ interface InquiryFormState {
   totalSumInsured: string
   territorialScope: string
   noOfItems: string
+  basePremium: string
   premiumToBeCharged: string
   brokerage: string
   grossPremium: string
@@ -120,6 +122,12 @@ export function InquiryWorkspacePage() {
   const productWonQuotesLoad = useAsyncData(
     async () => (copySourceProductId ? listWonQuotesForProduct(copySourceProductId) : []),
     [copySourceProductId, supplementaryRefreshKey],
+  )
+  const pricingOrderPlanId = form?.planId || inquiryState?.planId || coreLoad.data?.planId || ''
+  const pricingOrderProductId = form?.productId || inquiryState?.productId || coreLoad.data?.productId || ''
+  const pricingOrderLoad = useAsyncData(
+    async () => (pricingOrderPlanId && pricingOrderProductId ? getPlanRatingPricingOrder(pricingOrderPlanId, pricingOrderProductId) : []),
+    [pricingOrderPlanId, pricingOrderProductId],
   )
 
   useEffect(() => {
@@ -506,6 +514,7 @@ export function InquiryWorkspacePage() {
         totalSumInsured: Number(form.totalSumInsured) || 0,
         territorialScope: form.territorialScope,
         noOfItems: form.noOfItems,
+        basePremium: Number(form.basePremium) || 0,
         premiumToBeCharged: Number(form.premiumToBeCharged) || 0,
         brokerage: Number(form.brokerage) || 0,
         grossPremium: Number(form.grossPremium) || 0,
@@ -536,6 +545,7 @@ export function InquiryWorkspacePage() {
               aiSummary: form.riskDescription,
               totalInsured: Number(form.totalSumInsured) || 0,
               territorialScope: form.territorialScope,
+              basePremium: Number(form.basePremium) || 0,
               totalCharge: Number(form.premiumToBeCharged) || 0,
               grossPremium: Number(form.grossPremium) || 0,
               paymentTerm: findOptionLabel(options.paymentTerms, form.paymentTerm, current.paymentTerm),
@@ -671,6 +681,61 @@ export function InquiryWorkspacePage() {
           )
           setActionSuccess('Applied risk consequence. Risk summary has been appended to the inquiry.')
         }
+      } else if (record.type === 'Rating') {
+        const currentBasePremium = Number(form.basePremium) || 0
+        let nextBasePremium = currentBasePremium
+
+        if (record.action === 'Add') {
+          const addAmount = Number(record.ratingAdd ?? 0)
+          if (!addAmount) {
+            throw new Error('This rating consequence does not have an add amount configured.')
+          }
+          nextBasePremium = addAmount
+        } else if (record.action === 'Multiply') {
+          const multiplier = Number(record.ratingMultiply ?? 0)
+          if (!multiplier) {
+            throw new Error('This rating consequence does not have a multiplier configured.')
+          }
+          nextBasePremium = currentBasePremium * multiplier
+        } else {
+          throw new Error('This rating consequence cannot be applied.')
+        }
+
+        const updated = await applyInquiryConsequenceResult({
+          inquiryId: inquiryRecordId,
+          consequenceResultId: consequenceId,
+          basePremium: nextBasePremium,
+        })
+
+        const premiumValue = String(updated.basePremium ?? nextBasePremium)
+        setForm((current) =>
+          current
+            ? {
+                ...current,
+                basePremium: premiumValue,
+                premiumToBeCharged: premiumValue,
+              }
+            : current,
+        )
+        setInquiryState((current) =>
+          current
+            ? {
+                ...current,
+                basePremium: updated.basePremium ?? nextBasePremium,
+                totalCharge: updated.basePremium ?? nextBasePremium,
+                consequenceResults: current.consequenceResults.map((item) =>
+                  item.id === consequenceId
+                    ? {
+                        ...item,
+                        actionStatusValue: APPLIED_ACTION_STATUS_VALUE,
+                        actionStatusLabel: 'Applied',
+                      }
+                    : item,
+                ),
+              }
+            : current,
+        )
+        setActionSuccess('Applied rating consequence. Base premium has been updated.')
       }
 
       setAppliedConsequenceIds((current) => [...new Set([...current, consequenceId])])
@@ -1178,13 +1243,30 @@ export function InquiryWorkspacePage() {
                   <Card className="space-y-5">
                     <SectionHeader title="Premium" description="Commercial premium and deduction controls for the inquiry." />
                     <div className="grid gap-4 md:grid-cols-2">
-                      <Field label="Premium to be Charged">
+                      <Field label="Base Premium">
+                        {isEditing ? (
+                          <Input type="number" value={form.basePremium} onChange={(event) => setForm({ ...form, basePremium: event.target.value })} />
+                        ) : (
+                          <ReadOnlyValue value={form.basePremium} />
+                        )}
+                      </Field>
+                      <div className="relative space-y-2.5">
+                        <div className="pr-8">
+                          <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Premium to be Charged</p>
+                          <div className="absolute right-0 top-[-3px]">
+                          <PlanPricingOrderPopover
+                            items={pricingOrderLoad.data ?? []}
+                            loading={pricingOrderLoad.loading}
+                            planName={inquiry.planName}
+                          />
+                          </div>
+                        </div>
                         {isEditing ? (
                           <Input type="number" value={form.premiumToBeCharged} onChange={(event) => setForm({ ...form, premiumToBeCharged: event.target.value })} />
                         ) : (
                           <ReadOnlyValue value={form.premiumToBeCharged} />
                         )}
-                      </Field>
+                      </div>
                       <Field label="Brokerage">
                         {isEditing ? (
                           <Input type="number" value={form.brokerage} onChange={(event) => setForm({ ...form, brokerage: event.target.value })} />
@@ -2037,6 +2119,20 @@ export function InquiryWorkspacePage() {
                                   </div>
                                 ) : null}
 
+                                {result.type === 'Rating' && result.action === 'Add' ? (
+                                  <div className="rounded-[16px] border border-border-soft bg-surface-soft/70 px-3.5 py-3">
+                                    <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Add Amount</p>
+                                    <p className="mt-1 text-sm font-semibold">{formatCurrency(result.ratingAdd ?? 0)}</p>
+                                  </div>
+                                ) : null}
+
+                                {result.type === 'Rating' && result.action === 'Multiply' ? (
+                                  <div className="rounded-[16px] border border-border-soft bg-surface-soft/70 px-3.5 py-3">
+                                    <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Multiplier</p>
+                                    <p className="mt-1 text-sm font-semibold">{result.ratingMultiply ?? 0}</p>
+                                  </div>
+                                ) : null}
+
                                 {result.consequenceId &&
                                 isConsequenceTemplateResult(result.type, result.action) ? (
                                   <div className="rounded-[16px] border border-border-soft bg-surface-soft/70 px-3.5 py-3">
@@ -2092,6 +2188,10 @@ export function InquiryWorkspacePage() {
                                         ? `Adds ${result.riskScore ?? 0} to the inquiry risk score.`
                                         : result.type === 'Risk' && result.action === 'Update Risk Summary'
                                           ? 'Appends the configured risk summary to the inquiry.'
+                                        : result.type === 'Rating' && result.action === 'Add'
+                                          ? `Sets base premium and premium to be charged to ${formatCurrency(result.ratingAdd ?? 0)}.`
+                                        : result.type === 'Rating' && result.action === 'Multiply'
+                                          ? `Multiplies the current base premium by ${result.ratingMultiply ?? 0}, then copies it to premium to be charged.`
                                         : 'Updates the inquiry status to match this action.'
                                     : 'Outcome recorded for reference only.'}
                                 </div>
@@ -2656,6 +2756,111 @@ function InquiryWorkspaceSkeleton() {
   )
 }
 
+function PlanPricingOrderPopover({
+  items,
+  loading,
+  planName,
+}: {
+  items: PlanPricingOrderItem[]
+  loading: boolean
+  planName?: string
+}) {
+  const [open, setOpen] = useState(false)
+  const popoverRef = useRef<HTMLDivElement | null>(null)
+  const orderedItems = [...items].sort((a, b) => a.order - b.order)
+
+  useEffect(() => {
+    if (!open) return
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (popoverRef.current?.contains(event.target as Node)) return
+      setOpen(false)
+    }
+
+    document.addEventListener('mousedown', handlePointerDown)
+    return () => document.removeEventListener('mousedown', handlePointerDown)
+  }, [open])
+
+  return (
+    <div ref={popoverRef} className="relative inline-flex">
+      <button
+        type="button"
+        className={`inline-flex h-6 w-6 items-center justify-center rounded-full border transition ${
+          open
+            ? 'border-primary/30 bg-primary text-white'
+            : 'border-border-soft bg-white text-primary hover:border-primary/25 hover:bg-primary/5 dark:bg-surface'
+        }`}
+        aria-label="View plan pricing order"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+      >
+        <List className="h-3.5 w-3.5" />
+      </button>
+      {open ? (
+      <div className="absolute right-0 top-[calc(100%+0.65rem)] z-50 w-[360px]">
+        <div className="overflow-hidden rounded-[22px] border border-border-soft bg-white shadow-[0_22px_50px_rgba(15,23,42,0.16)] dark:bg-[#1E293B]">
+          <div className="border-b border-border-soft bg-surface-soft/80 px-4 py-3">
+            <div className="flex items-center gap-3">
+              <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                <List className="h-4 w-4" />
+              </span>
+              <div className="min-w-0">
+                <p className="text-sm font-bold">Plan Pricing Order</p>
+                <p className="truncate text-xs text-muted-foreground">{planName || 'Selected plan'}</p>
+              </div>
+            </div>
+          </div>
+          <div className="max-h-[300px] overflow-y-auto p-3 scrollbar-sleek">
+            {loading ? (
+              <div className="flex items-center gap-2 rounded-[18px] border border-border-soft bg-surface-soft px-3 py-4 text-sm text-muted-foreground">
+                <LoaderCircle className="h-4 w-4 animate-spin text-primary" />
+                Loading pricing sequence...
+              </div>
+            ) : orderedItems.length ? (
+              <div className="space-y-2.5">
+                {orderedItems.map((item, index) => (
+                  <div
+                    key={item.key}
+                    className="rounded-[18px] border border-border-soft bg-white px-3 py-3 transition group-hover/card:border-primary/20 dark:bg-surface"
+                  >
+                    <div className="flex items-start gap-3">
+                      <span className="mt-0.5 flex h-7 min-w-7 shrink-0 items-center justify-center rounded-full bg-primary px-2 text-xs font-bold text-white">
+                        #{index + 1}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="line-clamp-2 text-sm font-semibold leading-5">{item.consequenceName}</p>
+                        <p className="mt-1 truncate text-xs text-muted-foreground">{item.businessRuleName}</p>
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <Badge variant="review">{item.action}</Badge>
+                          <span className="rounded-full border border-primary/15 bg-primary/5 px-2.5 py-1 text-[11px] font-bold text-primary">
+                            {item.actionValue === '751820002'
+                              ? formatCurrency(item.addAmount ?? 0)
+                              : item.actionValue === '751820003'
+                                ? `${item.multiplyValue ?? 0}x`
+                                : 'Rating'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-[18px] border border-dashed border-border-soft bg-surface-soft px-3 py-5 text-center">
+                <p className="text-sm font-semibold">No pricing order configured</p>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                  Add rating consequences to this plan from the Plan edit form.
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+      ) : null}
+    </div>
+  )
+}
+
 function SectionHeader({ title, description }: { title: string; description: string }) {
   return (
     <div>
@@ -2802,6 +3007,7 @@ function CollapsedEmailRail({
 
 function canApplyConsequence(type: string, action?: string) {
   if (type === 'Risk') return true
+  if (type === 'Rating') return action === 'Add' || action === 'Multiply'
   if (type !== 'Case Control') return false
   return toDisposition(action ?? '') !== null
 }
@@ -3168,6 +3374,7 @@ function buildFormState(
     totalInsured?: number
     territorialScope: string
     totalCharge?: number
+    basePremium?: number
     grossPremium?: number
     paymentTerm: string
     fee?: number
@@ -3202,6 +3409,7 @@ function buildFormState(
     totalSumInsured: String(inquiry.totalInsured ?? 0),
     territorialScope: inquiry.territorialScope,
     noOfItems: '',
+    basePremium: String(inquiry.basePremium ?? 0),
     premiumToBeCharged: String(inquiry.totalCharge ?? 0),
     brokerage: '0',
     grossPremium: String(inquiry.grossPremium ?? 0),
@@ -3233,6 +3441,7 @@ function buildInquirySavePayload(
     totalSumInsured: Number(form.totalSumInsured) || 0,
     territorialScope: form.territorialScope,
     noOfItems: form.noOfItems,
+    basePremium: Number(form.basePremium) || 0,
     premiumToBeCharged: Number(form.premiumToBeCharged) || 0,
     brokerage: Number(form.brokerage) || 0,
     grossPremium: Number(form.grossPremium) || 0,

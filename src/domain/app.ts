@@ -68,6 +68,11 @@ export interface AdminCatalogItem {
   detail?: string
   productId?: string
   planId?: string
+  basePremium?: number
+  minimumSumInsured?: number
+  maximumSumInsured?: number
+  cealing?: number
+  floor?: number
 }
 
 export interface AdminCatalogStats {
@@ -142,6 +147,7 @@ export interface InquiryDetail extends InquirySummary {
   coverType: string
   fee: number
   declaredValue: number
+  basePremium: number
   totalCharge: number
   aiSummary: string
   account?: RelatedParty
@@ -221,6 +227,76 @@ export interface QuoteDetail extends QuoteSummary {
   responses: QuoteResponse[]
   emailTemplates: EmailTemplateSummary[]
   documentTemplates: DocumentTemplateSummary[]
+}
+
+export interface PolicyConversionSummary {
+  id: string
+  name: string
+  paymentAmount: number
+  customerName: string
+  stage: string
+  stageStatus: string
+  createdOn: string
+}
+
+export interface AmlScreeningFormState {
+  id?: string
+  assignedToId: string
+  clientName: string
+  clientEmail: string
+  clientType: string
+  emailDate: string
+  emailSubject: string
+  premium: string
+  remarks: string
+  screeningStatus: string
+  tradeLicense: string
+  typeOfPolicy: string
+}
+
+export interface PolicyBookingFormState {
+  id?: string
+  productId: string
+  customerContactId: string
+  hundredPercentPremium: string
+  hundredPercentSi: string
+  adntcSharePremium: string
+  branchId: string
+  brokerCommissionPercent: string
+  cedingCommissionPercent: string
+  currentOldPolicyNo: string
+  departmentId: string
+  installments: string
+  insuredAddress: string
+  insuredCountry: string
+  insuredEmirates: string
+  insuredName: string
+  insuredNationality: string
+  inwardPolicyNo: string
+  inwardRefNo: string
+  newPolicyNo: string
+  ourSharePercent: string
+  periodFrom: string
+  periodTo: string
+  remarks: string
+  requestNo: string
+  transactionCurrencyId: string
+  taxPercent: string
+  transactionType: string
+}
+
+export interface PolicyConversionDetail extends PolicyConversionSummary {
+  quoteId?: string
+  quoteName?: string
+  paymentLink: string
+  paymentReference: string
+  paymentStatus: string
+  customerId?: string
+  customerType?: 'account' | 'contact'
+  notes: string
+  aml: AmlScreeningFormState
+  booking: PolicyBookingFormState
+  emails: InquiryEmailSummary[]
 }
 
 export interface QuoteResponse {
@@ -307,6 +383,8 @@ export interface ConsequenceDefinition {
   emailTemplateName?: string
   riskScore?: number
   riskSummary?: string
+  ratingAdd?: number
+  ratingMultiply?: number
 }
 
 export interface ConsequenceResultSummary {
@@ -325,6 +403,8 @@ export interface ConsequenceResultSummary {
   emailTemplateName?: string
   riskScore?: number
   riskSummary?: string
+  ratingAdd?: number
+  ratingMultiply?: number
   createdOn?: string
 }
 

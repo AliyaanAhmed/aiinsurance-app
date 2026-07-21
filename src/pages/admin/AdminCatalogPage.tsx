@@ -1,6 +1,6 @@
 import { useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import type { LucideIcon } from 'lucide-react'
-import { Plus, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, GripVertical, Plus, RefreshCw, Trash2 } from 'lucide-react'
 import type { ColumnDef } from '@tanstack/react-table'
 import { PageHeader } from '../../components/layout/PageHeader'
 import { FilterBar } from '../../components/ui/FilterBar'
@@ -18,8 +18,10 @@ import {
   deleteAdminRecord,
   getAdminCatalog,
   getAdminRecord,
+  getPlanRatingPricingOrder,
   saveAdminRecord,
   type AdminFormPayload,
+  type PlanPricingOrderItem,
 } from '../../services/adminCatalogService'
 import { Aur_plansService, Aur_productsesService, Aur_quotesesService } from '../../generated'
 
@@ -62,9 +64,15 @@ const defaultEditor: EditorState = {
   issueDate: '',
   expiryDate: '',
   premiumAmount: '',
+  basePremium: '',
+  minimumSumInsured: '',
+  maximumSumInsured: '',
+  cealing: '',
+  floor: '',
   statusText: '',
   reminderSent: false,
   inquiryId: '',
+  pricingOrderItems: [],
 }
 
 export function AdminCatalogPage({ entity, icon }: AdminCatalogPageProps) {
@@ -73,6 +81,8 @@ export function AdminCatalogPage({ entity, icon }: AdminCatalogPageProps) {
   const [editor, setEditor] = useState<EditorState>(defaultEditor)
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
+  const [pricingOrderLoading, setPricingOrderLoading] = useState(false)
+  const [draggedPricingIndex, setDraggedPricingIndex] = useState<number | null>(null)
 
   const { data, loading, error } = useAsyncData(async () => {
     const [dataset, productsResult, plansResult, inquiriesResult] = await Promise.all([
@@ -127,6 +137,13 @@ export function AdminCatalogPage({ entity, icon }: AdminCatalogPageProps) {
             ) : entity === 'policies' ? (
               <Link
                 to={`/policies/${row.original.id}`}
+                className="font-semibold text-primary transition hover:text-primary/80 hover:underline"
+              >
+                {row.original.name}
+              </Link>
+            ) : entity === 'plans' ? (
+              <Link
+                to={`/admin/plans/${row.original.id}/edit${row.original.productId ? `?productId=${encodeURIComponent(row.original.productId)}` : ''}`}
                 className="font-semibold text-primary transition hover:text-primary/80 hover:underline"
               >
                 {row.original.name}
@@ -209,6 +226,7 @@ export function AdminCatalogPage({ entity, icon }: AdminCatalogPageProps) {
       entity === 'brokers' ||
       entity === 'business-units' ||
       entity === 'users' ||
+      entity === 'plans' ||
       entity === 'email-templates' ||
       entity === 'document-templates'
         ? await getAdminRecord(entity, record.id)
@@ -244,9 +262,15 @@ export function AdminCatalogPage({ entity, icon }: AdminCatalogPageProps) {
       issueDate: '',
       expiryDate: '',
       premiumAmount: '',
+      basePremium: '',
+      minimumSumInsured: '',
+      maximumSumInsured: '',
+      cealing: '',
+      floor: '',
       statusText: '',
       reminderSent: false,
       inquiryId: '',
+      pricingOrderItems: [],
       ...hydrated,
     })
   }
@@ -254,6 +278,34 @@ export function AdminCatalogPage({ entity, icon }: AdminCatalogPageProps) {
   function closeEditor() {
     setEditor(defaultEditor)
     setSubmitError(null)
+    setDraggedPricingIndex(null)
+  }
+
+  async function handlePlanProductChange(productId: string) {
+    setEditor((current) => ({ ...current, productId, pricingOrderItems: [] }))
+    if (entity !== 'plans' || !editor.id || !productId) return
+    setPricingOrderLoading(true)
+    try {
+      const items = await getPlanRatingPricingOrder(editor.id, productId)
+      setEditor((current) => ({ ...current, pricingOrderItems: items }))
+    } catch (cause) {
+      setSubmitError(cause instanceof Error ? cause.message : 'Unable to load pricing order list.')
+    } finally {
+      setPricingOrderLoading(false)
+    }
+  }
+
+  function movePricingItem(fromIndex: number, toIndex: number) {
+    setEditor((current) => ({
+      ...current,
+      pricingOrderItems: reorderPricingItems(current.pricingOrderItems ?? [], fromIndex, toIndex),
+    }))
+  }
+
+  function handlePricingDrop(toIndex: number) {
+    if (draggedPricingIndex === null) return
+    movePricingItem(draggedPricingIndex, toIndex)
+    setDraggedPricingIndex(null)
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -335,18 +387,18 @@ export function AdminCatalogPage({ entity, icon }: AdminCatalogPageProps) {
       )}
 
       {editor.open ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm">
-          <Card variant="premium" className="w-full max-w-3xl">
-            <form className="space-y-6" onSubmit={handleSubmit}>
-              <div className="flex items-start justify-between gap-4">
+        <div className="fixed inset-0 z-50 !mt-0 flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm">
+          <Card variant="premium" className="max-h-[82vh] w-full max-w-3xl overflow-hidden p-0">
+            <form className="flex max-h-[82vh] flex-col" onSubmit={handleSubmit}>
+              <div className="flex shrink-0 items-start justify-between gap-4 border-b border-border-soft px-5 py-3.5">
                 <div>
                   <p className="text-[12px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
                     Admin Workspace
                   </p>
-                  <h2 className="mt-1 text-2xl font-bold">
+                  <h2 className="mt-1 text-xl font-bold">
                     {editor.id ? 'Edit record' : 'Create record'}
                   </h2>
-                  <p className="mt-2 text-sm text-muted-foreground">
+                  <p className="mt-1 text-sm text-muted-foreground">
                     Maintain {dataset?.title?.toLowerCase() ?? 'reference data'} using the shared premium admin form pattern.
                   </p>
                 </div>
@@ -355,7 +407,8 @@ export function AdminCatalogPage({ entity, icon }: AdminCatalogPageProps) {
                 </Button>
               </div>
 
-              <div className="grid gap-4 md:grid-cols-2">
+              <div className="scrollbar-sleek min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-4">
+                <div className="grid gap-4 md:grid-cols-2">
                 <Field label={entity === 'policies' ? 'Policy Number' : 'Name'}>
                   <Input
                     value={editor.name}
@@ -464,7 +517,7 @@ export function AdminCatalogPage({ entity, icon }: AdminCatalogPageProps) {
                   <Field label="Template Scope">
                     <Input value="Document Generation" readOnly />
                   </Field>
-                ) : (
+                ) : entity === 'plans' ? null : (
                   <Field label="Linked Plan">
                     <Select
                       value={editor.planId}
@@ -482,10 +535,14 @@ export function AdminCatalogPage({ entity, icon }: AdminCatalogPageProps) {
 
                 {(entity === 'plans' || entity === 'coverages' || entity === 'policies') && (
                   <Field label="Linked Product">
-                    <Select
-                      value={editor.productId}
-                      onChange={(event) => setEditor((current) => ({ ...current, productId: event.target.value }))}
-                    >
+                      <Select
+                        value={editor.productId}
+                        onChange={(event) =>
+                          entity === 'plans'
+                            ? void handlePlanProductChange(event.target.value)
+                            : setEditor((current) => ({ ...current, productId: event.target.value }))
+                        }
+                      >
                       <option value="">No product selected</option>
                       {(data?.products ?? []).map((product) => (
                         <option key={product.value} value={product.value}>
@@ -494,6 +551,61 @@ export function AdminCatalogPage({ entity, icon }: AdminCatalogPageProps) {
                       ))}
                     </Select>
                   </Field>
+                )}
+
+                {entity === 'plans' && (
+                  <>
+                    <Field label="Base Premium">
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={editor.basePremium}
+                        onChange={(event) => setEditor((current) => ({ ...current, basePremium: event.target.value }))}
+                        placeholder="Enter base premium"
+                      />
+                    </Field>
+                    <Field label="Minimum Sum Insured">
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={editor.minimumSumInsured}
+                        onChange={(event) => setEditor((current) => ({ ...current, minimumSumInsured: event.target.value }))}
+                        placeholder="Enter minimum sum insured"
+                      />
+                    </Field>
+                    <Field label="Maximum Sum Insured">
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={editor.maximumSumInsured}
+                        onChange={(event) => setEditor((current) => ({ ...current, maximumSumInsured: event.target.value }))}
+                        placeholder="Enter maximum sum insured"
+                      />
+                    </Field>
+                    <Field label="Cealing">
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={editor.cealing}
+                        onChange={(event) => setEditor((current) => ({ ...current, cealing: event.target.value }))}
+                        placeholder="Enter cealing"
+                      />
+                    </Field>
+                    <Field label="Floor">
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={editor.floor}
+                        onChange={(event) => setEditor((current) => ({ ...current, floor: event.target.value }))}
+                        placeholder="Enter floor"
+                      />
+                    </Field>
+                  </>
                 )}
 
                 {entity === 'policies' && (
@@ -794,6 +906,110 @@ export function AdminCatalogPage({ entity, icon }: AdminCatalogPageProps) {
                 />
               </Field>
 
+              {entity === 'plans' && editor.id ? (
+                <Card className="space-y-4 border-border-soft bg-white/90 dark:bg-[#1E293B]">
+                  <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div>
+                      <p className="text-[12px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
+                        Rating Pricing Order
+                      </p>
+                      <h4 className="mt-1 text-lg font-semibold">Reorder linked rating consequences</h4>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Drag items or use the arrow buttons. The sequence is saved when you click Save Changes.
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      className="bg-white dark:bg-[#1E293B]"
+                      disabled={!editor.productId || pricingOrderLoading}
+                      onClick={() => void handlePlanProductChange(editor.productId ?? '')}
+                    >
+                      <RefreshCw className={`h-4 w-4 ${pricingOrderLoading ? 'animate-spin' : ''}`} />
+                      Refresh List
+                    </Button>
+                  </div>
+
+                  {pricingOrderLoading ? (
+                    <div className="rounded-[18px] border border-dashed border-border-soft bg-surface-soft/70 px-4 py-6 text-center text-sm text-muted-foreground">
+                      Loading linked rating consequences...
+                    </div>
+                  ) : (editor.pricingOrderItems ?? []).length ? (
+                    <div className="space-y-2">
+                      {(editor.pricingOrderItems ?? []).map((item, index) => (
+                        <div
+                          key={item.key}
+                          draggable
+                          onDragStart={() => setDraggedPricingIndex(index)}
+                          onDragOver={(event) => event.preventDefault()}
+                          onDrop={() => handlePricingDrop(index)}
+                          onDragEnd={() => setDraggedPricingIndex(null)}
+                          className={`group grid gap-3 rounded-[18px] border px-3 py-3 transition md:grid-cols-[36px_minmax(0,1fr)_auto] md:items-center ${
+                            draggedPricingIndex === index
+                              ? 'border-primary/40 bg-primary/5'
+                              : 'border-border-soft bg-surface-soft/70 hover:border-primary/20 hover:bg-primary/4'
+                          }`}
+                        >
+                          <div className="flex h-9 w-9 items-center justify-center rounded-full border border-border-soft bg-white text-muted-foreground group-hover:text-primary dark:bg-slate-950/60">
+                            <GripVertical className="h-4 w-4" />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Badge variant="new" className="px-2 py-0.5 text-[10px]">
+                                #{index + 1}
+                              </Badge>
+                              <Badge variant="review" className="px-2 py-0.5 text-[10px]">
+                                Rating
+                              </Badge>
+                              <Badge variant="info" className="px-2 py-0.5 text-[10px]">
+                                {item.action}
+                              </Badge>
+                            </div>
+                            <p className="mt-2 line-clamp-2 text-sm font-semibold">{item.consequenceName}</p>
+                            <p className="mt-1 text-xs text-muted-foreground">{item.businessRuleName}</p>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2 md:justify-end">
+                            <span className="rounded-full border border-border-soft bg-white px-3 py-1.5 text-xs font-semibold text-foreground dark:bg-slate-950/60">
+                              {item.action === 'Add'
+                                ? formatCurrencyValue(item.addAmount)
+                                : `${item.multiplyValue ?? 0}x`}
+                            </span>
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="icon"
+                              className="h-8 w-8 rounded-full bg-white dark:bg-slate-950/60"
+                              disabled={index === 0}
+                              onClick={() => movePricingItem(index, index - 1)}
+                            >
+                              <ArrowUp className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="icon"
+                              className="h-8 w-8 rounded-full bg-white dark:bg-slate-950/60"
+                              disabled={index === (editor.pricingOrderItems?.length ?? 0) - 1}
+                              onClick={() => movePricingItem(index, index + 1)}
+                            >
+                              <ArrowDown className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="rounded-[18px] border border-dashed border-border-soft bg-surface-soft/70 px-4 py-6 text-center">
+                      <p className="text-sm font-semibold">No rating consequences found</p>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Link Rating consequences to this plan&apos;s product business rules to configure pricing order.
+                      </p>
+                    </div>
+                  )}
+                </Card>
+              ) : null}
+
               {entity === 'email-templates' && (
                 <div className="grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
                   <div className="space-y-5">
@@ -874,7 +1090,9 @@ export function AdminCatalogPage({ entity, icon }: AdminCatalogPageProps) {
 
               {submitError ? <p className="text-sm text-danger">{submitError}</p> : null}
 
-              <div className="flex items-center justify-end gap-3">
+              </div>
+
+              <div className="flex shrink-0 items-center justify-end gap-3 border-t border-border-soft bg-white/95 px-5 py-3.5 dark:bg-[#1E293B]/95">
                 <Button type="button" variant="secondary" onClick={closeEditor}>
                   Cancel
                 </Button>
@@ -918,4 +1136,21 @@ function renderTemplate(template: string | undefined, values: Record<string, str
     (output, [key, value]) => output.replaceAll(`{{${key}}}`, value),
     template ?? '',
   )
+}
+
+function reorderPricingItems(items: PlanPricingOrderItem[], fromIndex: number, toIndex: number) {
+  if (toIndex < 0 || toIndex >= items.length || fromIndex === toIndex) return items
+  const next = [...items]
+  const [moved] = next.splice(fromIndex, 1)
+  if (!moved) return items
+  next.splice(toIndex, 0, moved)
+  return next.map((item, index) => ({ ...item, order: index + 1 }))
+}
+
+function formatCurrencyValue(value?: number) {
+  return new Intl.NumberFormat('en', {
+    style: 'currency',
+    currency: 'AED',
+    maximumFractionDigits: 0,
+  }).format(value ?? 0)
 }

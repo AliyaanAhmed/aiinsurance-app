@@ -12,6 +12,13 @@ export const dataSourcesInfo = {
     "dataSourceType": "Dataverse",
     "apis": {}
   },
+  "aur_aml_screenings": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "aur_aml_screeningid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
   "activitymimeattachments": {
     "tableId": "",
     "version": "",
@@ -72,6 +79,13 @@ export const dataSourcesInfo = {
     "tableId": "",
     "version": "",
     "primaryKey": "aur_coveragesid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "transactioncurrencies": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "transactioncurrencyid",
     "dataSourceType": "Dataverse",
     "apis": {}
   },
@@ -138,6 +152,13 @@ export const dataSourcesInfo = {
     "dataSourceType": "Dataverse",
     "apis": {}
   },
+  "aur_plan_pricing_orders": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "aur_plan_pricing_orderid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
   "aur_plans": {
     "tableId": "",
     "version": "",
@@ -149,6 +170,20 @@ export const dataSourcesInfo = {
     "tableId": "",
     "version": "",
     "primaryKey": "cr058_policyid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "aur_policy_bookings": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "aur_policy_bookingid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "aur_policy_conversions": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "aur_policy_conversionid",
     "dataSourceType": "Dataverse",
     "apis": {}
   },
@@ -193,5 +228,45 @@ export const dataSourcesInfo = {
     "primaryKey": "aur_warrantiesid",
     "dataSourceType": "Dataverse",
     "apis": {}
+  },
+  "generatepaymentlink": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "",
+    "dataSourceType": "Connector",
+    "apis": {
+      "Run": {
+        "path": "/{connectionId}/triggers/manual/run",
+        "method": "POST",
+        "parameters": [
+          {
+            "name": "connectionId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "input",
+            "in": "body",
+            "required": true,
+            "type": "object"
+          },
+          {
+            "name": "api-version",
+            "in": "query",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responseInfo": {
+          "200": {
+            "type": "object"
+          },
+          "default": {
+            "type": "object"
+          }
+        }
+      }
+    }
   }
 };

@@ -11,7 +11,20 @@ function normalizeId(value?: string | null) {
   return (value ?? '').replace(/[{}]/g, '').trim().toLowerCase()
 }
 
+function parseOptionalNumber(value?: string) {
+  if (!value?.trim()) return null
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
 function mapPlanRecord(plan: Awaited<ReturnType<typeof Aur_plansService.getAll>>['data'][number]): AdminCatalogItem {
+  const planRecord = plan as typeof plan & {
+    aur_base_premium?: number | null
+    aur_minimum_sum_insured?: number | null
+    aur_maximum_sum_insured?: number | null
+    aur_cealing?: number | null
+    aur_floor?: number | null
+  }
   return {
     id: plan.aur_planid,
     name: plan.aur_name ?? 'Unnamed plan',
@@ -20,6 +33,11 @@ function mapPlanRecord(plan: Awaited<ReturnType<typeof Aur_plansService.getAll>>
     context: plan.aur_productname ?? 'Unassigned',
     detail: plan.createdon ? `Created ${new Date(plan.createdon).toLocaleDateString('en')}` : 'Product-linked plan',
     productId: plan._aur_product_value,
+    basePremium: planRecord.aur_base_premium ?? undefined,
+    minimumSumInsured: planRecord.aur_minimum_sum_insured ?? undefined,
+    maximumSumInsured: planRecord.aur_maximum_sum_insured ?? undefined,
+    cealing: planRecord.aur_cealing ?? undefined,
+    floor: planRecord.aur_floor ?? undefined,
   }
 }
 
@@ -154,19 +172,37 @@ export async function updateProductAutoActionSetting(productId: string, applyAut
   )
 }
 
-export async function createProductPlan(productId: string, input: { name: string; description: string }) {
-  await Aur_plansService.create({
+interface SaveProductPlanInput {
+  name: string
+  description: string
+  basePremium?: string
+  minimumSumInsured?: string
+  maximumSumInsured?: string
+  cealing?: string
+  floor?: string
+}
+
+function buildPlanPayload(input: SaveProductPlanInput) {
+  return {
     aur_name: input.name,
     aur_description: input.description,
+    aur_base_premium: parseOptionalNumber(input.basePremium),
+    aur_minimum_sum_insured: parseOptionalNumber(input.minimumSumInsured),
+    aur_maximum_sum_insured: parseOptionalNumber(input.maximumSumInsured),
+    aur_cealing: parseOptionalNumber(input.cealing),
+    aur_floor: parseOptionalNumber(input.floor),
+  }
+}
+
+export async function createProductPlan(productId: string, input: SaveProductPlanInput) {
+  await Aur_plansService.create({
+    ...buildPlanPayload(input),
     'aur_product@odata.bind': `/aur_productses(${productId})`,
   } as never)
 }
 
-export async function updateProductPlan(planId: string, input: { name: string; description: string }) {
-  await Aur_plansService.update(planId, {
-    aur_name: input.name,
-    aur_description: input.description,
-  })
+export async function updateProductPlan(planId: string, input: SaveProductPlanInput) {
+  await Aur_plansService.update(planId, buildPlanPayload(input) as never)
 }
 
 export async function deleteProductPlan(planId: string) {

@@ -65,6 +65,8 @@ export interface BusinessRuleConsequence {
   notificationText: string
   riskScore: string
   riskSummary: string
+  ratingAdd: string
+  ratingMultiply: string
   documentTemplateId: string
   documentTemplateName: string
   emailTemplateId: string
@@ -91,6 +93,8 @@ export interface SaveConsequenceInput {
   notificationText?: string
   riskScore?: string
   riskSummary?: string
+  ratingAdd?: string
+  ratingMultiply?: string
   documentTemplateId?: string
   emailTemplateId?: string
 }
@@ -132,6 +136,7 @@ export const CONSEQUENCE_TYPE_OPTIONS = [
   { value: '3', label: 'Document' },
   { value: '4', label: 'Risk' },
   { value: '5', label: 'Email' },
+  { value: '6', label: 'Rating' },
 ] as const
 
 export const CONSEQUENCE_ACTION_OPTIONS = [
@@ -146,6 +151,8 @@ export const CONSEQUENCE_ACTION_OPTIONS = [
   { value: '9', label: 'Update Risk Score' },
   { value: '751820001', label: 'Update Risk Summary' },
   { value: '10', label: 'Email' },
+  { value: '751820002', label: 'Add' },
+  { value: '751820003', label: 'Multiply' },
 ] as const
 
 export const CONSEQUENCE_ACTIONS_BY_TYPE: Record<string, string[]> = {
@@ -154,6 +161,7 @@ export const CONSEQUENCE_ACTIONS_BY_TYPE: Record<string, string[]> = {
   '3': ['6'],
   '4': ['9', '751820001'],
   '5': ['10'],
+  '6': ['751820002', '751820003'],
 }
 
 const PROPERTY_RULE_EXCLUSIONS = new Set([
@@ -427,6 +435,14 @@ export async function saveBusinessRuleConsequence(input: SaveConsequenceInput) {
       effectiveActionValue === '751820001'
         ? input.riskSummary?.trim() || null
         : null,
+    aur_add:
+      effectiveActionValue === '751820002' && input.ratingAdd?.trim()
+        ? Number(input.ratingAdd)
+        : null,
+    aur_multiply:
+      effectiveActionValue === '751820003' && input.ratingMultiply?.trim()
+        ? Number(input.ratingMultiply)
+        : null,
     'aur_DocumentTemplate@odata.bind':
       input.typeValue === '3' && input.documentTemplateId
         ? `/aur_customdocumenttemplateses(${input.documentTemplateId})`
@@ -488,6 +504,8 @@ function mapConsequence(consequence: Aur_consequenceses): BusinessRuleConsequenc
   const consequenceRecord = consequence as Aur_consequenceses & {
     aur_riskscore?: number | string | null
     aur_risksummary?: string | null
+    aur_add?: number | string | null
+    aur_multiply?: number | string | null
     aur_emailtemplatename?: string
     _aur_emailtemplate_value?: string
   }
@@ -504,6 +522,14 @@ function mapConsequence(consequence: Aur_consequenceses): BusinessRuleConsequenc
         ? ''
         : String(consequenceRecord.aur_riskscore),
     riskSummary: consequenceRecord.aur_risksummary ?? '',
+    ratingAdd:
+      consequenceRecord.aur_add === undefined || consequenceRecord.aur_add === null
+        ? ''
+        : String(consequenceRecord.aur_add),
+    ratingMultiply:
+      consequenceRecord.aur_multiply === undefined || consequenceRecord.aur_multiply === null
+        ? ''
+        : String(consequenceRecord.aur_multiply),
     documentTemplateId: consequence._aur_documenttemplate_value ?? '',
     documentTemplateName: consequence.aur_documenttemplatename ?? '',
     emailTemplateId: consequenceRecord._aur_emailtemplate_value ?? '',

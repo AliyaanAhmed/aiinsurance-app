@@ -303,6 +303,8 @@ export async function getInquiryDetailSupplementary(id: string): Promise<Partial
       const rawResult = result as typeof result & {
         aur_action_status?: number | null
         aur_action_statusname?: string
+        aur_add?: number | null
+        aur_multiply?: number | null
       }
 
       return {
@@ -329,6 +331,8 @@ export async function getInquiryDetailSupplementary(id: string): Promise<Partial
         emailTemplateName: linkedConsequence?.emailTemplateName,
         riskScore: linkedConsequence?.riskScore,
         riskSummary: linkedConsequence?.riskSummary,
+        ratingAdd: linkedConsequence?.ratingAdd ?? rawResult.aur_add ?? undefined,
+        ratingMultiply: linkedConsequence?.ratingMultiply ?? rawResult.aur_multiply ?? undefined,
         createdOn: result.createdon,
       }
     })
@@ -390,6 +394,26 @@ export async function getInquiryEditorOptions() {
     inquiryEditorOptionsPromise = getInquiryEditorOptionsUncached()
   }
   return inquiryEditorOptionsPromise
+}
+
+export async function createInquiry(payload: {
+  name: string
+  inquiryType?: number
+  statusCode?: number
+  productId?: string
+  planId?: string
+  brokerId?: string
+}) {
+  const result = await Aur_quotesesService.create({
+    aur_name: payload.name,
+    ...(payload.inquiryType !== undefined ? { aur_inquiry_type: payload.inquiryType as never } : {}),
+    ...(payload.statusCode !== undefined ? { statuscode: payload.statusCode as never } : {}),
+    ...(payload.productId ? { 'aur_product@odata.bind': `/aur_productses(${payload.productId})` } : {}),
+    ...(payload.planId ? { 'aur_plan@odata.bind': `/aur_plans(${payload.planId})` } : {}),
+    ...(payload.brokerId ? { 'aur_account@odata.bind': `/accounts(${payload.brokerId})` } : {}),
+  } as never)
+
+  return result.data?.aur_quotesid ?? ''
 }
 
 export interface ConsequenceTemplatePreview {
@@ -556,6 +580,7 @@ export async function saveInquiryDetail(
     totalSumInsured: number
     territorialScope: string
     noOfItems: string
+    basePremium: number
     premiumToBeCharged: number
     brokerage: number
     grossPremium: number
@@ -580,6 +605,7 @@ export async function saveInquiryDetail(
     aur_total_sum_insured: payload.totalSumInsured,
     aur_territorial_scope: payload.territorialScope,
     aur_no_of_items: payload.noOfItems,
+    aur_base_premium: payload.basePremium,
     aur_total_amount_charge: payload.premiumToBeCharged,
     aur_brokerage_pct: payload.brokerage,
     aur_gross_premium: payload.grossPremium,
@@ -671,6 +697,7 @@ export async function applyInquiryConsequenceResult(input: {
   statusCode?: number
   riskScoreIncrement?: number
   riskSummaryAppend?: string
+  basePremium?: number
 }) {
   const inquiryResult = await Aur_quotesesService.get(input.inquiryId)
   const inquiry = inquiryResult.data
@@ -691,6 +718,12 @@ export async function applyInquiryConsequenceResult(input: {
     ...(input.statusCode !== undefined ? { statuscode: input.statusCode as never } : {}),
     ...(input.riskScoreIncrement !== undefined ? { aur_risk_score: nextRiskScore } : {}),
     ...(input.riskSummaryAppend !== undefined ? { aur_risksummary: nextRiskSummary } : {}),
+    ...(input.basePremium !== undefined
+      ? {
+          aur_base_premium: input.basePremium,
+          aur_total_amount_charge: input.basePremium,
+        }
+      : {}),
   }
 
   await Promise.all([
@@ -705,6 +738,7 @@ export async function applyInquiryConsequenceResult(input: {
   return {
     riskScore: nextRiskScore,
     riskSummary: nextRiskSummary,
+    basePremium: input.basePremium,
     statusCode: input.statusCode,
     actionStatusValue: 751820001,
   }
@@ -935,6 +969,8 @@ function buildConsequences(
       const consequenceRecord = consequence as typeof consequence & {
         aur_riskscore?: number | null
         aur_risksummary?: string | null
+        aur_add?: number | null
+        aur_multiply?: number | null
       }
 
       return {
@@ -955,6 +991,8 @@ function buildConsequences(
             .aur_emailtemplatename,
         riskScore: consequenceRecord.aur_riskscore ?? undefined,
         riskSummary: consequenceRecord.aur_risksummary ?? undefined,
+        ratingAdd: consequenceRecord.aur_add ?? undefined,
+        ratingMultiply: consequenceRecord.aur_multiply ?? undefined,
       }
     })
 }
@@ -1022,6 +1060,10 @@ function consequenceActionLabel(value: string | number | undefined) {
       return 'Email'
     case 751820001:
       return 'Update Risk Summary'
+    case 751820002:
+      return 'Add'
+    case 751820003:
+      return 'Multiply'
     default:
       return ''
   }
@@ -1039,6 +1081,8 @@ function consequenceTypeLabel(value: string | number | undefined) {
       return 'Risk'
     case 5:
       return 'Email'
+    case 6:
+      return 'Rating'
     default:
       return ''
   }

@@ -8,6 +8,8 @@ import {
   Aur_deductiblesesService,
   Aur_exclusionsesService,
   Aur_inclusionsesService,
+  Aur_consequencesesService,
+  Aur_plan_pricing_ordersService,
   Aur_plansService,
   Aur_productsesService,
   Aur_warrantiesesService,
@@ -15,6 +17,7 @@ import {
   ContactsService,
   Cr058_emailtemplatesService,
   Cr058_policiesService,
+  Cr058_productrulelink1sService,
   SystemusersService,
 } from '../generated'
 import { Accountsaur_account_type } from '../generated/models/AccountsModel'
@@ -70,9 +73,28 @@ export interface AdminFormPayload {
   issueDate?: string
   expiryDate?: string
   premiumAmount?: string
+  basePremium?: string
+  minimumSumInsured?: string
+  maximumSumInsured?: string
+  cealing?: string
+  floor?: string
   statusText?: string
   reminderSent?: boolean
   inquiryId?: string
+  pricingOrderItems?: PlanPricingOrderItem[]
+}
+
+export interface PlanPricingOrderItem {
+  key: string
+  consequenceId: string
+  businessRuleId: string
+  businessRuleName: string
+  consequenceName: string
+  action: string
+  actionValue: string
+  addAmount?: number
+  multiplyValue?: number
+  order: number
 }
 
 const ENTITY_META: Record<
@@ -197,6 +219,7 @@ export async function getAdminCatalog(entity: AdminEntityKey): Promise<AdminCata
 
   if (entity === 'plans') {
     records = plans.map((plan) => ({
+      ...mapPlanPricingFields(plan),
       id: plan.aur_planid,
       name: plan.aur_name ?? 'Unnamed plan',
       description: plan.aur_description ?? 'No plan description has been captured yet.',
@@ -426,6 +449,19 @@ export async function getAdminCatalog(entity: AdminEntityKey): Promise<AdminCata
 
 export async function saveAdminRecord(entity: AdminEntityKey, payload: AdminFormPayload) {
   const data = buildPayload(entity, payload)
+  if (entity === 'plans') {
+    const result = payload.id
+      ? await updateEntity(entity, payload.id, data)
+      : await createEntity(entity, data)
+    const planId =
+      payload.id ||
+      ((result as { data?: { aur_planid?: string } } | undefined)?.data?.aur_planid ?? '')
+    if (planId && payload.pricingOrderItems) {
+      await savePlanPricingOrder(planId, payload.pricingOrderItems)
+    }
+    return
+  }
+
   if (payload.id) {
     await updateEntity(entity, payload.id, data)
     return
@@ -451,6 +487,23 @@ export async function getAdminRecord(entity: AdminEntityKey, id: string): Promis
       description: record.cr058_notes ?? '',
       productId: record._cr058_product_value ?? '',
       inquiryId: record._cr058_inquiry_value ?? '',
+    }
+  }
+  if (entity === 'plans') {
+    const record = (await Aur_plansService.get(id)).data
+    if (!record) throw new Error('Plan not found.')
+    const pricing = mapPlanPricingFields(record)
+    return {
+      id: record.aur_planid,
+      name: record.aur_name ?? '',
+      description: record.aur_description ?? '',
+      productId: record._aur_product_value ?? '',
+      basePremium: pricing.basePremium != null ? String(pricing.basePremium) : '',
+      minimumSumInsured: pricing.minimumSumInsured != null ? String(pricing.minimumSumInsured) : '',
+      maximumSumInsured: pricing.maximumSumInsured != null ? String(pricing.maximumSumInsured) : '',
+      cealing: pricing.cealing != null ? String(pricing.cealing) : '',
+      floor: pricing.floor != null ? String(pricing.floor) : '',
+      pricingOrderItems: await getPlanRatingPricingOrder(record.aur_planid, record._aur_product_value),
     }
   }
   if (entity === 'accounts') {
@@ -630,6 +683,29 @@ function resolvePlanName(planMap: Map<string, { aur_name?: string }>, planId?: s
   return planMap.get(planId)?.aur_name ?? 'Unassigned'
 }
 
+function parseOptionalNumber(value?: string) {
+  if (!value?.trim()) return null
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function mapPlanPricingFields(plan: Awaited<ReturnType<typeof Aur_plansService.getAll>>['data'][number]) {
+  const planRecord = plan as typeof plan & {
+    aur_base_premium?: number | null
+    aur_minimum_sum_insured?: number | null
+    aur_maximum_sum_insured?: number | null
+    aur_cealing?: number | null
+    aur_floor?: number | null
+  }
+  return {
+    basePremium: planRecord.aur_base_premium ?? undefined,
+    minimumSumInsured: planRecord.aur_minimum_sum_insured ?? undefined,
+    maximumSumInsured: planRecord.aur_maximum_sum_insured ?? undefined,
+    cealing: planRecord.aur_cealing ?? undefined,
+    floor: planRecord.aur_floor ?? undefined,
+  }
+}
+
 function resolveRuleCategory(value?: number) {
   if (!value) return 'Uncategorized'
   return Aur_business_rulesesaur_categories[value as keyof typeof Aur_business_rulesesaur_categories] ?? 'Uncategorized'
@@ -656,6 +732,11 @@ function buildPayload(entity: AdminEntityKey, payload: AdminFormPayload) {
     return {
       aur_name: payload.name,
       aur_description: payload.description,
+      aur_base_premium: parseOptionalNumber(payload.basePremium),
+      aur_minimum_sum_insured: parseOptionalNumber(payload.minimumSumInsured),
+      aur_maximum_sum_insured: parseOptionalNumber(payload.maximumSumInsured),
+      aur_cealing: parseOptionalNumber(payload.cealing),
+      aur_floor: parseOptionalNumber(payload.floor),
       ...(payload.productId ? { 'aur_product@odata.bind': `/aur_productses(${payload.productId})` } : {}),
     }
   }
@@ -782,6 +863,96 @@ function buildPlanLinkedPayload(payload: AdminFormPayload) {
     aur_description: payload.description,
     ...(payload.planId ? { 'aur_plan@odata.bind': `/aur_plans(${payload.planId})` } : {}),
   }
+}
+
+export async function getPlanRatingPricingOrder(planId: string, productId?: string): Promise<PlanPricingOrderItem[]> {
+  if (!productId) return []
+
+  const normalizedProductId = normalizeDataverseId(productId)
+  const [linksResult, rulesResult, consequencesResult, savedOrderResult] = await Promise.all([
+    Cr058_productrulelink1sService.getAll(),
+    Aur_business_rulesesService.getAll(),
+    Aur_consequencesesService.getAll(),
+    Aur_plan_pricing_ordersService.getAll().catch(() => ({ data: [] })),
+  ])
+
+  const linkedRuleIds = new Set(
+    (linksResult.data ?? [])
+      .filter((link) => normalizeDataverseId(link.cr058_productid) === normalizedProductId)
+      .map((link) => normalizeDataverseId(link.cr058_businessruleid))
+      .filter(Boolean),
+  )
+
+  const ruleNameById = new Map(
+    (rulesResult.data ?? []).map((rule) => [
+      normalizeDataverseId(rule.aur_business_rulesid),
+      rule.aur_name ?? 'Business Rule',
+    ]),
+  )
+
+  const savedOrderByConsequenceId = new Map(
+    (savedOrderResult.data ?? [])
+      .filter((order) => normalizeDataverseId(order._aur_plan_value) === normalizeDataverseId(planId))
+      .map((order) => [
+        normalizeDataverseId(order._aur_consequences_value),
+        Number(order.aur_order) || Number.MAX_SAFE_INTEGER,
+      ]),
+  )
+
+  return (consequencesResult.data ?? [])
+    .map((consequence) => {
+      const consequenceRecord = consequence as typeof consequence & {
+        aur_add?: number | null
+        aur_multiply?: number | null
+      }
+      const businessRuleId = normalizeDataverseId(consequence._aur_business_rule_value)
+      const actionValue = consequence.aur_action ? String(consequence.aur_action) : ''
+      const typeValue = consequence.aur_type ? String(consequence.aur_type) : ''
+      return {
+        key: consequence.aur_consequencesid,
+        consequenceId: consequence.aur_consequencesid,
+        businessRuleId: consequence._aur_business_rule_value ?? '',
+        businessRuleName: ruleNameById.get(businessRuleId) ?? consequence.aur_business_rulename ?? 'Business Rule',
+        consequenceName: consequence.aur_name ?? resolvePricingActionLabel(actionValue),
+        action: resolvePricingActionLabel(actionValue),
+        actionValue,
+        addAmount: consequenceRecord.aur_add ?? undefined,
+        multiplyValue: consequenceRecord.aur_multiply ?? undefined,
+        order: savedOrderByConsequenceId.get(normalizeDataverseId(consequence.aur_consequencesid)) ?? Number.MAX_SAFE_INTEGER,
+        typeValue,
+      }
+    })
+    .filter((item) => linkedRuleIds.has(normalizeDataverseId(item.businessRuleId)) && item.typeValue === '6')
+    .sort((left, right) => left.order - right.order || left.businessRuleName.localeCompare(right.businessRuleName))
+    .map((item, index) => ({
+      ...item,
+      order: index + 1,
+    }))
+}
+
+async function savePlanPricingOrder(planId: string, items: PlanPricingOrderItem[]) {
+  const existing = (await Aur_plan_pricing_ordersService.getAll().catch(() => ({ data: [] }))).data ?? []
+  const currentPlanOrders = existing.filter((order) => normalizeDataverseId(order._aur_plan_value) === normalizeDataverseId(planId))
+
+  for (const order of currentPlanOrders) {
+    await Aur_plan_pricing_ordersService.delete(order.aur_plan_pricing_orderid)
+  }
+
+  for (const [index, item] of items.entries()) {
+    await Aur_plan_pricing_ordersService.create({
+      aur_name: `${item.businessRuleName} - ${item.consequenceName}`,
+      aur_order: String(index + 1),
+      'aur_plan@odata.bind': `/aur_plans(${planId})`,
+      'aur_business_rule@odata.bind': `/aur_business_ruleses(${item.businessRuleId})`,
+      'aur_consequences@odata.bind': `/aur_consequenceses(${item.consequenceId})`,
+    } as never)
+  }
+}
+
+function resolvePricingActionLabel(value?: string | number) {
+  if (Number(value) === 751820002) return 'Add'
+  if (Number(value) === 751820003) return 'Multiply'
+  return String(value || 'Rating')
 }
 
 function createEntity(entity: AdminEntityKey, data: Record<string, unknown>) {

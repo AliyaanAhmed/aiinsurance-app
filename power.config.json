@@ -10,7 +10,20 @@
   "buildEntryPoint": "index.html",
   "localAppUrl": "http://localhost:3000",
   "logoPath": "Default",
-  "connectionReferences": {},
+  "connectionReferences": {
+    "39749cdb-6a60-404b-8ebc-caf6662d53f3": {
+      "id": "/providers/Microsoft.PowerApps/apis/shared_logicflows",
+      "displayName": "Logic flows",
+      "dataSources": [
+        "generatepaymentlink"
+      ],
+      "workflowDetails": {
+        "workflowEntityId": "13cce92b-1b79-f111-ab0f-7ced8da0787f",
+        "workflowDisplayName": "Generate Payment Link",
+        "workflowName": "a0bfea57-0bc2-1c1f-1301-4fe487dc37f5"
+      }
+    }
+  },
   "databaseReferences": {
     "default.cds": {
       "dataSources": {
@@ -147,6 +160,31 @@
         "productrulelinks": {
           "entitySetName": "cr058_productrulelink1s",
           "logicalName": "cr058_productrulelink1",
+          "isHidden": false
+        },
+        "policyconversions": {
+          "entitySetName": "aur_policy_conversions",
+          "logicalName": "aur_policy_conversion",
+          "isHidden": false
+        },
+        "amlscreenings": {
+          "entitySetName": "aur_aml_screenings",
+          "logicalName": "aur_aml_screening",
+          "isHidden": false
+        },
+        "currencies": {
+          "entitySetName": "transactioncurrencies",
+          "logicalName": "transactioncurrency",
+          "isHidden": false
+        },
+        "policybookings": {
+          "entitySetName": "aur_policy_bookings",
+          "logicalName": "aur_policy_booking",
+          "isHidden": false
+        },
+        "planpricingorders": {
+          "entitySetName": "aur_plan_pricing_orders",
+          "logicalName": "aur_plan_pricing_order",
           "isHidden": false
         }
       },

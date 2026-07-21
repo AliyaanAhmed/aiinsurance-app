@@ -52,6 +52,8 @@ interface ConsequenceEditorState {
   notificationText: string
   riskScore: string
   riskSummary: string
+  ratingAdd: string
+  ratingMultiply: string
   documentTemplateId: string
   emailTemplateId: string
 }
@@ -63,6 +65,8 @@ const emptyConsequenceEditor: ConsequenceEditorState = {
   notificationText: '',
   riskScore: '',
   riskSummary: '',
+  ratingAdd: '',
+  ratingMultiply: '',
   documentTemplateId: '',
   emailTemplateId: '',
 }
@@ -173,6 +177,10 @@ export function BusinessRuleWorkspacePage() {
     consequenceEditor.typeValue === '4' && consequenceEditor.actionValue === '9'
   const showRiskSummaryField =
     consequenceEditor.typeValue === '4' && consequenceEditor.actionValue === '751820001'
+  const showRatingAddField =
+    consequenceEditor.typeValue === '6' && consequenceEditor.actionValue === '751820002'
+  const showRatingMultiplyField =
+    consequenceEditor.typeValue === '6' && consequenceEditor.actionValue === '751820003'
   const showDocumentTemplateField = consequenceEditor.typeValue === '3'
   const showEmailTemplateField = consequenceEditor.typeValue === '5'
 
@@ -246,6 +254,14 @@ export function BusinessRuleWorkspacePage() {
       setConsequenceError('Risk Summary is required for Update Risk Summary.')
       return
     }
+    if (showRatingAddField && !consequenceEditor.ratingAdd.trim()) {
+      setConsequenceError('Add amount is required for rating add actions.')
+      return
+    }
+    if (showRatingMultiplyField && !consequenceEditor.ratingMultiply.trim()) {
+      setConsequenceError('Multiplier is required for rating multiply actions.')
+      return
+    }
     if (showDocumentTemplateField && !consequenceEditor.documentTemplateId) {
       setConsequenceError('Select a document template.')
       return
@@ -270,6 +286,8 @@ export function BusinessRuleWorkspacePage() {
         notificationText: consequenceEditor.notificationText,
         riskScore: consequenceEditor.riskScore,
         riskSummary: consequenceEditor.riskSummary,
+        ratingAdd: consequenceEditor.ratingAdd,
+        ratingMultiply: consequenceEditor.ratingMultiply,
         documentTemplateId: consequenceEditor.documentTemplateId,
         emailTemplateId: consequenceEditor.emailTemplateId,
       })
@@ -309,6 +327,8 @@ export function BusinessRuleWorkspacePage() {
       notificationText: '',
       riskScore: '',
       riskSummary: '',
+      ratingAdd: '',
+      ratingMultiply: '',
       documentTemplateId: '',
       emailTemplateId: '',
     })
@@ -324,6 +344,8 @@ export function BusinessRuleWorkspacePage() {
       notificationText: consequence.notificationText,
       riskScore: consequence.riskScore,
       riskSummary: consequence.riskSummary,
+      ratingAdd: consequence.ratingAdd,
+      ratingMultiply: consequence.ratingMultiply,
       documentTemplateId: consequence.documentTemplateId,
       emailTemplateId: consequence.emailTemplateId,
     })
@@ -337,6 +359,8 @@ export function BusinessRuleWorkspacePage() {
       notificationText: '',
       riskScore: '',
       riskSummary: '',
+      ratingAdd: '',
+      ratingMultiply: '',
       documentTemplateId: '',
       emailTemplateId: '',
     }))
@@ -597,6 +621,8 @@ export function BusinessRuleWorkspacePage() {
                           notificationText: requiresNotificationText(value) ? current.notificationText : '',
                           riskScore: value === '9' ? current.riskScore : '',
                           riskSummary: value === '751820001' ? current.riskSummary : '',
+                          ratingAdd: value === '751820002' ? current.ratingAdd : '',
+                          ratingMultiply: value === '751820003' ? current.ratingMultiply : '',
                         }))
                       }
                       placeholder={
@@ -639,6 +665,40 @@ export function BusinessRuleWorkspacePage() {
                       }
                       className="form-field-surface min-h-[110px] w-full rounded-[18px] border border-border px-4 py-3 text-sm outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10"
                       placeholder="Enter the risk summary that should be applied."
+                    />
+                  </Field>
+                ) : null}
+
+                {showRatingAddField ? (
+                  <Field label="Add Amount">
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={consequenceEditor.ratingAdd}
+                      onChange={(event) =>
+                        setConsequenceEditor((current) => ({
+                          ...current,
+                          ratingAdd: event.target.value,
+                        }))
+                      }
+                      placeholder="Enter rating amount"
+                    />
+                  </Field>
+                ) : null}
+
+                {showRatingMultiplyField ? (
+                  <Field label="Multiplier">
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={consequenceEditor.ratingMultiply}
+                      onChange={(event) =>
+                        setConsequenceEditor((current) => ({
+                          ...current,
+                          ratingMultiply: event.target.value,
+                        }))
+                      }
+                      placeholder="Enter multiplier value"
                     />
                   </Field>
                 ) : null}
@@ -739,11 +799,7 @@ export function BusinessRuleWorkspacePage() {
                     <div>
                       <h3 className="text-lg font-semibold">{consequence.name}</h3>
                       <p className="mt-1 text-sm text-muted-foreground">
-                        {consequence.notificationText ||
-                          consequence.documentTemplateName ||
-                          consequence.emailTemplateName ||
-                          consequence.riskSummary ||
-                          (consequence.riskScore ? `Risk score: ${consequence.riskScore}` : 'No notification text is required for this consequence.')}
+                        {getConsequencePreview(consequence)}
                       </p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2 text-[12px] text-muted-foreground">
@@ -870,6 +926,18 @@ function ConsequenceTypeChip({
       <Icon className="h-3.5 w-3.5" />
       {typeLabel}
     </Badge>
+  )
+}
+
+function getConsequencePreview(consequence: BusinessRuleConsequence) {
+  if (consequence.ratingAdd) return `Rating add amount: ${Number(consequence.ratingAdd).toLocaleString('en')}`
+  if (consequence.ratingMultiply) return `Rating multiplier: ${consequence.ratingMultiply}`
+  return (
+    consequence.notificationText ||
+    consequence.documentTemplateName ||
+    consequence.emailTemplateName ||
+    consequence.riskSummary ||
+    (consequence.riskScore ? `Risk score: ${consequence.riskScore}` : 'No notification text is required for this consequence.')
   )
 }
 

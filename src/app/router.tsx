@@ -5,6 +5,8 @@ import { InquiriesPage } from '../pages/inquiries/InquiryListPage'
 import { InquiryWorkspacePage } from '../pages/inquiries/InquiryWorkspacePage'
 import { QuotesPage } from '../pages/quotes/QuotesPage'
 import { QuoteWorkbenchPage } from '../pages/quotes/QuoteWorkbenchPage'
+import { PolicyConversionsPage } from '../pages/policy-conversions/PolicyConversionsPage'
+import { PolicyConversionWorkspacePage } from '../pages/policy-conversions/PolicyConversionWorkspacePage'
 import { RenewalOperationsPage } from '../pages/renewals/RenewalOperationsPage'
 import { AnalyticsPage } from '../pages/analytics/AnalyticsPage'
 import { ProductsPage } from '../pages/products/ProductsPage'
@@ -21,6 +23,7 @@ import { EmailTemplatesPage } from '../pages/admin/EmailTemplatesPage'
 import { DocumentTemplatesPage } from '../pages/admin/DocumentTemplatesPage'
 import { BusinessRulesPage } from '../pages/admin/BusinessRulesPage'
 import { BusinessRuleWorkspacePage } from '../pages/admin/BusinessRuleWorkspacePage'
+import { PlanWorkspacePage } from '../pages/admin/PlanWorkspacePage'
 import {
   Boxes,
   BriefcaseBusiness,
@@ -70,6 +73,22 @@ export const router = createBrowserRouter([
         element: (
           <GuardedRoute bucket="leads">
             <QuoteWorkbenchPage />
+          </GuardedRoute>
+        ),
+      },
+      {
+        path: 'policy-conversions',
+        element: (
+          <GuardedRoute bucket="leads">
+            <PolicyConversionsPage />
+          </GuardedRoute>
+        ),
+      },
+      {
+        path: 'policy-conversions/:id',
+        element: (
+          <GuardedRoute bucket="leads">
+            <PolicyConversionWorkspacePage />
           </GuardedRoute>
         ),
       },
@@ -126,6 +145,14 @@ export const router = createBrowserRouter([
         element: (
           <GuardedRoute bucket="products">
             <AdminCatalogPage entity="plans" icon={Boxes} />
+          </GuardedRoute>
+        ),
+      },
+      {
+        path: 'admin/plans/:id/edit',
+        element: (
+          <GuardedRoute bucket="products">
+            <PlanWorkspacePage />
           </GuardedRoute>
         ),
       },

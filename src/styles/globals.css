@@ -79,6 +79,31 @@
   .scrollbar-hidden::-webkit-scrollbar {
     display: none;
   }
+
+  .scrollbar-sleek {
+    scrollbar-color: hsl(var(--primary) / 0.36) transparent;
+    scrollbar-width: thin;
+  }
+
+  .scrollbar-sleek::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .scrollbar-sleek::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scrollbar-sleek::-webkit-scrollbar-thumb {
+    background: hsl(var(--primary) / 0.24);
+    border: 2px solid transparent;
+    border-radius: 999px;
+    background-clip: padding-box;
+  }
+
+  .scrollbar-sleek::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--primary) / 0.42);
+    background-clip: padding-box;
+  }
 }
 
 @layer components {

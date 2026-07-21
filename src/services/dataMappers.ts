@@ -80,6 +80,7 @@ export function mapInquiryDetail(
   contact?: RelatedParty,
   broker?: RelatedParty,
 ): InquiryDetail {
+  const inquiryRecord = record as Aur_quoteses & { aur_base_premium?: number | null }
   const summary = mapInquirySummary(record)
   const resolvedAccountName = account?.name?.trim() || summary.accountName
   const resolvedContactName = contact?.name?.trim() || summary.contactName
@@ -121,6 +122,7 @@ export function mapInquiryDetail(
     coverType: record.aur_cover_typename ?? 'Not specified',
     fee: record.aur_fee ?? 0,
     declaredValue: record.aur_declared_value ?? 0,
+    basePremium: inquiryRecord.aur_base_premium ?? 0,
     totalCharge: record.aur_total_amount_charge ?? 0,
     aiSummary: record.aur_risksummary ?? record.aur_summary ?? 'AI summary is not available yet.',
     account,

@@ -5,6 +5,7 @@ import {
   BriefcaseBusiness,
   Building2,
   ClipboardList,
+  ClipboardCheck,
   FileClock,
   FilePenLine,
   Files,
@@ -82,6 +83,13 @@ export const APP_ROUTES: RouteDefinition[] = [
     label: 'Quotes',
     bucket: 'leads',
     icon: ReceiptText,
+    group: 'Policy Management',
+  },
+  {
+    path: '/policy-conversions',
+    label: 'Policy Conversion',
+    bucket: 'leads',
+    icon: ClipboardCheck,
     group: 'Policy Management',
   },
   {

@@ -18,6 +18,7 @@ import type {
   QuoteSummary,
 } from '../domain/app'
 import { mapInquirySummary, mapQuoteDetail, mapQuoteResponse, mapQuoteSummary } from './dataMappers'
+import { ensurePolicyConversionForWonQuote } from './policyConversionsService'
 
 export type QuotePlanLinkedEntityKey =
   | 'benefits'
@@ -153,6 +154,7 @@ export async function saveQuoteDetail(
     quoteStatus?: 'QuoteWon' | 'QuoteLost'
   },
 ) {
+  const previousQuote = payload.quoteStatus === 'QuoteWon' ? (await Aur_quotesService.get(id)).data : undefined
   await Aur_quotesService.update(id, {
     aur_name: payload.name,
     aur_total_premium: payload.totalPremium,
@@ -173,17 +175,30 @@ export async function saveQuoteDetail(
       ? { aur_quote_status: payload.quoteStatus === 'QuoteWon' ? 751820000 : 751820001 }
       : {}),
   })
+  if (payload.quoteStatus === 'QuoteWon' && previousQuote?.aur_quote_status !== 751820000) {
+    await ensurePolicyConversionForWonQuote(id, {
+      name: payload.name,
+      totalPremium: payload.totalPremium,
+    })
+  }
 }
 
 export async function updateQuoteStatus(
   id: string,
   quoteStatus?: 'QuoteWon' | 'QuoteLost',
 ) {
+  const previousQuote = quoteStatus === 'QuoteWon' ? (await Aur_quotesService.get(id)).data : undefined
   await Aur_quotesService.update(id, {
     ...(quoteStatus
       ? { aur_quote_status: quoteStatus === 'QuoteWon' ? 751820000 : 751820001 }
       : { aur_quote_status: undefined }),
   })
+  if (quoteStatus === 'QuoteWon' && previousQuote?.aur_quote_status !== 751820000) {
+    await ensurePolicyConversionForWonQuote(id, {
+      name: previousQuote?.aur_name,
+      totalPremium: previousQuote?.aur_total_premium,
+    })
+  }
 }
 
 export async function getQuotePlanLinkedSections(planId: string): Promise<QuotePlanLinkedSection[]> {

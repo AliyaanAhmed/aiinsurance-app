@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react'
 import { useSearchParams, Link } from 'react-router-dom'
 import type { ColumnDef } from '@tanstack/react-table'
-import { ClipboardList, Filter, RotateCcw, X } from 'lucide-react'
+import { ClipboardList, Filter, Plus, RotateCcw, X } from 'lucide-react'
 import { createPortal } from 'react-dom'
 import { useAsyncData } from '../../hooks/useAsyncData'
-import { listInquiries } from '../../services/inquiriesService'
+import { createInquiry, getInquiryEditorOptions, listInquiries } from '../../services/inquiriesService'
 import type { InquirySummary } from '../../domain/app'
 import { PageHeader } from '../../components/layout/PageHeader'
 import { FilterBar } from '../../components/ui/FilterBar'
@@ -42,10 +42,22 @@ const defaultColumnFilters: InquiryColumnFilters = {
 export function InquiriesPage() {
   const [params] = useSearchParams()
   const [search, setSearch] = useState('')
+  const [refreshKey, setRefreshKey] = useState(0)
   const [activeFilterKey, setActiveFilterKey] = useState<ColumnFilterKey | null>(null)
   const [columnFilters, setColumnFilters] = useState<InquiryColumnFilters>(defaultColumnFilters)
+  const [createOpen, setCreateOpen] = useState(false)
+  const [createBusy, setCreateBusy] = useState(false)
+  const [createError, setCreateError] = useState<string | null>(null)
+  const [createForm, setCreateForm] = useState({
+    name: '',
+    inquiryType: '1',
+    statusCode: '751820006',
+    productId: '',
+    planId: '',
+  })
   const scope = params.get('type') ?? undefined
-  const { data, loading, error } = useAsyncData(() => listInquiries(), [])
+  const { data, loading, error } = useAsyncData(() => listInquiries(), [refreshKey])
+  const optionsLoad = useAsyncData(() => getInquiryEditorOptions(), [])
 
   const scopeFiltered = useMemo(() => {
     const records = data ?? []
@@ -357,12 +369,49 @@ export function InquiriesPage() {
     setActiveFilterKey(null)
   }
 
+  async function handleCreateInquiry() {
+    if (!createForm.name.trim()) {
+      setCreateError('Inquiry name is required.')
+      return
+    }
+    setCreateBusy(true)
+    setCreateError(null)
+    try {
+      await createInquiry({
+        name: createForm.name.trim(),
+        inquiryType: createForm.inquiryType ? Number(createForm.inquiryType) : undefined,
+        statusCode: createForm.statusCode ? Number(createForm.statusCode) : undefined,
+        productId: createForm.productId || undefined,
+        planId: createForm.planId || undefined,
+      })
+      setCreateOpen(false)
+      setCreateForm({
+        name: '',
+        inquiryType: '1',
+        statusCode: '751820006',
+        productId: '',
+        planId: '',
+      })
+      setRefreshKey((value) => value + 1)
+    } catch (cause) {
+      setCreateError(cause instanceof Error ? cause.message : 'Unable to create inquiry.')
+    } finally {
+      setCreateBusy(false)
+    }
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
         icon={ClipboardList}
         title={scope ? `${scope} Inquiries` : 'All Inquiries'}
         description="Operational queue for browsing intake records and drilling into the underwriting workspace."
+        actions={
+          <Button type="button" onClick={() => setCreateOpen(true)}>
+            <Plus className="h-4 w-4" />
+            Create Inquiry
+          </Button>
+        }
       />
       <FilterBar
         search={search}
@@ -412,6 +461,136 @@ export function InquiriesPage() {
           preserveHeaderOnEmpty
         />
       )}
+      {createOpen ? (
+        <CreateInquiryModal
+          form={createForm}
+          options={optionsLoad.data ?? undefined}
+          busy={createBusy}
+          error={createError}
+          onChange={setCreateForm}
+          onClose={() => {
+            if (createBusy) return
+            setCreateOpen(false)
+            setCreateError(null)
+          }}
+          onCreate={() => void handleCreateInquiry()}
+        />
+      ) : null}
+    </div>
+  )
+}
+
+function CreateInquiryModal({
+  form,
+  options,
+  busy,
+  error,
+  onChange,
+  onClose,
+  onCreate,
+}: {
+  form: {
+    name: string
+    inquiryType: string
+    statusCode: string
+    productId: string
+    planId: string
+  }
+  options?: Awaited<ReturnType<typeof getInquiryEditorOptions>>
+  busy: boolean
+  error: string | null
+  onChange: Dispatch<SetStateAction<{
+    name: string
+    inquiryType: string
+    statusCode: string
+    productId: string
+    planId: string
+  }>>
+  onClose: () => void
+  onCreate: () => void
+}) {
+  const availablePlans = (options?.plans ?? []).filter((plan) => !form.productId || plan.productId === form.productId)
+
+  return createPortal(
+    <div className="fixed inset-0 z-50 !mt-0 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm">
+      <Card variant="premium" className="w-full max-w-2xl overflow-hidden p-0">
+        <div className="flex items-start justify-between gap-4 border-b border-border-soft px-6 py-5">
+          <div>
+            <p className="text-[12px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Inquiry Intake</p>
+            <h2 className="mt-1 text-2xl font-bold">Create Inquiry</h2>
+            <p className="mt-1 text-sm text-muted-foreground">Add a basic inquiry record. Detailed underwriting actions can be completed after opening the workspace.</p>
+          </div>
+          <Button type="button" variant="ghost" size="icon" onClick={onClose} disabled={busy}>
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+
+        <div className="space-y-5 px-6 py-5">
+          {error ? <div className="rounded-[16px] border border-danger/20 bg-danger/5 px-4 py-3 text-sm text-danger">{error}</div> : null}
+          <div className="grid gap-4 md:grid-cols-2">
+            <CreateField label="Inquiry Name">
+              <Input
+                value={form.name}
+                onChange={(event) => onChange((current) => ({ ...current, name: event.target.value }))}
+                placeholder="e.g. Inquiry for Aviation - client@email.com"
+                required
+              />
+            </CreateField>
+            <CreateField label="Inquiry Type">
+              <Select
+                value={form.inquiryType}
+                onChange={(event) => onChange((current) => ({ ...current, inquiryType: event.target.value }))}
+                options={(options?.inquiryTypes ?? []).map((item) => ({ value: String(item.value), label: item.label }))}
+                placeholder="Select inquiry type"
+              />
+            </CreateField>
+            <CreateField label="Initial Status">
+              <Select
+                value={form.statusCode}
+                onChange={(event) => onChange((current) => ({ ...current, statusCode: event.target.value }))}
+                options={(options?.inquiryStatuses ?? []).map((item) => ({ value: String(item.value), label: item.label }))}
+                placeholder="Select status"
+              />
+            </CreateField>
+            <CreateField label="Product">
+              <Select
+                value={form.productId}
+                onChange={(event) => onChange((current) => ({ ...current, productId: event.target.value, planId: '' }))}
+                options={(options?.products ?? []).map((item) => ({ value: item.id, label: item.name }))}
+                placeholder="Select product"
+              />
+            </CreateField>
+            <CreateField label="Plan">
+              <Select
+                value={form.planId}
+                onChange={(event) => onChange((current) => ({ ...current, planId: event.target.value }))}
+                options={availablePlans.map((item) => ({ value: item.id, label: item.name }))}
+                placeholder="Select plan"
+                disabled={!availablePlans.length}
+              />
+            </CreateField>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-end gap-3 border-t border-border-soft bg-white/95 px-6 py-4 dark:bg-[#1E293B]/95">
+          <Button type="button" variant="secondary" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button type="button" onClick={onCreate} disabled={busy}>
+            {busy ? 'Creating...' : 'Create Inquiry'}
+          </Button>
+        </div>
+      </Card>
+    </div>,
+    document.body,
+  )
+}
+
+function CreateField({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="space-y-2">
+      <p className="text-[12px] font-bold uppercase tracking-[0.08em] text-muted-foreground">{label}</p>
+      {children}
     </div>
   )
 }

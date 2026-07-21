@@ -9,7 +9,6 @@ import {
   GitBranch,
   Layers3,
   PackagePlus,
-  Pencil,
   Plus,
   Save,
   Search,
@@ -59,6 +58,22 @@ interface PlanDraftState {
   id?: string
   name: string
   description: string
+  basePremium: string
+  minimumSumInsured: string
+  maximumSumInsured: string
+  cealing: string
+  floor: string
+}
+
+const emptyPlanDraft: PlanDraftState = {
+  open: false,
+  name: '',
+  description: '',
+  basePremium: '',
+  minimumSumInsured: '',
+  maximumSumInsured: '',
+  cealing: '',
+  floor: '',
 }
 
 const RULE_GROUPS = [
@@ -80,7 +95,7 @@ export function ProductEditorPage() {
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState('details')
-  const [planDraft, setPlanDraft] = useState<PlanDraftState>({ open: false, name: '', description: '' })
+  const [planDraft, setPlanDraft] = useState<PlanDraftState>(emptyPlanDraft)
   const [planBusyId, setPlanBusyId] = useState<string | null>(null)
   const [ruleSearch, setRuleSearch] = useState('')
   const [selectedRuleIds, setSelectedRuleIds] = useState<string[]>([])
@@ -211,14 +226,24 @@ export function ProductEditorPage() {
         await updateProductPlan(planDraft.id, {
           name: planDraft.name,
           description: planDraft.description,
+          basePremium: planDraft.basePremium,
+          minimumSumInsured: planDraft.minimumSumInsured,
+          maximumSumInsured: planDraft.maximumSumInsured,
+          cealing: planDraft.cealing,
+          floor: planDraft.floor,
         })
       } else {
         await createProductPlan(id, {
           name: planDraft.name,
           description: planDraft.description,
+          basePremium: planDraft.basePremium,
+          minimumSumInsured: planDraft.minimumSumInsured,
+          maximumSumInsured: planDraft.maximumSumInsured,
+          cealing: planDraft.cealing,
+          floor: planDraft.floor,
         })
       }
-      setPlanDraft({ open: false, name: '', description: '' })
+      setPlanDraft(emptyPlanDraft)
       setRefreshKey((value) => value + 1)
     } catch (cause) {
       setSaveError(cause instanceof Error ? cause.message : 'Unable to save plan.')
@@ -527,7 +552,7 @@ export function ProductEditorPage() {
                       Plans are direct child records of this product and can be created, edited, and deleted from here.
                     </p>
                   </div>
-                  <Button type="button" variant="secondary" className="bg-white dark:bg-[#1E293B]" onClick={() => setPlanDraft({ open: true, name: '', description: '' })} disabled={isCreate}>
+                  <Button type="button" variant="secondary" className="bg-white dark:bg-[#1E293B]" onClick={() => setPlanDraft({ ...emptyPlanDraft, open: true })} disabled={isCreate}>
                     <Plus className="h-4 w-4" />
                     Add Plan
                   </Button>
@@ -549,7 +574,7 @@ export function ProductEditorPage() {
                           <tr>
                             <th className="px-4 py-3 text-left text-[12px] font-bold uppercase tracking-[0.08em] text-muted-foreground">Name</th>
                             <th className="px-4 py-3 text-left text-[12px] font-bold uppercase tracking-[0.08em] text-muted-foreground">Description</th>
-                            <th className="px-4 py-3 text-left text-[12px] font-bold uppercase tracking-[0.08em] text-muted-foreground">Actions</th>
+                            <th className="px-4 py-3 text-right text-[12px] font-bold uppercase tracking-[0.08em] text-muted-foreground">Actions</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -557,22 +582,18 @@ export function ProductEditorPage() {
                             <tr key={plan.id} className="border-b border-border-soft/80 bg-surface transition duration-150 hover:bg-primary/5">
                               <td className="px-4 py-4">
                                 <div className="space-y-1">
-                                  <p className="font-semibold">{plan.name}</p>
+                                  <Link
+                                    to={`/admin/plans/${plan.id}/edit${plan.productId ? `?productId=${encodeURIComponent(plan.productId)}` : ''}`}
+                                    className="font-semibold text-primary transition hover:text-primary/80 hover:underline"
+                                  >
+                                    {plan.name}
+                                  </Link>
                                   <p className="text-[12px] text-muted-foreground">{plan.detail}</p>
                                 </div>
                               </td>
                               <td className="px-4 py-4 text-sm text-muted-foreground">{plan.description}</td>
                               <td className="px-4 py-4">
-                                <div className="flex items-center gap-2">
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-9 w-9 rounded-full border border-border-soft bg-white p-0 dark:bg-slate-950/50"
-                                    onClick={() => setPlanDraft({ open: true, id: plan.id, name: plan.name, description: plan.description })}
-                                  >
-                                    <Pencil className="h-4 w-4" />
-                                  </Button>
+                                <div className="flex items-center justify-end gap-2">
                                   <Button
                                     type="button"
                                     variant="ghost"
@@ -842,7 +863,7 @@ export function ProductEditorPage() {
           className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm"
           style={{ marginTop: 0, marginBottom: 0 }}
         >
-          <Card className="w-full max-w-2xl p-0 overflow-hidden">
+          <Card className="max-h-[90vh] w-full max-w-3xl overflow-hidden p-0">
             <div className="border-b border-border-soft px-6 py-5">
               <div className="flex items-start justify-between gap-4">
                 <div>
@@ -855,14 +876,14 @@ export function ProductEditorPage() {
                   variant="ghost"
                   size="icon"
                   className="rounded-full border border-border-soft bg-white dark:bg-slate-950/60"
-                  onClick={() => setPlanDraft({ open: false, name: '', description: '' })}
+                  onClick={() => setPlanDraft(emptyPlanDraft)}
                 >
                   <X className="h-4 w-4" />
                 </Button>
               </div>
             </div>
 
-            <form className="space-y-5 px-6 py-5" onSubmit={handlePlanSubmit}>
+            <form className="max-h-[calc(90vh-112px)] space-y-5 overflow-y-auto px-6 py-5" onSubmit={handlePlanSubmit}>
               <Field label="Plan Name">
                 <Input
                   value={planDraft.name}
@@ -877,12 +898,59 @@ export function ProductEditorPage() {
                   onChange={(event) => setPlanDraft((current) => ({ ...current, description: event.target.value }))}
                 />
               </Field>
+              <div className="grid gap-4 md:grid-cols-2">
+                <Field label="Base Premium">
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={planDraft.basePremium}
+                    onChange={(event) => setPlanDraft((current) => ({ ...current, basePremium: event.target.value }))}
+                    placeholder="Enter base premium"
+                  />
+                </Field>
+                <Field label="Minimum Sum Insured">
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={planDraft.minimumSumInsured}
+                    onChange={(event) => setPlanDraft((current) => ({ ...current, minimumSumInsured: event.target.value }))}
+                    placeholder="Enter minimum sum insured"
+                  />
+                </Field>
+                <Field label="Maximum Sum Insured">
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={planDraft.maximumSumInsured}
+                    onChange={(event) => setPlanDraft((current) => ({ ...current, maximumSumInsured: event.target.value }))}
+                    placeholder="Enter maximum sum insured"
+                  />
+                </Field>
+                <Field label="Cealing">
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={planDraft.cealing}
+                    onChange={(event) => setPlanDraft((current) => ({ ...current, cealing: event.target.value }))}
+                    placeholder="Enter cealing"
+                  />
+                </Field>
+                <Field label="Floor">
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={planDraft.floor}
+                    onChange={(event) => setPlanDraft((current) => ({ ...current, floor: event.target.value }))}
+                    placeholder="Enter floor"
+                  />
+                </Field>
+              </div>
               <div className="flex justify-end gap-3 border-t border-border-soft pt-4">
                 <Button
                   type="button"
                   variant="secondary"
                   className="bg-white dark:bg-[#1E293B]"
-                  onClick={() => setPlanDraft({ open: false, name: '', description: '' })}
+                  onClick={() => setPlanDraft(emptyPlanDraft)}
                 >
                   Cancel
                 </Button>
