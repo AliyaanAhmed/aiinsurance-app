@@ -149,6 +149,7 @@ export interface InquiryDetail extends InquirySummary {
   declaredValue: number
   basePremium: number
   totalCharge: number
+  actionApplied?: boolean
   aiSummary: string
   account?: RelatedParty
   contact?: RelatedParty

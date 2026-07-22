@@ -7,6 +7,7 @@ import { useAsyncData } from '../../hooks/useAsyncData'
 import { useRole } from '../../hooks/useRole'
 import {
   applyInquiryConsequenceResult,
+  applyInquiryRatingOrder,
   copyQuotesToInquiry,
   createQuoteFromInquiry,
   createInquiryEmail,
@@ -19,7 +20,7 @@ import {
   updateInquiryQuoteDetailResponse,
 } from '../../services/inquiriesService'
 import type { ConsequenceTemplatePreview } from '../../services/inquiriesService'
-import { getPlanRatingPricingOrder, type PlanPricingOrderItem } from '../../services/adminCatalogService'
+import type { PlanPricingOrderItem } from '../../services/adminCatalogService'
 import { Card } from '../../components/ui/Card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/Tabs'
 import { Badge } from '../../components/ui/Badge'
@@ -104,6 +105,7 @@ export function InquiryWorkspacePage() {
   const [quoteDetailSaveState, setQuoteDetailSaveState] = useState<
     Record<string, { saving?: boolean; success?: string | null; error?: string | null }>
   >({})
+  const [isAiReevaluateOpen, setIsAiReevaluateOpen] = useState(false)
   const [isNotificationMenuOpen, setIsNotificationMenuOpen] = useState(false)
   const [expandedActionGroups, setExpandedActionGroups] = useState<Record<string, boolean>>({})
   const [templatePreview, setTemplatePreview] = useState<ConsequenceTemplatePreview | null>(null)
@@ -123,11 +125,23 @@ export function InquiryWorkspacePage() {
     async () => (copySourceProductId ? listWonQuotesForProduct(copySourceProductId) : []),
     [copySourceProductId, supplementaryRefreshKey],
   )
-  const pricingOrderPlanId = form?.planId || inquiryState?.planId || coreLoad.data?.planId || ''
-  const pricingOrderProductId = form?.productId || inquiryState?.productId || coreLoad.data?.productId || ''
-  const pricingOrderLoad = useAsyncData(
-    async () => (pricingOrderPlanId && pricingOrderProductId ? getPlanRatingPricingOrder(pricingOrderPlanId, pricingOrderProductId) : []),
-    [pricingOrderPlanId, pricingOrderProductId],
+  const inquiryRatingOrderItems = useMemo(
+    () =>
+      (inquiryState?.consequenceResults ?? [])
+        .filter((result) => result.type === 'Rating' && (result.action === 'Add' || result.action === 'Multiply'))
+        .map((result, index): PlanPricingOrderItem => ({
+          key: result.id,
+          consequenceId: result.consequenceId ?? '',
+          businessRuleId: '',
+          businessRuleName: splitBusinessRuleName(result.name),
+          consequenceName: result.consequenceName,
+          action: result.action,
+          actionValue: result.action === 'Add' ? '751820002' : '751820003',
+          addAmount: result.ratingAdd,
+          multiplyValue: result.ratingMultiply,
+          order: index + 1,
+        })),
+    [inquiryState?.consequenceResults],
   )
 
   useEffect(() => {
@@ -164,6 +178,7 @@ export function InquiryWorkspacePage() {
     setCopyQuotesError(null)
     setQuoteDetailDrafts({})
     setQuoteDetailSaveState({})
+    setIsAiReevaluateOpen(false)
     setIsNotificationMenuOpen(false)
     setExpandedActionGroups({})
     setEmailPanelMode(isNarrowViewport ? 'collapsed' : 'expanded')
@@ -746,6 +761,52 @@ export function InquiryWorkspacePage() {
     }
   }
 
+  async function handleApplyRatingOrder() {
+    if (!form || inquiry.actionApplied || !inquiryRatingOrderItems.length) return
+
+    try {
+      setPendingAction('rating-order')
+      setActionError(null)
+      setActionSuccess(null)
+
+      const basePremium = Number(form.basePremium) || 0
+      const addedPremium = inquiryRatingOrderItems
+        .filter((item) => item.action === 'Add')
+        .reduce((sum, item) => sum + Number(item.addAmount ?? 0), basePremium)
+      const nextPremium = inquiryRatingOrderItems
+        .filter((item) => item.action === 'Multiply')
+        .reduce((value, item) => value * (Number(item.multiplyValue ?? 1) || 1), addedPremium)
+
+      const updated = await applyInquiryRatingOrder({
+        inquiryId: inquiryRecordId,
+        premiumToBeCharged: nextPremium,
+      })
+
+      setForm((current) =>
+        current
+          ? {
+              ...current,
+              premiumToBeCharged: String(updated.premiumToBeCharged),
+            }
+          : current,
+      )
+      setInquiryState((current) =>
+        current
+          ? {
+              ...current,
+              totalCharge: updated.premiumToBeCharged,
+              actionApplied: updated.actionApplied,
+            }
+          : current,
+      )
+      setActionSuccess('Premium rating order applied successfully.')
+    } catch (cause) {
+      setActionError(cause instanceof Error ? cause.message : 'Unable to apply rating order.')
+    } finally {
+      setPendingAction(null)
+    }
+  }
+
   async function handleComposeEmail() {
     try {
       const descriptionHtml = composerEditorRef.current?.innerHTML?.trim() || composer.description.trim()
@@ -1255,9 +1316,12 @@ export function InquiryWorkspacePage() {
                           <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Premium to be Charged</p>
                           <div className="absolute right-0 top-[-3px]">
                           <PlanPricingOrderPopover
-                            items={pricingOrderLoad.data ?? []}
-                            loading={pricingOrderLoad.loading}
+                            items={inquiryRatingOrderItems}
+                            loading={isHydratingSupplementary}
                             planName={inquiry.planName}
+                            canApply={!inquiry.actionApplied && inquiryRatingOrderItems.length > 0}
+                            applying={pendingAction === 'rating-order'}
+                            onApply={() => void handleApplyRatingOrder()}
                           />
                           </div>
                         </div>
@@ -1315,6 +1379,15 @@ export function InquiryWorkspacePage() {
                         </div>
                       </div>
                       <div className="flex flex-wrap items-center gap-2 md:justify-end">
+                        <Button
+                          type="button"
+                          variant="ai"
+                          className="whitespace-nowrap bg-[#A855F7] text-white shadow-[0_14px_30px_rgba(168,85,247,0.24)] hover:bg-[#9333EA]"
+                          onClick={() => setIsAiReevaluateOpen(true)}
+                        >
+                          <Sparkles className="h-4 w-4" />
+                          Re-evaluate AI Extraction
+                        </Button>
                         {missingQuoteDetails.length ? (
                           <Button
                             type="button"
@@ -1820,6 +1893,16 @@ export function InquiryWorkspacePage() {
                 </Badge>
               </div>
               <div className="flex flex-wrap items-center justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="ai"
+                  size="sm"
+                  className="whitespace-nowrap bg-[#A855F7] text-white shadow-[0_14px_30px_rgba(168,85,247,0.24)] hover:bg-[#9333EA]"
+                  onClick={() => setIsAiReevaluateOpen(true)}
+                >
+                  <Sparkles className="h-4 w-4" />
+                  Re-evaluate AI Extraction
+                </Button>
                 {missingQuoteDetails.length > 0 ? (
                   <Button type="button" variant="primary" size="sm" className="rounded-full" onClick={handleMakeDraft}>
                     <MailPlus className="h-4 w-4" />
@@ -2188,10 +2271,6 @@ export function InquiryWorkspacePage() {
                                         ? `Adds ${result.riskScore ?? 0} to the inquiry risk score.`
                                         : result.type === 'Risk' && result.action === 'Update Risk Summary'
                                           ? 'Appends the configured risk summary to the inquiry.'
-                                        : result.type === 'Rating' && result.action === 'Add'
-                                          ? `Sets base premium and premium to be charged to ${formatCurrency(result.ratingAdd ?? 0)}.`
-                                        : result.type === 'Rating' && result.action === 'Multiply'
-                                          ? `Multiplies the current base premium by ${result.ratingMultiply ?? 0}, then copies it to premium to be charged.`
                                         : 'Updates the inquiry status to match this action.'
                                     : 'Outcome recorded for reference only.'}
                                 </div>
@@ -2559,6 +2638,14 @@ export function InquiryWorkspacePage() {
         </div>
       ) : null}
 
+      {isAiReevaluateOpen ? (
+        <AiReevaluationConfirmDialog
+          onClose={() => setIsAiReevaluateOpen(false)}
+          onConfirm={() => setIsAiReevaluateOpen(false)}
+          onReject={() => setIsAiReevaluateOpen(false)}
+        />
+      ) : null}
+
       {(templatePreview || templatePreviewBusy || templatePreviewError) ? (
         <div
           className="fixed inset-0 z-[70] !mt-0 flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm"
@@ -2661,6 +2748,84 @@ export function InquiryWorkspacePage() {
   )
 }
 
+function AiReevaluationConfirmDialog({
+  onClose,
+  onConfirm,
+  onReject,
+}: {
+  onClose: () => void
+  onConfirm: () => void
+  onReject: () => void
+}) {
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[80] !mt-0 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <Card
+        variant="premium"
+        className="relative w-full max-w-[520px] overflow-hidden rounded-[28px] border border-[#E9D5FF] bg-white p-0 shadow-[0_34px_90px_rgba(15,23,42,0.28)] dark:border-white/10 dark:bg-[#1E293B]"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="relative overflow-hidden border-b border-[#E9D5FF] bg-gradient-to-br from-[#FDF7FF] via-white to-white px-6 py-5 dark:border-white/10 dark:from-[#2A123D] dark:via-[#231735] dark:to-[#1E293B]">
+          <div className="absolute -right-12 -top-12 h-36 w-36 rounded-full bg-[#A855F7]/14 blur-2xl" />
+          <div className="relative flex items-start justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#A855F7] text-white shadow-[0_16px_34px_rgba(168,85,247,0.26)]">
+                <Sparkles className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-[12px] font-bold uppercase tracking-[0.16em] text-[#A855F7] dark:text-[#E9D5FF]">
+                  AI Extraction
+                </p>
+                <h3 className="mt-1 text-2xl font-bold tracking-[-0.02em] text-foreground">
+                  Re-evaluate AI Extraction?
+                </h3>
+              </div>
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9 rounded-2xl bg-white/80 text-muted-foreground hover:bg-[#F5E8FF] hover:text-[#A855F7] dark:bg-white/10 dark:hover:bg-white/15"
+              onClick={onClose}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+
+        <div className="px-6 py-5">
+          <p className="text-sm font-normal leading-7 text-foreground">
+            Please confirm if you want re-evaluate AI Extraction. This will override existing data.
+          </p>
+        </div>
+
+        <div className="flex flex-col-reverse gap-3 border-t border-border-soft bg-surface-soft/70 px-6 py-4 sm:flex-row sm:justify-end dark:border-white/10 dark:bg-white/5">
+          <Button
+            type="button"
+            variant="secondary"
+            className="rounded-2xl bg-white dark:bg-[#1E293B]"
+            onClick={onReject}
+          >
+            Reject
+          </Button>
+          <Button
+            type="button"
+            variant="ai"
+            className="rounded-2xl bg-[#A855F7] text-white shadow-[0_14px_30px_rgba(168,85,247,0.22)] hover:bg-[#9333EA]"
+            onClick={onConfirm}
+          >
+            <Sparkles className="h-4 w-4" />
+            Confirm
+          </Button>
+        </div>
+      </Card>
+    </div>,
+    document.body,
+  )
+}
+
 function MetricCard({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-2xl border border-border-soft bg-surface-soft p-4">
@@ -2760,10 +2925,16 @@ function PlanPricingOrderPopover({
   items,
   loading,
   planName,
+  canApply,
+  applying,
+  onApply,
 }: {
   items: PlanPricingOrderItem[]
   loading: boolean
   planName?: string
+  canApply: boolean
+  applying: boolean
+  onApply: () => void
 }) {
   const [open, setOpen] = useState(false)
   const popoverRef = useRef<HTMLDivElement | null>(null)
@@ -2800,14 +2971,23 @@ function PlanPricingOrderPopover({
       <div className="absolute right-0 top-[calc(100%+0.65rem)] z-50 w-[360px]">
         <div className="overflow-hidden rounded-[22px] border border-border-soft bg-white shadow-[0_22px_50px_rgba(15,23,42,0.16)] dark:bg-[#1E293B]">
           <div className="border-b border-border-soft bg-surface-soft/80 px-4 py-3">
-            <div className="flex items-center gap-3">
-              <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-                <List className="h-4 w-4" />
-              </span>
-              <div className="min-w-0">
-                <p className="text-sm font-bold">Plan Pricing Order</p>
-                <p className="truncate text-xs text-muted-foreground">{planName || 'Selected plan'}</p>
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-3">
+                <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                  <List className="h-4 w-4" />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-sm font-bold">Rating Order</p>
+                  <p className="truncate text-xs text-muted-foreground">{planName || 'Selected plan'} · inquiry actions</p>
+                </div>
               </div>
+              {canApply ? (
+                <Button type="button" size="sm" className="shrink-0 rounded-full" disabled={applying} onClick={onApply}>
+                  {applying ? 'Applying...' : 'Apply'}
+                </Button>
+              ) : orderedItems.length ? (
+                <Badge variant="approved">Applied</Badge>
+              ) : null}
             </div>
           </div>
           <div className="max-h-[300px] overflow-y-auto p-3 scrollbar-sleek">
@@ -2849,7 +3029,7 @@ function PlanPricingOrderPopover({
               <div className="rounded-[18px] border border-dashed border-border-soft bg-surface-soft px-3 py-5 text-center">
                 <p className="text-sm font-semibold">No pricing order configured</p>
                 <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                  Add rating consequences to this plan from the Plan edit form.
+                  Rating consequences will appear here when they are available in the Actions tab for this inquiry.
                 </p>
               </div>
             )}
@@ -3007,7 +3187,6 @@ function CollapsedEmailRail({
 
 function canApplyConsequence(type: string, action?: string) {
   if (type === 'Risk') return true
-  if (type === 'Rating') return action === 'Add' || action === 'Multiply'
   if (type !== 'Case Control') return false
   return toDisposition(action ?? '') !== null
 }
@@ -3041,6 +3220,11 @@ function inquiryStatusLabelForDisposition(
   if (disposition === 'EscalatetoHeadofAviation') return 'Escalate to Head of Aviation'
   if (disposition === 'PropertyorReinsuranceTeam') return 'Property or Reinsurance Team'
   return 'Draft'
+}
+
+function splitBusinessRuleName(value?: string) {
+  const [name] = (value ?? '').split('-')
+  return name?.trim() || 'Business Rule'
 }
 
 function isConsequenceApplied(value?: number) {

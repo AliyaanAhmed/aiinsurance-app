@@ -744,6 +744,21 @@ export async function applyInquiryConsequenceResult(input: {
   }
 }
 
+export async function applyInquiryRatingOrder(input: {
+  inquiryId: string
+  premiumToBeCharged: number
+}) {
+  await Aur_quotesesService.update(input.inquiryId, {
+    aur_total_amount_charge: input.premiumToBeCharged,
+    aur_action_applied: true,
+  } as never)
+
+  return {
+    premiumToBeCharged: input.premiumToBeCharged,
+    actionApplied: true,
+  }
+}
+
 export async function createQuoteFromInquiry(
   inquiryId: string,
   fallback?: {
