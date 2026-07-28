@@ -56,6 +56,40 @@ const replaceByType = new Set<BlockEnvelope['type']>([
   'insuranceCalculator',
 ])
 
+function hexToHsl(hex: string) {
+  const value = hex.slice(1)
+  const full = value.length === 3 ? value.split('').map((part) => part + part).join('') : value
+  const [r, g, b] = [0, 2, 4].map((offset) => Number.parseInt(full.slice(offset, offset + 2), 16) / 255)
+  const max = Math.max(r, g, b)
+  const min = Math.min(r, g, b)
+  const lightness = (max + min) / 2
+  if (max === min) return { h: 0, s: 0, l: lightness * 100 }
+  const delta = max - min
+  const saturation = lightness > .5 ? delta / (2 - max - min) : delta / (max + min)
+  const hue = max === r ? ((g - b) / delta + (g < b ? 6 : 0)) : max === g ? ((b - r) / delta + 2) : ((r - g) / delta + 4)
+  return { h: hue * 60, s: saturation * 100, l: lightness * 100 }
+}
+
+function hslToHex(h: number, s: number, l: number) {
+  const hue = ((h % 360) + 360) % 360
+  const saturation = Math.max(0, Math.min(100, s)) / 100
+  const lightness = Math.max(0, Math.min(100, l)) / 100
+  const chroma = (1 - Math.abs(2 * lightness - 1)) * saturation
+  const segment = hue / 60
+  const x = chroma * (1 - Math.abs((segment % 2) - 1))
+  const [r1, g1, b1] = segment < 1 ? [chroma, x, 0] : segment < 2 ? [x, chroma, 0] : segment < 3 ? [0, chroma, x] : segment < 4 ? [0, x, chroma] : segment < 5 ? [x, 0, chroma] : [chroma, 0, x]
+  const m = lightness - chroma / 2
+  return `#${[r1, g1, b1].map((channel) => Math.round((channel + m) * 255).toString(16).padStart(2, '0')).join('')}`.toUpperCase()
+}
+
+function themePalette(colors: DesignSystem['colors']): DesignSystem['colors'] {
+  const primary = hexToHsl(colors.primary)
+  return {
+    ...colors,
+    primary: primary.l <= 26 ? colors.primary.toUpperCase() : hslToHex(primary.h, Math.max(28, Math.min(62, primary.s)), 16),
+  }
+}
+
 function focusBlockForStage(blocks: BlockEnvelope[], stage: Stage) {
   const type = stageToBlockType[stage]
   return blocks.find((block) => block.type === type)?.id ?? blocks[0]?.id
@@ -71,7 +105,7 @@ function mergeBlocks(currentBlocks: BlockEnvelope[], incomingBlocks: BlockEnvelo
     }
 
     if (incoming.action === 'remove') {
-      nextBlocks = nextBlocks.filter((block) => block.id !== incoming.id)
+      nextBlocks = nextBlocks.filter((block) => block.id !== incoming.id && block.type !== incoming.type)
       continue
     }
 
@@ -155,7 +189,7 @@ export const useLandingPageStore = create<LandingPageState>()(
             ...state.designSystem,
             name: recommendation.name,
             preset: 'custom',
-            colors: recommendation.colors,
+            colors: themePalette(recommendation.colors),
           },
           messages: [...state.messages, { role: 'assistant', content: `**${recommendation.name} applied.** The complete page now uses this palette while preserving its content and layout.` }],
           lastError: undefined,

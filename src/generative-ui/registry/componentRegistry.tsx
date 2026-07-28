@@ -7,6 +7,7 @@ import { Hero } from '../../components/sections/Hero'
 import { LeadForm } from '../../components/sections/LeadForm/LeadForm'
 import { LogosBand } from '../../components/sections/LogosBand'
 import { Navbar } from '../../components/sections/Navbar'
+import { PricingCards } from '../../components/sections/PricingCards'
 import { ServicesGrid } from '../../components/sections/ServicesGrid'
 import { StatsBand } from '../../components/sections/StatsBand'
 import { Testimonials } from '../../components/sections/Testimonials'
@@ -28,4 +29,5 @@ export const componentRegistry: Record<BlockType, RegistryComponent> = {
   footer: Footer,
   dynamicChart: DynamicChart,
   insuranceCalculator: InsuranceCalculator,
+  pricingCards: PricingCards,
 }

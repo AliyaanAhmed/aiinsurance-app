@@ -13,6 +13,7 @@ export const blockTypes = [
   'footer',
   'dynamicChart',
   'insuranceCalculator',
+  'pricingCards',
 ] as const
 
 export const stages = [
@@ -87,6 +88,15 @@ const navLinkSchema = z.object({
   href: z.string().default('#'),
 })
 
+const heroQuoteFieldSchema = z.object({
+  id: z.string().min(1),
+  kind: z.enum(['text', 'email', 'tel', 'number', 'date', 'select', 'radio', 'checkbox', 'textarea', 'richtext', 'fileUpload']),
+  label: z.string().min(1),
+  required: z.boolean().default(false),
+  options: z.array(z.string()).optional(),
+  placeholder: z.string().optional(),
+})
+
 export const navbarPropsSchema = z.object({
   logoText: z.string().default('Aurelian Insurance'),
   links: z.array(navLinkSchema).default([]),
@@ -113,6 +123,13 @@ export const heroPropsSchema = z.object({
     )
     .optional(),
   media: mediaSchema.optional(),
+  quoteForm: z.object({
+    headline: z.string().default('Get your free quote'),
+    subheadline: z.string().optional(),
+    submitLabel: z.string().default('See my quote'),
+    secureText: z.string().optional(),
+    fields: z.array(heroQuoteFieldSchema).min(1).max(8),
+  }).optional(),
   overlay: z.object({
     style: z.enum(['none', 'linear', 'radial', 'duotone']).default('linear'),
     color: hexColorSchema.default('#07111F'),
@@ -130,6 +147,7 @@ export const servicesGridPropsSchema = z.object({
   eyebrow: z.string().optional(),
   headline: z.string().default('Coverage designed around you'),
   intro: z.string().optional(),
+  media: mediaSchema.optional(),
   layout: z.enum(['cards', 'bento', 'splitFeature', 'list']).default('cards'),
   iconSize: z.enum(['sm', 'md', 'lg', 'xl']).default('md'),
   iconColor: z.union([hexColorSchema, z.enum(['primary', 'secondary', 'accent', 'text', 'muted', 'surface', 'dark', 'light', 'white', 'black'])]).optional(),
@@ -260,6 +278,21 @@ export const insuranceCalculatorPropsSchema = z.object({
   ctaLabel: z.string().nullable().optional(),
 })
 
+export const pricingCardsPropsSchema = z.object({
+  eyebrow: z.string().optional(),
+  headline: z.string().default('Coverage that fits your life'),
+  intro: z.string().optional(),
+  plans: z.array(z.object({
+    name: z.string().min(1),
+    description: z.string().optional(),
+    price: z.string().min(1),
+    period: z.string().default('/month'),
+    badge: z.string().optional(),
+    features: z.array(z.string()).min(1),
+    ctaLabel: z.string().default('Choose plan'),
+  })).min(1).max(4),
+})
+
 const blockBaseSchema = z.object({
   id: z.string().min(1),
   action: z.enum(['upsert', 'remove', 'reorder']).default('upsert'),
@@ -331,6 +364,11 @@ export const insuranceCalculatorBlockSchema = blockBaseSchema.extend({
   props: insuranceCalculatorPropsSchema,
 })
 
+export const pricingCardsBlockSchema = blockBaseSchema.extend({
+  type: z.literal('pricingCards'),
+  props: pricingCardsPropsSchema,
+})
+
 export const blockEnvelopeSchema = z.discriminatedUnion('type', [
   navbarBlockSchema,
   heroBlockSchema,
@@ -344,6 +382,7 @@ export const blockEnvelopeSchema = z.discriminatedUnion('type', [
   footerBlockSchema,
   dynamicChartBlockSchema,
   insuranceCalculatorBlockSchema,
+  pricingCardsBlockSchema,
 ])
 
 export const chatQuestionSchema = z.object({

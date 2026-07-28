@@ -46,6 +46,6 @@ export function designSystemToCssVars(system: DesignSystem, override?: ThemeOver
     '--brand-on-secondary': readableText(secondary),
     '--font-display': displayFonts[system.typography.display],
     '--font-body': bodyFonts[system.typography.body],
-    '--page-radius': system.radius === 'sharp' ? '2px' : system.radius === 'rounded' ? '8px' : '6px',
+    '--page-radius': system.radius === 'sharp' ? '10px' : system.radius === 'rounded' ? '22px' : '16px',
   } as CSSProperties
 }

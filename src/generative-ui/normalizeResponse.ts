@@ -64,19 +64,32 @@ function hslToHex(h: number, s: number, l: number) {
 
 function harmonizeRecommendedColors(colors: DesignSystem['colors']): DesignSystem['colors'] {
   const anchor = hexToHsl(colors.primary)
-  const page = hexToHsl(colors.background)
-  const dark = page.l < 35
-  const primarySaturation = Math.max(38, Math.min(68, anchor.s))
-  const primaryLightness = dark ? Math.max(58, Math.min(70, anchor.l)) : Math.max(38, Math.min(50, anchor.l))
+  const [secondaryHue, accentHue] = anchor.h < 45 || anchor.h >= 330
+    ? [220, 34]
+    : anchor.h < 85
+      ? [215, 172]
+      : anchor.h < 165
+        ? [215, 38]
+        : anchor.h < 210
+          ? [222, 25]
+          : anchor.h < 270
+            ? [174, 28]
+            : [190, 18]
   return {
-    primary: hslToHex(anchor.h, primarySaturation, primaryLightness),
-    secondary: hslToHex(anchor.h + 24, Math.max(24, primarySaturation * .58), dark ? 61 : 43),
-    accent: hslToHex(anchor.h + 42, Math.max(32, primarySaturation * .62), dark ? 68 : 54),
-    background: hslToHex(anchor.h, dark ? 18 : 10, dark ? 8 : 97),
-    surface: hslToHex(anchor.h, dark ? 16 : 7, dark ? 12 : 100),
-    text: hslToHex(anchor.h, dark ? 12 : 18, dark ? 96 : 16),
-    muted: hslToHex(anchor.h, dark ? 10 : 9, dark ? 70 : 43),
+    primary: asThemePrimary(colors.primary),
+    secondary: hslToHex(secondaryHue, 58, 42),
+    accent: hslToHex(accentHue, 82, 54),
+    background: hslToHex(anchor.h, 18, 98),
+    surface: '#FFFFFF',
+    text: hslToHex(anchor.h, 22, 15),
+    muted: hslToHex(anchor.h, 10, 42),
   }
+}
+
+function asThemePrimary(hex: string) {
+  const hsl = hexToHsl(hex)
+  if (hsl.l <= 26) return hex.toUpperCase()
+  return hslToHex(hsl.h, Math.max(28, Math.min(62, hsl.s)), 16)
 }
 
 function slug(value: string) {
@@ -88,6 +101,7 @@ function slug(value: string) {
 }
 
 const heroImageLibrary = [
+  { terms: ['fleet', 'corporate car', 'company car', 'commercial vehicle', 'van fleet', 'motor fleet'], sources: ['photo-1549317661-bd32c8ce0db2', 'photo-1492144534655-ae79c964c9d7'] },
   { terms: ['car', 'auto', 'motor', 'vehicle', 'driver', 'fleet'], sources: ['photo-1503376780353-7e6692767b70', 'photo-1549317661-bd32c8ce0db2'] },
   { terms: ['family', 'parent', 'children', 'life insurance'], sources: ['photo-1609220136736-443140cffec6', 'photo-1511895426328-dc8714191300'] },
   { terms: ['home', 'house', 'property', 'landlord'], sources: ['photo-1560518883-ce09059eeffa', 'photo-1600585154340-be6161a56a0c'] },
@@ -104,6 +118,15 @@ export function resolveHeroImage(context: string, currentSource?: string | null)
   const sources = match?.sources ?? ['photo-1450101499163-c8848c66ca85', 'photo-1551836022-d5d88e9218df']
   const source = currentSource?.includes(sources[0]) ? sources[1] : sources[0]
   return `https://images.unsplash.com/${source}?auto=format&fit=crop&w=1800&q=85`
+}
+
+function normalizeHeroImageSource(context: string, currentSource?: unknown) {
+  const source = typeof currentSource === 'string' ? currentSource.trim() : ''
+  const isReliableUnsplash = /^https:\/\/images\.unsplash\.com\/photo-[^?\s]+/.test(source)
+  const isBusinessSpecific = /\b(fleet|corporate car|company car|commercial vehicle|van|motor fleet|business|commercial|vehicle|driver|auto|car)\b/i.test(context)
+  if (source && isReliableUnsplash && !isBusinessSpecific) return source
+  if (source && isReliableUnsplash && isBusinessSpecific && /(1549317661|1492144534655|1503376780353)/.test(source)) return source
+  return resolveHeroImage(context, source)
 }
 
 function baseBlock(raw: AnyRecord, index: number) {
@@ -154,19 +177,20 @@ function normalizeDesignSystem(value: unknown): DesignSystem | undefined {
   const displays = new Set(['grotesk', 'humanist', 'geometric', 'editorial'])
   const bodies = new Set(['grotesk', 'humanist', 'geometric'])
   const color = (candidate: unknown, fallback: string) => typeof candidate === 'string' && /^#(?:[0-9a-fA-F]{3}){1,2}$/.test(candidate) ? candidate : fallback
+  const primary = asThemePrimary(color(colors.primary, '#101828'))
   return {
     name: asString(raw.name, 'Custom direction'),
     preset: presets.has(asString(raw.preset)) ? (raw.preset as DesignSystem['preset']) : 'custom',
     colors: {
-      primary: color(colors.primary, '#155EEF'), secondary: color(colors.secondary, '#12B76A'),
-      accent: color(colors.accent, '#F79009'), background: color(colors.background, '#F7F9FC'),
-      surface: color(colors.surface, '#FFFFFF'), text: color(colors.text, '#101828'), muted: color(colors.muted, '#667085'),
+      primary, secondary: color(colors.secondary, '#2563EB'),
+      accent: color(colors.accent, '#F79009'), background: color(colors.background, '#F3F6FA'),
+      surface: color(colors.surface, '#FFFFFF'), text: color(colors.text, '#101828'), muted: color(colors.muted, '#526179'),
     },
     typography: {
       display: displays.has(asString(typography.display)) ? (typography.display as DesignSystem['typography']['display']) : 'grotesk',
       body: bodies.has(asString(typography.body)) ? (typography.body as DesignSystem['typography']['body']) : 'humanist',
     },
-    radius: raw.radius === 'sharp' || raw.radius === 'rounded' ? raw.radius : 'soft',
+    radius: raw.radius === 'sharp' || raw.radius === 'rounded' ? raw.radius : 'rounded',
   }
 }
 
@@ -247,10 +271,44 @@ function normalizeInsuranceCalculator(raw: AnyRecord, index: number): BlockEnvel
   }
 }
 
+function normalizePricingCards(raw: AnyRecord, index: number): BlockEnvelope {
+  const props = asRecord(raw.props)
+  const rawPlans = asArray(props.plans ?? props.items ?? raw.plans)
+  return {
+    ...baseBlock(raw, index),
+    type: 'pricingCards',
+    props: {
+      eyebrow: asString(props.eyebrow, 'Coverage'),
+      headline: asString(props.headline ?? props.title ?? raw.title, 'Coverage that fits your life'),
+      intro: asString(props.intro ?? props.description, undefined),
+      plans: (rawPlans.length ? rawPlans : [
+        { name: 'Liability', price: '$39', period: '/month', features: ['Bodily injury liability', 'Property damage liability', 'Roadside assistance'] },
+        { name: 'Standard', price: '$69', period: '/month', badge: 'Most popular', features: ['Everything in Liability', 'Collision coverage', 'Comprehensive coverage'] },
+        { name: 'Full', price: '$99', period: '/month', features: ['Everything in Standard', 'New car replacement', 'Priority claims handling'] },
+      ]).slice(0, 4).map((plan, planIndex) => {
+        const record = asRecord(plan)
+        return {
+          name: asString(record.name ?? record.title, `Plan ${planIndex + 1}`),
+          description: asString(record.description ?? record.copy, undefined),
+          price: asString(record.price ?? record.amount, planIndex === 0 ? '$39' : planIndex === 1 ? '$69' : '$99'),
+          period: asString(record.period, '/month'),
+          badge: asString(record.badge ?? record.label, undefined),
+          features: asArray(record.features ?? record.items).map((feature) => asString(feature)).filter(Boolean).slice(0, 7),
+          ctaLabel: asString(record.ctaLabel ?? record.buttonLabel, `Choose ${asString(record.name ?? record.title, `Plan ${planIndex + 1}`)}`),
+        }
+      }).map((plan) => ({
+        ...plan,
+        features: plan.features.length ? plan.features : ['Clear coverage options', 'Support when details matter', 'Simple next step'],
+      })),
+    },
+  }
+}
+
 function normalizeHero(raw: AnyRecord, index: number): BlockEnvelope {
   const props = asRecord(raw.props)
   const rawMedia = asRecord(props.media)
   const rawSlides = asArray(props.slides)
+  const rawQuoteForm = asRecord(props.quoteForm)
   const backgroundStyle = asString(props.backgroundStyle, 'gradient')
   const visualStyle = asString(props.visualStyle, 'carousel')
   const mediaType = asString(rawMedia.type, 'image')
@@ -289,13 +347,34 @@ function normalizeHero(raw: AnyRecord, index: number): BlockEnvelope {
       }),
       media: {
         type: mediaType === 'video' || mediaType === 'illustration' ? mediaType : 'image',
-        src: typeof rawMedia.src === 'string' && rawMedia.src.trim() ? rawMedia.src : resolveHeroImage(mediaContext),
+        src: normalizeHeroImageSource(mediaContext, rawMedia.src),
         alt: asString(rawMedia.alt, undefined),
         altPrompt: asString(
           rawMedia.altPrompt ?? rawMedia.prompt,
           'Warm photo of a family standing beside their car, insurance landing page hero',
         ),
       },
+      quoteForm: Object.keys(rawQuoteForm).length
+        ? {
+            headline: asString(rawQuoteForm.headline, 'Get your free quote'),
+            subheadline: asString(rawQuoteForm.subheadline, 'Takes about 2 minutes. No spam, ever.'),
+            submitLabel: asString(rawQuoteForm.submitLabel, 'See my quote'),
+            secureText: asString(rawQuoteForm.secureText, 'Your information is encrypted and never sold.'),
+            fields: asArray(rawQuoteForm.fields).slice(0, 8).map((field, fieldIndex) => {
+              const record = asRecord(field)
+              const rawKind = asString(record.kind, 'text')
+              const kind = rawKind === 'email' || rawKind === 'tel' || rawKind === 'number' || rawKind === 'date' || rawKind === 'select' || rawKind === 'radio' || rawKind === 'checkbox' || rawKind === 'textarea' || rawKind === 'richtext' || rawKind === 'fileUpload' ? rawKind : 'text'
+              return {
+                id: asString(record.id, `quote-field-${fieldIndex + 1}`),
+                kind,
+                label: asString(record.label, `Quote field ${fieldIndex + 1}`),
+                required: typeof record.required === 'boolean' ? record.required : true,
+                options: asArray(record.options).filter((option): option is string => typeof option === 'string'),
+                placeholder: asString(record.placeholder, ''),
+              }
+            }),
+          }
+        : undefined,
       overlay: {
         style: rawOverlay.style === 'none' || rawOverlay.style === 'radial' || rawOverlay.style === 'duotone' ? rawOverlay.style : 'linear',
         color: typeof rawOverlay.color === 'string' && /^#(?:[0-9a-fA-F]{3}){1,2}$/.test(rawOverlay.color) ? rawOverlay.color : '#07111F',
@@ -331,6 +410,7 @@ function normalizeNavbar(raw: AnyRecord, index: number): BlockEnvelope {
 
 function normalizeServicesGrid(raw: AnyRecord, index: number): BlockEnvelope {
   const props = asRecord(raw.props)
+  const media = asRecord(props.media)
   const rawItems = asArray(props.items ?? props.services ?? raw.items)
   const layouts = new Set(['cards', 'bento', 'splitFeature', 'list'])
   const iconSizes = new Set(['sm', 'md', 'lg', 'xl'])
@@ -348,6 +428,14 @@ function normalizeServicesGrid(raw: AnyRecord, index: number): BlockEnvelope {
       eyebrow: asString(props.eyebrow, 'Coverage options'),
       headline: asString(props.headline ?? props.title ?? raw.title, 'Coverage options for your family car'),
       intro: asString(props.intro ?? props.description, undefined),
+      media: asString(media.src)
+        ? {
+            type: media.type === 'video' || media.type === 'illustration' ? media.type : 'image',
+            src: asString(media.src),
+            alt: asString(media.alt, 'Business-relevant services image'),
+            altPrompt: asString(media.altPrompt, undefined),
+          }
+        : undefined,
       layout: layouts.has(asString(props.layout)) ? props.layout as 'cards' | 'bento' | 'splitFeature' | 'list' : 'cards',
       iconSize: iconSizes.has(asString(props.iconSize)) ? props.iconSize as 'sm' | 'md' | 'lg' | 'xl' : 'md',
       iconColor: appearanceColor(props.iconColor, ['primary', 'secondary', 'accent', 'text', 'muted', 'surface', 'dark', 'light', 'white', 'black']),
@@ -449,6 +537,59 @@ function normalizeLeadForm(raw: AnyRecord, index: number): BlockEnvelope {
   }
 }
 
+function normalizeTestimonials(raw: AnyRecord, index: number): BlockEnvelope {
+  const props = asRecord(raw.props)
+  const rawItems = asArray(props.items ?? props.testimonials ?? raw.items)
+  return {
+    ...baseBlock(raw, index),
+    type: 'testimonials',
+    props: {
+      eyebrow: asString(props.eyebrow, 'Client perspective'),
+      headline: asString(props.headline ?? props.title ?? raw.title, 'Clients choose us with confidence'),
+      items: rawItems.map((item, itemIndex) => {
+        const record = asRecord(item)
+        const avatar = asString(record.avatar, '')
+        return {
+          quote: asString(record.quote ?? record.content, 'The process felt clear from start to finish.'),
+          name: asString(record.name, `Client ${itemIndex + 1}`),
+          role: asString(record.role ?? record.location, undefined),
+          avatar: avatar || undefined,
+        }
+      }),
+    },
+  }
+}
+
+function normalizeFooter(raw: AnyRecord, index: number): BlockEnvelope {
+  const props = asRecord(raw.props)
+  const rawColumns = asArray(props.columns ?? props.groups ?? raw.columns)
+  const rawSocial = asArray(props.social)
+  const normalizeLinks = (links: unknown) => asArray(links).map((link, linkIndex) => {
+    const record = asRecord(link)
+    const label = asString(record.label ?? record.title ?? record.name, `Link ${linkIndex + 1}`)
+    return {
+      label,
+      href: asString(record.href ?? record.url, `#${slug(label)}`),
+    }
+  })
+  return {
+    ...baseBlock(raw, index),
+    type: 'footer',
+    props: {
+      logoText: asString(props.logoText ?? props.logo ?? props.brandName, 'Aurelian Insurance'),
+      columns: rawColumns.map((column, columnIndex) => {
+        const record = asRecord(column)
+        return {
+          title: asString(record.title ?? record.heading ?? record.label, columnIndex === 0 ? 'Product' : columnIndex === 1 ? 'Company' : 'Support'),
+          links: normalizeLinks(record.links ?? record.items),
+        }
+      }),
+      social: normalizeLinks(rawSocial),
+      disclaimer: asString(props.disclaimer ?? props.description, undefined),
+    },
+  }
+}
+
 function normalizeServiceLike(raw: AnyRecord, index: number): BlockEnvelope {
   const props = asRecord(raw.props)
   const title = asString(props.headline ?? raw.title, 'Recommended page section')
@@ -487,9 +628,12 @@ function normalizeBlock(rawValue: unknown, index: number): BlockEnvelope {
   if (raw.type === 'navbar') return normalizeNavbar(raw, index)
   if (raw.type === 'servicesGrid') return normalizeServicesGrid(raw, index)
   if (raw.type === 'leadForm') return normalizeLeadForm(raw, index)
+  if (raw.type === 'testimonials') return normalizeTestimonials(raw, index)
+  if (raw.type === 'footer') return normalizeFooter(raw, index)
   if (raw.type === 'faq') return normalizeFaq(raw, index)
   if (raw.type === 'dynamicChart' || raw.type === 'coverageBreakdown') return normalizeDynamicChart(raw, index)
   if (raw.type === 'insuranceCalculator') return normalizeInsuranceCalculator(raw, index)
+  if (raw.type === 'pricingCards') return normalizePricingCards(raw, index)
 
   if (typeof raw.type === 'string' && blockTypeSet.has(raw.type) && raw.id && raw.props) {
     return {

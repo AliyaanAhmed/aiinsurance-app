@@ -55,6 +55,7 @@ export function ServicesGrid({ props, style }: { props: ServicesGridProps; style
     '--service-icon-bg': colorValue(props.iconBackground),
     '--service-card-bg': colorValue(props.cardBackground),
     '--service-card-text': colorValue(props.cardTextColor),
+    '--service-feature-image': props.media?.src ? `url("${props.media.src.replace(/"/g, '')}")` : undefined,
   }
 
   const cards = (
@@ -79,11 +80,14 @@ export function ServicesGrid({ props, style }: { props: ServicesGridProps; style
     <section className={`lp-band services-section services-layout-${layout} spacing-${spacing} padding-${cardPadding}`}>
       {layout === 'splitFeature' ? (
         <div className="services-split-shell">
-          <header className="services-feature-intro">
-            {props.eyebrow ? <p className="eyebrow"><span />{props.eyebrow}</p> : null}
-            <h2>{props.headline}</h2>
-            <p>{props.intro ?? 'Explore the cover and guidance designed around the moments that matter.'}</p>
-            <span className="services-feature-index">{String(props.items.length).padStart(2, '0')} services</span>
+          <header className={`services-feature-intro${props.media?.src ? ' has-media' : ''}`} style={cssVariables}>
+            {props.media?.src ? <div className="services-feature-media" role="img" aria-label={props.media.alt ?? 'Featured insurance service'} /> : null}
+            <div className="services-feature-copy">
+              {props.eyebrow ? <p className="eyebrow"><span />{props.eyebrow}</p> : null}
+              <h2>{props.headline}</h2>
+              <p>{props.intro ?? 'Explore the cover and guidance designed around the moments that matter.'}</p>
+              <span className="services-feature-index">{String(props.items.length).padStart(2, '0')} services</span>
+            </div>
           </header>
           {cards}
         </div>

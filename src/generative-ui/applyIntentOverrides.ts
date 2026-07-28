@@ -16,11 +16,105 @@ function cloneBlock<T extends BlockEnvelope>(block: T): T {
   return structuredClone(block)
 }
 
+function normalizeText(value: string) {
+  return value.toLowerCase().replace(/\s+/g, ' ').trim()
+}
+
+function quotedPhrases(message: string) {
+  const phrases = [...message.matchAll(/["“”']([^"“”']{3,})["“”']/g)]
+    .map((match) => normalizeText(match[1]))
+    .filter(Boolean)
+  const afterColon = message.match(/:\s*([^"\n]{6,})$/)?.[1]
+  if (afterColon) phrases.push(normalizeText(afterColon))
+  const afterSection = message.match(/\b(?:this|the)?\s*section\s+([^"\n]{6,})$/i)?.[1]
+  if (afterSection) phrases.push(normalizeText(afterSection))
+  return [...new Set(phrases)]
+}
+
+function blockIncludes(block: BlockEnvelope, phrases: string[]) {
+  const text = normalizeText(JSON.stringify(block.props))
+  return phrases.some((phrase) => text.includes(phrase))
+}
+
+function removePhrasesFromValue(value: unknown, phrases: string[], removeWholeItems: boolean): { value: unknown; changed: boolean } {
+  if (typeof value === 'string') {
+    const normalized = normalizeText(value)
+    const matched = phrases.some((phrase) => normalized.includes(phrase))
+    return matched ? { value: '', changed: true } : { value, changed: false }
+  }
+
+  if (Array.isArray(value)) {
+    let changed = false
+    const next = value.flatMap((item) => {
+      const itemText = normalizeText(JSON.stringify(item))
+      if (removeWholeItems && phrases.some((phrase) => itemText.includes(phrase))) {
+        changed = true
+        return []
+      }
+      const result = removePhrasesFromValue(item, phrases, removeWholeItems)
+      if (result.changed) changed = true
+      return [result.value]
+    })
+    return { value: next, changed }
+  }
+
+  if (value && typeof value === 'object') {
+    let changed = false
+    const next: Record<string, unknown> = {}
+    for (const [key, child] of Object.entries(value)) {
+      const result = removePhrasesFromValue(child, phrases, removeWholeItems)
+      const isButtonProp = /^(ctaLabel|primaryLabel|secondaryLabel|submitLabel|buttonLabel)$/i.test(key)
+      next[key] = isButtonProp && result.changed ? null : result.value
+      if (result.changed) changed = true
+    }
+    return { value: next, changed }
+  }
+
+  return { value, changed: false }
+}
+
 function upsertBlock(response: AssistantResponse, block: BlockEnvelope) {
   const index = response.ui_blocks.findIndex((candidate) => candidate.id === block.id || candidate.type === block.type)
   const next = { ...block, action: block.action === 'remove' ? 'remove' as const : 'upsert' as const }
   if (index >= 0) response.ui_blocks[index] = next
   else response.ui_blocks.push(next)
+}
+
+function sectionStyle(block: BlockEnvelope, surface: 'light' | 'dark' | 'brand' | 'contrast') {
+  return {
+    variant: block.style?.variant ?? 'editorial' as const,
+    align: block.style?.align ?? 'left' as const,
+    headingSize: block.style?.headingSize ?? 'lg' as const,
+    width: block.style?.width ?? 'contained' as const,
+    surface,
+    columns: block.style?.columns ?? 3 as 1 | 2 | 3 | 4,
+    radius: block.style?.radius ?? 'rounded' as const,
+  }
+}
+
+function scopedTargetTypes(lower: string, currentBlocks: BlockEnvelope[], phrases: string[]) {
+  const targets = new Set<BlockEnvelope['type']>()
+  const phraseMatch = currentBlocks.find((block) => blockIncludes(block, phrases))
+  if (phraseMatch) targets.add(phraseMatch.type)
+  if (/\bhero\b/.test(lower)) targets.add('hero')
+  if (/\bnavbar|navigation|header\b/.test(lower)) targets.add('navbar')
+  if (/\bfaq|faqs|questions?\b/.test(lower)) targets.add('faq')
+  if (/\bservices?|benefits?\b/.test(lower)) targets.add('servicesGrid')
+  if (/\bcoverage|pricing|plans?\b/.test(lower)) targets.add('pricingCards')
+  if (/\btestimonial|review\b/.test(lower)) targets.add('testimonials')
+  if (/\bcta|call to action\b/.test(lower)) targets.add('ctaBanner')
+  if (/\bfooter\b/.test(lower)) targets.add('footer')
+  if (/\blead form|form section\b/.test(lower)) targets.add('leadForm')
+  if (/\bcalculator\b/.test(lower)) targets.add('insuranceCalculator')
+  return targets
+}
+
+function isScopedEdit(lower: string, phrases: string[]) {
+  const generalPageIntent = /\b(whole|entire|full|complete|all|every|overall|global|sitewide|website|landing page|page)\b/.test(lower)
+  const sectionIntent = /\b(this|that|specific|current)\s+(section|block|component|card|button|text)\b/.test(lower)
+    || /\b(section|block|component)\b/.test(lower)
+    || phrases.length > 0
+  return sectionIntent && !generalPageIntent
 }
 
 export function applyIntentOverrides(
@@ -34,6 +128,41 @@ export function applyIntentOverrides(
   const lower = message.toLowerCase()
   const currentBlocks = parsedBlocks(currentPage)
   const removeIntent = /\b(remove|delete|hide|take out|get rid of)\b/.test(lower)
+  const phrasesToRemove = quotedPhrases(message)
+  const targetPhrases = quotedPhrases(message)
+  const backgroundIntent = /\b(bg|background|surface|section color)\b/.test(lower)
+  const darkIntent = /\b(dark|black|navy|primary)\b/.test(lower)
+
+  if (backgroundIntent && darkIntent) {
+    const match = currentBlocks.find((block) => blockIncludes(block, targetPhrases))
+      ?? (/\bfaq|questions?\b/.test(lower) ? currentBlocks.find((block) => block.type === 'faq') : undefined)
+      ?? (/\bcoverage|pricing\b/.test(lower) ? currentBlocks.find((block) => block.type === 'pricingCards') : undefined)
+      ?? (/\bservice|benefit\b/.test(lower) ? currentBlocks.find((block) => block.type === 'servicesGrid') : undefined)
+      ?? (/\btestimonial|review\b/.test(lower) ? currentBlocks.find((block) => block.type === 'testimonials') : undefined)
+    if (match) {
+      const edited = cloneBlock(match)
+      edited.style = sectionStyle(edited, 'dark')
+      upsertBlock(next, edited)
+    }
+  }
+
+  if (removeIntent && phrasesToRemove.length) {
+    const wantsWholeSection = /\b(section|component|block|banner|card)\b/.test(lower)
+    const wantsOnlyButton = /\b(button|cta|call to action)\b/.test(lower) && !wantsWholeSection
+    const match = currentBlocks.find((block) => blockIncludes(block, phrasesToRemove))
+    if (match) {
+      if (wantsWholeSection && !wantsOnlyButton) {
+        upsertBlock(next, { ...match, action: 'remove' })
+      } else {
+        const edited = cloneBlock(match)
+        const result = removePhrasesFromValue(edited.props, phrasesToRemove, /\b(card|item|row)\b/.test(lower))
+        if (result.changed) {
+          edited.props = result.value as typeof edited.props
+          upsertBlock(next, edited)
+        }
+      }
+    }
+  }
 
   const currentHero = currentBlocks.find((block) => block.type === 'hero')
   const generatedHero = next.ui_blocks.find((block) => block.type === 'hero')
@@ -162,11 +291,28 @@ export function applyIntentOverrides(
       services.props.layout = 'list'
       services.style = { ...style(), variant: 'minimal', columns: 2 }
       changed = true
-    } else if (/\b(change|switch|update)\s+(the\s+)?(service(s)?\s+)?layout\b/.test(lower)) {
-      services.props.layout = services.props.layout === 'bento' ? 'cards' : 'bento'
-      services.style = { ...style(), variant: services.props.layout === 'bento' ? 'bento' : 'editorial', columns: 4 }
-      changed = true
-    }
+      } else if (/\b(change|switch|update)\s+(the\s+)?(service(s)?\s+)?layout\b/.test(lower)) {
+        services.props.layout = services.props.layout === 'bento' ? 'cards' : 'bento'
+        services.style = { ...style(), variant: services.props.layout === 'bento' ? 'bento' : 'editorial', columns: 4 }
+        changed = true
+      }
+
+      if (/\b(image|picture|photo|visual|photograph)\b/.test(lower)) {
+        const suppliedUrl = message.match(/https?:\/\/[^\s)]+/)?.[0]
+        const context = [message, services.props.headline, services.props.intro, services.props.media?.altPrompt].filter(Boolean).join(' ')
+        services.props.media = {
+          ...services.props.media,
+          type: 'image',
+          src: suppliedUrl ?? resolveHeroImage(context, services.props.media?.src),
+          alt: services.props.media?.alt ?? 'Business-relevant services image',
+          altPrompt: services.props.media?.altPrompt ?? message,
+        }
+        if (/\b(add|show|use|with|featured|split)\b/.test(lower)) {
+          services.props.layout = 'splitFeature'
+          services.style = { ...style(), variant: 'split', columns: 2 }
+        }
+        changed = true
+      }
 
     if (/\b(icon|icons)\b/.test(lower)) {
       if (/\b(very large|extra large|huge|bigger)\b/.test(lower)) services.props.iconSize = 'xl'
@@ -230,6 +376,14 @@ export function applyIntentOverrides(
       if (!pattern.test(lower)) continue
       const current = currentBlocks.find((block) => block.type === type)
       if (current) upsertBlock(next, { ...current, action: 'remove' })
+    }
+  }
+
+  if (isScopedEdit(lower, targetPhrases)) {
+    const targetTypes = scopedTargetTypes(lower, currentBlocks, targetPhrases)
+    if (targetTypes.size) {
+      next.ui_blocks = next.ui_blocks.filter((block) => targetTypes.has(block.type))
+      next.design_system = undefined
     }
   }
 
