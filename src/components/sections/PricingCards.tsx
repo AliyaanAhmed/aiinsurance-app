@@ -1,10 +1,18 @@
 import { Check } from 'lucide-react'
+import type { CSSProperties } from 'react'
 import type { z } from 'zod'
-import type { pricingCardsPropsSchema } from '../../generative-ui/schemas'
+import type { pricingCardsPropsSchema, SectionStyle } from '../../generative-ui/schemas'
 
 type PricingCardsProps = z.infer<typeof pricingCardsPropsSchema>
+type PricingCssProperties = CSSProperties & Record<`--${string}`, string | number | undefined>
 
-export function PricingCards({ props }: { props: PricingCardsProps }) {
+export function PricingCards({ props, style }: { props: PricingCardsProps; style?: SectionStyle }) {
+  const columns = Math.min(style?.columns ?? props.plans.length, props.plans.length, 4)
+  const gridStyle: PricingCssProperties = {
+    '--pricing-columns': columns,
+    '--pricing-count': props.plans.length,
+  }
+
   return (
     <section className="lp-band pricing-section">
       <header className="section-heading">
@@ -14,7 +22,7 @@ export function PricingCards({ props }: { props: PricingCardsProps }) {
         </div>
         {props.intro ? <p>{props.intro}</p> : null}
       </header>
-      <div className="pricing-grid">
+      <div className={`pricing-grid pricing-count-${props.plans.length} align-${style?.align ?? 'left'}`} style={gridStyle}>
         {props.plans.map((plan) => (
           <article key={plan.name} className={plan.badge ? 'pricing-card featured' : 'pricing-card'}>
             {plan.badge ? <span className="pricing-badge">{plan.badge}</span> : null}

@@ -410,8 +410,8 @@ export const paletteRecommendationSchema = z.object({
 export const assistantResponseSchema = z.object({
   assistant_markdown: z.string(),
   questions: z.array(chatQuestionSchema).max(6).default([]),
-  template_recommendations: z.array(templateRecommendationSchema).max(3).default([]),
-  palette_recommendations: z.array(paletteRecommendationSchema).max(3).default([]),
+  template_recommendations: z.array(templateRecommendationSchema).max(6).default([]),
+  palette_recommendations: z.array(paletteRecommendationSchema).max(6).default([]),
   suggestions: z.array(z.string()).default([]),
   stage: z.enum(stages).default('intro'),
   design_system: designSystemSchema.optional(),

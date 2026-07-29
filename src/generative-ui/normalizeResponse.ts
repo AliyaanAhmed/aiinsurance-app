@@ -100,6 +100,11 @@ function slug(value: string) {
     .slice(0, 48)
 }
 
+function includesTerm(text: string, term: string) {
+  const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, 'i').test(text)
+}
+
 const heroImageLibrary = [
   { terms: ['fleet', 'corporate car', 'company car', 'commercial vehicle', 'van fleet', 'motor fleet'], sources: ['photo-1549317661-bd32c8ce0db2', 'photo-1492144534655-ae79c964c9d7'] },
   { terms: ['car', 'auto', 'motor', 'vehicle', 'driver', 'fleet'], sources: ['photo-1503376780353-7e6692767b70', 'photo-1549317661-bd32c8ce0db2'] },
@@ -114,7 +119,7 @@ const heroImageLibrary = [
 
 export function resolveHeroImage(context: string, currentSource?: string | null) {
   const normalized = context.toLowerCase()
-  const match = heroImageLibrary.find((image) => image.terms.some((term) => normalized.includes(term)))
+  const match = heroImageLibrary.find((image) => image.terms.some((term) => includesTerm(normalized, term)))
   const sources = match?.sources ?? ['photo-1450101499163-c8848c66ca85', 'photo-1551836022-d5d88e9218df']
   const source = currentSource?.includes(sources[0]) ? sources[1] : sources[0]
   return `https://images.unsplash.com/${source}?auto=format&fit=crop&w=1800&q=85`
@@ -192,6 +197,125 @@ function normalizeDesignSystem(value: unknown): DesignSystem | undefined {
     },
     radius: raw.radius === 'sharp' || raw.radius === 'rounded' ? raw.radius : 'rounded',
   }
+}
+
+const fallbackPaletteOptions: Array<{ name: string; rationale: string; colors: DesignSystem['colors'] }> = [
+  {
+    name: 'Midnight Cobalt',
+    rationale: 'A crisp navy and cobalt direction for premium digital insurance funnels.',
+    colors: {
+      primary: '#101828',
+      secondary: '#2563EB',
+      accent: '#F79009',
+      background: '#F3F6FA',
+      surface: '#FFFFFF',
+      text: '#101828',
+      muted: '#526179',
+    },
+  },
+  {
+    name: 'Emerald Trust',
+    rationale: 'A dark green brand system with fresh teal support for confidence-led cover.',
+    colors: {
+      primary: '#063A32',
+      secondary: '#0E9384',
+      accent: '#F59E0B',
+      background: '#F2F7F5',
+      surface: '#FFFFFF',
+      text: '#10231F',
+      muted: '#536B64',
+    },
+  },
+  {
+    name: 'Charcoal Copper',
+    rationale: 'A warmer executive palette with charcoal surfaces and restrained copper accents.',
+    colors: {
+      primary: '#1F2933',
+      secondary: '#475467',
+      accent: '#D97706',
+      background: '#F6F4F1',
+      surface: '#FFFFFF',
+      text: '#182230',
+      muted: '#667085',
+    },
+  },
+  {
+    name: 'Aubergine Signal',
+    rationale: 'A richer dark-purple direction for a more distinctive AI-product feel.',
+    colors: {
+      primary: '#2A174E',
+      secondary: '#4F46E5',
+      accent: '#EC4899',
+      background: '#F7F5FB',
+      surface: '#FFFFFF',
+      text: '#1D1630',
+      muted: '#625B71',
+    },
+  },
+  {
+    name: 'Ruby Slate',
+    rationale: 'A confident wine-red and slate palette for a more editorial insurance brand.',
+    colors: {
+      primary: '#4A102A',
+      secondary: '#64748B',
+      accent: '#FB7185',
+      background: '#FBF5F7',
+      surface: '#FFFFFF',
+      text: '#24121A',
+      muted: '#6B5C64',
+    },
+  },
+  {
+    name: 'Deep Teal Gold',
+    rationale: 'A premium teal and muted-gold palette for advisory-led quote journeys.',
+    colors: {
+      primary: '#0F3D4A',
+      secondary: '#0E7490',
+      accent: '#D6A21E',
+      background: '#F2F7F8',
+      surface: '#FFFFFF',
+      text: '#102A33',
+      muted: '#566B73',
+    },
+  },
+]
+
+function paletteSignature(colors: DesignSystem['colors']) {
+  return [colors.primary, colors.secondary, colors.accent, colors.background, colors.text]
+    .map((color) => color.toUpperCase())
+    .join('|')
+}
+
+function diversePaletteRecommendations(recommendations: Array<{ name: string; rationale: string; colors: DesignSystem['colors'] }>) {
+  const seenNames = new Set<string>()
+  const seenPalettes = new Set<string>()
+  const seenPrimaries = new Set<string>()
+  const unique: Array<{ name: string; rationale: string; colors: DesignSystem['colors'] }> = []
+
+  for (const recommendation of [...recommendations, ...fallbackPaletteOptions]) {
+    const colors = recommendation.colors
+    const signature = paletteSignature(colors)
+    const nameKey = recommendation.name.toLowerCase()
+    const primaryKey = colors.primary.toUpperCase()
+    if (seenNames.has(nameKey) || seenPalettes.has(signature) || seenPrimaries.has(primaryKey)) continue
+    seenNames.add(nameKey)
+    seenPalettes.add(signature)
+    seenPrimaries.add(primaryKey)
+    unique.push(recommendation)
+    if (unique.length === 6) break
+  }
+
+  return unique
+}
+
+function paletteDisplayName(name: string, colors: DesignSystem['colors']) {
+  if (!/^refined palette$/i.test(name.trim())) return name
+  const { h } = hexToHsl(colors.primary)
+  if (h >= 85 && h < 170) return 'Emerald Trust'
+  if (h >= 250 && h < 320) return 'Aubergine Signal'
+  if (h >= 15 && h < 55) return 'Copper Executive'
+  if (h >= 170 && h < 245) return 'Midnight Cobalt'
+  return 'Charcoal Authority'
 }
 
 function normalizeFaq(raw: AnyRecord, index: number): BlockEnvelope {
@@ -351,7 +475,7 @@ function normalizeHero(raw: AnyRecord, index: number): BlockEnvelope {
         alt: asString(rawMedia.alt, undefined),
         altPrompt: asString(
           rawMedia.altPrompt ?? rawMedia.prompt,
-          'Warm photo of a family standing beside their car, insurance landing page hero',
+          'Product-relevant premium insurance landing page hero image',
         ),
       },
       quoteForm: Object.keys(rawQuoteForm).length
@@ -661,18 +785,21 @@ export function normalizeAssistantPayload(data: unknown): AssistantResponse {
     }
   })
   const recommendationIds = new Set(['horizon', 'pulse', 'signal', 'meridian', 'canopy', 'northstar', 'current', 'velocity', 'ledger'])
-  const templateRecommendations = asArray(raw.template_recommendations ?? raw.templateRecommendations).slice(0, 3).flatMap((recommendation) => {
+  const templateRecommendations = asArray(raw.template_recommendations ?? raw.templateRecommendations).slice(0, 6).flatMap((recommendation) => {
     const record = asRecord(recommendation)
     const templateId = asString(record.templateId ?? record.template_id)
     if (!recommendationIds.has(templateId)) return []
     const colors = normalizeDesignSystem({ name: 'Recommendation', preset: 'custom', colors: record.colors, typography: {}, radius: 'soft' })?.colors
     return colors ? [{ templateId: templateId as 'horizon', name: asString(record.name, 'Recommended direction'), reason: asString(record.reason, 'A strong fit for your audience and conversion goal.'), colors: harmonizeRecommendedColors(colors) }] : []
   })
-  const paletteRecommendations = asArray(raw.palette_recommendations ?? raw.paletteRecommendations).slice(0, 3).flatMap((recommendation) => {
+  const paletteRecommendations = diversePaletteRecommendations(asArray(raw.palette_recommendations ?? raw.paletteRecommendations).slice(0, 6).flatMap((recommendation) => {
     const record = asRecord(recommendation)
     const colors = normalizeDesignSystem({ name: 'Palette', preset: 'custom', colors: record.colors, typography: {}, radius: 'soft' })?.colors
-    return colors ? [{ name: asString(record.name, 'Refined palette'), rationale: asString(record.rationale ?? record.reason, 'A complementary palette tailored to the audience and offer.'), colors: harmonizeRecommendedColors(colors) }] : []
-  })
+    if (!colors) return []
+    const harmonizedColors = harmonizeRecommendedColors(colors)
+    const rawName = asString(record.name, 'Refined palette')
+    return [{ name: paletteDisplayName(rawName, harmonizedColors), rationale: asString(record.rationale ?? record.reason, 'A complementary palette tailored to the audience and offer.'), colors: harmonizedColors }]
+  }))
   const candidate = {
     assistant_markdown: asString(raw.assistant_markdown ?? raw.message, "I've updated the landing page draft."),
     questions,

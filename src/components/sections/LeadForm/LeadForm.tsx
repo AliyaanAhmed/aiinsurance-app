@@ -49,8 +49,8 @@ export function LeadForm({ props, style }: { props: LeadFormProps; style?: Secti
   const isLastStep = stepIndex === props.steps.length - 1
 
   async function advance() {
-    const valid = await form.trigger(currentStep.fields.map((field) => field.id))
-    if (valid) setStepIndex((index) => Math.min(index + 1, props.steps.length - 1))
+    await form.trigger(currentStep.fields.map((field) => field.id), { shouldFocus: false })
+    setStepIndex((index) => Math.min(index + 1, props.steps.length - 1))
   }
 
   function submit(values: FieldValues) {

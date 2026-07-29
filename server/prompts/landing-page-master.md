@@ -74,6 +74,14 @@ Example:
   - `muted` is secondary body copy. Default `muted: "#526179"`.
 - Do not use random greens, purples, browns, or multi-color service-card backgrounds. Service cards
   should be white or very subtly slate/blue tinted, with matching pale-blue icon tiles and aligned icons.
+- When returning `palette_recommendations`, never return duplicate-looking options or repeat the name
+  "Refined palette". Provide 4-6 visually distinct, named palette choices, for example a navy/cobalt
+  option, an emerald/teal trust option, and a charcoal/copper executive option. Each option must have
+  meaningfully different `primary`, `secondary`, `accent`, `background`, `text`, and `muted` values.
+  The rendered page should still use one coherent selected palette, not a mix of all options.
+- Do not include `template_recommendations` or `palette_recommendations` on every answer. Include them
+  only during initial design-direction discovery or when the user explicitly asks for palettes, colors,
+  themes, style options, or templates. For ordinary section/copy/layout edits, return empty arrays.
 - The hero section must sit on the primary dark background, with white hero copy,
   a business-relevant rounded image card, and a white quote form card. Do not use a weak transparent
   or plain white hero.
@@ -90,6 +98,9 @@ Example:
 - If the user asks to change the background of a specific section identified by its heading text, find the
   block whose props contain that exact heading and upsert that same block with `style.surface: "dark"` or
   the requested surface. Preserve the block id, type, content, and layout unless explicitly asked otherwise.
+- If the user asks for the services/benefits section background to use the selected primary color, upsert
+  the `servicesGrid` block with `style.surface: "dark"` and keep service cards/text readable on that dark
+  primary surface.
 
 ## Template architecture variants
 
@@ -102,13 +113,64 @@ Keep the theme system consistent, but generate different layouts when helpful:
 - `Consultation Funnel`: dark hero form, white benefits, soft FAQ, primary CTA, no extra lead form unless asked.
 - `Sector-Specific Fleet Page`: same theme tokens, but imagery, fields, cards, FAQ, and pricing copy all match
   the requested business sector.
-- The coverage/pricing section should use the soft slate background, white cards, and cobalt actions.
-- The CTA should be a strong cobalt blue band, followed by a dark navy footer.
 - Do not produce a separate `leadForm` block in the default page. The main quote form belongs in
   `hero.props.quoteForm`.
+- If the user asks to make the form multi-step, make a separate `leadForm` block with
+  `props.layout: "multiStep"` and split fields into practical steps. If the current form is in the hero,
+  remove `hero.props.quoteForm` and move those fields into the new lead-form section.
+- If the user asks for a separate/full/complete form section, remove the form from the hero and create
+  a `leadForm` section after the hero. Preserve existing fields unless the user asks to change them.
+- Form fields, dropdown options, submit buttons, consent text, layout, and step titles are customizable.
+  If the user asks to add/remove/rename a field, change field kind, update dropdown options, or change
+  button text, return a real JSON patch for the affected hero or lead-form block.
+- The user can reorder page sections by chat. Navbar, hero, and footer are fixed anchors and must not
+  be moved. Other sections can move before/after each other or after the hero/before the footer. For a
+  placement request, return the affected block with `action: "reorder"` and a real `index`, or upsert
+  that block with the target `index`; do not only say it was reordered.
 - Avoid fake regulatory claims, guaranteed savings, guaranteed approval, binding quote language, or
   invented verified statistics. If using example figures, label them as illustrative or avoid them.
 - If the user asks to “build now” and gives enough demo details, return a full page patch immediately.
+
+## Section template library
+
+The user can ask for a different template for any section. Keep the same theme tokens, but change the
+layout and interaction pattern:
+
+- Hero templates: `split-form`, `centered-form`, `editorial-media`, `dashboard-proof`,
+  `minimal-conversion`.
+- Required hero layout modes:
+  - `default split-form-media`: use `backgroundStyle: "split"` with left headline/copy, a real rounded
+    image card in the left column, and the quote form in the right column.
+  - `separate-form-after-hero`: when the user asks for the form as its own section, remove
+    `hero.props.quoteForm`, create/upsert `leadForm` immediately after the hero, and render the hero as
+    a 6/6 layout with a same-height rounded image card on one side and headline/copy on the other.
+  - `full-background-with-form`: when the user asks for a full-width/full background hero image and the
+    form remains in the hero, set `hero.props.backgroundStyle: "image"` with a dark linear overlay,
+    left text column and right quote-form column.
+  - `full-background-with-separate-form`: when the form has been moved to `leadForm` and the user asks
+    for a full hero background image, still set `hero.props.backgroundStyle: "image"` with a dark linear
+    overlay. Do not re-add the quote form to the hero unless explicitly asked.
+- If the user gives vague negative hero feedback such as "hero not looking good", "change hero layout",
+  "current hero layout does not look good", "still not looking good", or "make another hero style", do
+  not only edit copy. Return a real hero block patch that changes the template materially. If the form is
+  already separate in `leadForm`, prefer `full-background-with-separate-form` as the next stronger visual
+  layout. If the form is still in the hero, prefer `full-background-with-form`.
+- If the user asks for a hero background image with gradient, use `hero.props.backgroundStyle: "image"`,
+  keep `hero.props.media.src` as the background image, set a readable dark linear overlay, and use
+  `style.columns: 2`. If `hero.props.quoteForm` exists, use left headline/copy and right quote form.
+  If the form is separate, keep only the text constrained to the left 6-column area and keep the
+  separate `leadForm` directly after the hero. Do not also render the image as a separate media card
+  for that hero template.
+- Services/benefits templates: `four-card-grid`, `bento`, `split-feature`, `list`.
+- Coverage/pricing templates: `three-plan-grid`, `two-plan-centered`, `comparison-cards`,
+  `featured-plan`.
+- FAQ templates: `two-column-accordion`, `single-column-centered`, `dark-accordion`, `compact-list`.
+- CTA templates: `solid-primary-band`, `minimal-inline`, `split-copy-button`.
+- Footer templates: `clean-columns`, `compact-legal`, `large-brand`.
+
+When the user asks for a section template change, return only that block unless they request a whole-page
+redesign. When they ask for alignment such as "make heading center" or "center the cards", update the
+block style and layout props so the visual output actually changes.
 
 ## Registered block order for the master template
 

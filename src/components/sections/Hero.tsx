@@ -2,6 +2,7 @@ import { ArrowRight, BriefcaseBusiness, Car, Check, ChevronLeft, ChevronRight, H
 import { useEffect, useState } from 'react'
 import type { CSSProperties } from 'react'
 import type { z } from 'zod'
+import { resolveHeroImage } from '../../generative-ui/normalizeResponse'
 import type { heroPropsSchema, SectionStyle } from '../../generative-ui/schemas'
 
 type HeroProps = z.infer<typeof heroPropsSchema>
@@ -17,15 +18,19 @@ export function Hero({ props, style }: { props: HeroProps; style?: SectionStyle 
     return () => window.clearInterval(timer)
   }, [isCarousel, slides.length])
 
-  const imageStyle = props.media?.src ? { backgroundImage: `url("${props.media.src.replace(/"/g, '')}")` } : undefined
+  const resolvedImageSource = props.media?.src || resolveHeroImage([props.eyebrow, props.headline, props.subheadline, props.media?.altPrompt].filter(Boolean).join(' '))
+  const imageStyle = { backgroundImage: `url("${resolvedImageSource.replace(/"/g, '')}")` }
   const overlay = props.overlay ?? { style: 'linear', color: '#07111F', opacity: 0.55, direction: 'full' }
+  const useHeroBackgroundImage = props.backgroundStyle === 'image'
   const heroCssVars = {
     '--hero-overlay-color': overlay.color,
     '--hero-overlay-strength': `${Math.round(overlay.opacity * 100)}%`,
+    '--hero-bg-image': `url("${resolvedImageSource.replace(/"/g, '')}")`,
   } as CSSProperties
 
   return (
-    <section className={`lp-hero hero-${style?.variant ?? props.visualStyle} overlay-${overlay.style} overlay-${overlay.direction}${props.quoteForm ? ' has-quote-form' : ''}`} style={heroCssVars}>
+    <section className={`lp-hero hero-${style?.variant ?? props.visualStyle} background-${props.backgroundStyle} overlay-${overlay.style} overlay-${overlay.direction}${props.quoteForm ? ' has-quote-form' : ''}${useHeroBackgroundImage ? ' hero-bg-image' : ''}`} style={heroCssVars}>
+      {useHeroBackgroundImage ? <div className="hero-backdrop" style={imageStyle} aria-label={props.media?.alt ?? 'Insurance brand hero image'} /> : null}
       {props.quoteForm ? (
         <div className="hero-left-column">
           <div className="hero-copy">
@@ -34,11 +39,11 @@ export function Hero({ props, style }: { props: HeroProps; style?: SectionStyle 
             {props.subheadline ? <p className="lede">{props.subheadline}</p> : null}
             <div className="hero-assurance"><ShieldCheck size={17} /><span>Secure, guided and built around your needs</span></div>
           </div>
-          <div className="hero-image-card" style={imageStyle} aria-label={props.media?.alt ?? 'Insurance brand hero image'} />
+          {!useHeroBackgroundImage ? <div className="hero-image-card" style={imageStyle} aria-label={props.media?.alt ?? 'Insurance brand hero image'} /> : null}
         </div>
       ) : (
         <>
-          <div className="hero-backdrop" style={imageStyle} aria-label={props.media?.alt ?? 'Insurance brand hero image'} />
+          {!useHeroBackgroundImage ? <div className="hero-backdrop" style={imageStyle} aria-label={props.media?.alt ?? 'Insurance brand hero image'} /> : null}
           <div className="hero-copy">
             {props.eyebrow ? <p className="eyebrow"><span />{props.eyebrow}</p> : null}
             <h1>{props.headline}</h1>

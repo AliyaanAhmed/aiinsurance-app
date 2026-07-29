@@ -54,7 +54,14 @@ const replaceByType = new Set<BlockEnvelope['type']>([
   'ctaBanner',
   'footer',
   'insuranceCalculator',
+  'pricingCards',
 ])
+
+const fixedOrder: Partial<Record<BlockEnvelope['type'], 'first' | 'afterNavbar' | 'last'>> = {
+  navbar: 'first',
+  hero: 'afterNavbar',
+  footer: 'last',
+}
 
 function hexToHsl(hex: string) {
   const value = hex.slice(1)
@@ -100,7 +107,7 @@ function mergeBlocks(currentBlocks: BlockEnvelope[], incomingBlocks: BlockEnvelo
 
   for (const incoming of incomingBlocks) {
     let currentIndex = nextBlocks.findIndex((block) => block.id === incoming.id)
-    if (currentIndex < 0 && incoming.action === 'upsert' && replaceByType.has(incoming.type)) {
+    if (currentIndex < 0 && (incoming.action === 'upsert' || incoming.action === 'reorder') && replaceByType.has(incoming.type)) {
       currentIndex = nextBlocks.findIndex((block) => block.type === incoming.type)
     }
 
@@ -118,13 +125,39 @@ function mergeBlocks(currentBlocks: BlockEnvelope[], incomingBlocks: BlockEnvelo
     }
 
     if (currentIndex >= 0) {
-      nextBlocks[currentIndex] = { ...incoming, isUpdated: true, isNew: false }
+      const updated = { ...incoming, isUpdated: true, isNew: false }
+      if (typeof incoming.index === 'number' && !fixedOrder[incoming.type]) {
+        nextBlocks.splice(currentIndex, 1)
+        const targetIndex = Math.min(incoming.index, nextBlocks.length)
+        nextBlocks.splice(targetIndex, 0, updated)
+      } else {
+        nextBlocks[currentIndex] = updated
+      }
     } else {
-      nextBlocks.push({ ...incoming, isNew: true, isUpdated: false })
+      const targetIndex = typeof incoming.index === 'number' ? Math.min(incoming.index, nextBlocks.length) : nextBlocks.length
+      nextBlocks.splice(targetIndex, 0, { ...incoming, isNew: true, isUpdated: false })
     }
   }
 
+  const navbar = nextBlocks.find((block) => block.type === 'navbar')
+  const hero = nextBlocks.find((block) => block.type === 'hero')
+  const footer = nextBlocks.find((block) => block.type === 'footer')
+  const middle = nextBlocks.filter((block) => block.type !== 'navbar' && block.type !== 'hero' && block.type !== 'footer')
+  nextBlocks = [
+    ...(navbar ? [navbar] : []),
+    ...(hero ? [hero] : []),
+    ...middle,
+    ...(footer ? [footer] : []),
+  ]
+
   return nextBlocks
+}
+
+function shouldShowRecommendations(state: LandingPageState, response: AssistantResponse) {
+  const lastUserMessage = [...state.messages].reverse().find((message) => message.role === 'user')?.content.toLowerCase() ?? ''
+  const asksForTheme = /\b(palette|palettes|theme|themes|color|colors|colour|colours|template|templates|design direction|style options)\b/.test(lastUserMessage)
+  const hasShownRecommendations = state.messages.some((message) => Boolean(message.templateRecommendations?.length || message.paletteRecommendations?.length))
+  return asksForTheme || (!hasShownRecommendations && !response.ui_blocks.length)
 }
 
 export const useLandingPageStore = create<LandingPageState>()(
@@ -156,6 +189,7 @@ export const useLandingPageStore = create<LandingPageState>()(
         set((state) => {
           const blocks = mergeBlocks(state.blocks, response.ui_blocks)
           const changedFocus = response.ui_blocks.find((block) => block.action !== 'remove')?.id
+          const showRecommendations = shouldShowRecommendations(state as LandingPageState, response)
           return {
             stage: response.stage,
             designSystem: response.design_system ?? state.designSystem,
@@ -163,7 +197,13 @@ export const useLandingPageStore = create<LandingPageState>()(
             focusBlockId: changedFocus ?? focusBlockForStage(blocks, response.stage),
             messages: [
               ...state.messages,
-              { role: 'assistant', content: response.assistant_markdown, questions: response.questions, templateRecommendations: response.template_recommendations, paletteRecommendations: response.palette_recommendations },
+              {
+                role: 'assistant',
+                content: response.assistant_markdown,
+                questions: response.questions,
+                templateRecommendations: showRecommendations ? response.template_recommendations : [],
+                paletteRecommendations: showRecommendations ? response.palette_recommendations : [],
+              },
             ],
             suggestions: response.suggestions,
             templateRecommendations: response.template_recommendations.length ? response.template_recommendations : state.templateRecommendations,
