@@ -96,7 +96,7 @@ export function DashboardPage() {
                 <div key={metric.label} className="rounded-[24px] border border-white/60 bg-white/72 p-5 shadow-[0_16px_40px_rgba(15,23,42,0.06)] backdrop-blur-xl dark:border-white/8 dark:bg-white/[0.04]">
                   <p className="text-[12px] font-bold uppercase tracking-[0.16em] text-muted-foreground">{metric.label}</p>
                   <p className="mt-3 text-4xl font-bold">
-                    {metric.label.includes('Reassurance') ? formatCurrency(metric.value) : formatCompactNumber(metric.value)}
+                    {metric.label.includes('Reinsurance') ? formatCurrency(metric.value) : formatCompactNumber(metric.value)}
                   </p>
                   <p className="mt-2 text-sm text-muted-foreground">{metric.helper}</p>
                 </div>
@@ -256,9 +256,9 @@ export function DashboardPage() {
                 tone="success"
               />
               <MiniStatCard
-                title="Reassurance"
+                title="Reinsurance"
                 value={formatCurrency(data.wonPremiumTotal)}
-                helper="Current won quote reassurance pool"
+                helper="Current won quote reinsurance pool"
                 tone="secondary"
               />
               <MiniStatCard
@@ -272,19 +272,19 @@ export function DashboardPage() {
         </MetricPanel>
 
         <MetricPanel
-          title="Reassurance by Product"
-          description="Total reassurance value of won quotes broken down by product."
+          title="Reinsurance by Product"
+          description="Total reinsurance value of won quotes broken down by product."
           eyebrow="Revenue lens"
           stats={[
-            { label: 'Reassurance', value: formatCurrency(data.wonPremiumTotal) },
+            { label: 'Reinsurance', value: formatCurrency(data.wonPremiumTotal) },
             { label: 'Won quotes', value: formatCompactNumber(data.wonQuotes) },
           ]}
           contentClassName="grid gap-5 lg:grid-cols-[1fr_1fr]"
         >
           {data.wonPremiumByProduct.length === 0 ? (
             <EmptyChartState
-              title="No reassurance by product yet"
-              description="Product reassurance will appear here as quote outcomes mature into won status."
+              title="No reinsurance by product yet"
+              description="Product reinsurance will appear here as quote outcomes mature into won status."
             />
           ) : (
             <>
@@ -313,19 +313,19 @@ export function DashboardPage() {
         </MetricPanel>
 
         <MetricPanel
-          title="Reassurance by Plan"
-          description="Won quote reassurance grouped by the plan selected on the quote."
+          title="Reinsurance by Plan"
+          description="Won quote reinsurance grouped by the plan selected on the quote."
           eyebrow="Plan view"
           stats={[
             { label: 'Plans tracked', value: formatCompactNumber(data.wonPremiumByPlan.length) },
-            { label: 'Reassurance', value: formatCurrency(data.wonPremiumTotal) },
+            { label: 'Reinsurance', value: formatCurrency(data.wonPremiumTotal) },
           ]}
           contentClassName="grid gap-5 lg:grid-cols-[1fr_1fr]"
         >
           {data.wonPremiumByPlan.length === 0 ? (
             <EmptyChartState
-              title="No reassurance by plan yet"
-              description="Plan-linked reassurance will appear here once quotes with plans are marked won."
+              title="No reinsurance by plan yet"
+              description="Plan-linked reinsurance will appear here once quotes with plans are marked won."
             />
           ) : (
             <>

@@ -297,7 +297,7 @@ export function PlanWorkspacePage() {
             <Field label="Maximum Sum Insured">
               <Input type="number" value={form.maximumSumInsured} onChange={(event) => setForm((current) => ({ ...current, maximumSumInsured: event.target.value }))} />
             </Field>
-            <Field label="Cealing">
+            <Field label="Ceiling">
               <Input type="number" value={form.cealing} onChange={(event) => setForm((current) => ({ ...current, cealing: event.target.value }))} />
             </Field>
             <Field label="Floor">

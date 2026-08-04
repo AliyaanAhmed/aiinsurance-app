@@ -70,7 +70,7 @@ export function AnalyticsPage() {
       <PageHeader
         icon={BarChart3}
         title="AI Analytics"
-        description="Executive underwriting analytics across broker emails, inquiry conversion, reassurance performance, and product-plan concentration."
+        description="Executive underwriting analytics across broker emails, inquiry conversion, reinsurance performance, and product-plan concentration."
         actions={<Badge variant="info">Live Dataverse analytics</Badge>}
       />
 
@@ -139,7 +139,7 @@ export function AnalyticsPage() {
               helper="Pricing workbench records created."
             />
             <CompactInsight
-              label="Reassurance"
+              label="Reinsurance"
               value={formatCurrency(data.wonPremiumTotal)}
               helper="Won premium across active commercial outcomes."
             />
@@ -245,7 +245,7 @@ export function AnalyticsPage() {
         </AnalyticsChartCard>
 
         <AnalyticsChartCard
-          title="Reassurance by Product"
+          title="Reinsurance by Product"
           description="Won premium concentration across product lines."
           badge="Product mix"
         >
@@ -284,7 +284,7 @@ export function AnalyticsPage() {
         </AnalyticsChartCard>
 
         <AnalyticsChartCard
-          title="Reassurance by Plan"
+          title="Reinsurance by Plan"
           description="Won premium stacked against plan-level packaging."
           badge="Plan mix"
         >
@@ -410,7 +410,7 @@ export function AnalyticsPage() {
               },
               {
                 icon: BriefcaseBusiness,
-                title: 'Top reassurance product',
+                title: 'Top reinsurance product',
                 text: topProduct
                   ? `${topProduct.label} holds the strongest won premium concentration at ${formatCurrency(topProduct.value)}.`
                   : 'No won premium has been attributed to any product yet.',

@@ -186,7 +186,7 @@ export async function getDashboardMetrics(): Promise<DashboardMetrics> {
         tone: 'success',
       },
       {
-        label: 'Reassurance',
+        label: 'Reinsurance',
         value: wonPremiumTotal,
         helper: `${wonQuotes.length} quotes are currently won`,
         tone: 'secondary',
@@ -239,7 +239,7 @@ export async function getDashboardMetrics(): Promise<DashboardMetrics> {
         tone: 'success',
       },
       {
-        label: 'Reassurance',
+        label: 'Reinsurance',
         value: wonPremiumTotal,
         helper: 'Won premium across the portfolio',
         tone: 'info',

@@ -926,13 +926,13 @@ export function ProductEditorPage() {
                     placeholder="Enter maximum sum insured"
                   />
                 </Field>
-                <Field label="Cealing">
+                <Field label="Ceiling">
                   <Input
                     type="number"
                     step="0.01"
                     value={planDraft.cealing}
                     onChange={(event) => setPlanDraft((current) => ({ ...current, cealing: event.target.value }))}
-                    placeholder="Enter cealing"
+                    placeholder="Enter ceiling"
                   />
                 </Field>
                 <Field label="Floor">

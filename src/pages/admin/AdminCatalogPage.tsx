@@ -585,14 +585,14 @@ export function AdminCatalogPage({ entity, icon }: AdminCatalogPageProps) {
                         placeholder="Enter maximum sum insured"
                       />
                     </Field>
-                    <Field label="Cealing">
+                    <Field label="Ceiling">
                       <Input
                         type="number"
                         min="0"
                         step="0.01"
                         value={editor.cealing}
                         onChange={(event) => setEditor((current) => ({ ...current, cealing: event.target.value }))}
-                        placeholder="Enter cealing"
+                        placeholder="Enter ceiling"
                       />
                     </Field>
                     <Field label="Floor">
