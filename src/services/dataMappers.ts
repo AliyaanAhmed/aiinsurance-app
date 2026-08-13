@@ -83,6 +83,7 @@ export function mapInquiryDetail(
   const inquiryRecord = record as Aur_quoteses & {
     aur_base_premium?: number | null
     aur_action_applied?: boolean | null
+    aur_plan_details?: string | null
   }
   const summary = mapInquirySummary(record)
   const resolvedAccountName = account?.name?.trim() || summary.accountName
@@ -123,6 +124,7 @@ export function mapInquiryDetail(
     paymentTerm: record.aur_payment_termname ?? 'Annual',
     territorialScope: record.aur_territorial_scope ?? 'Not specified',
     coverType: record.aur_cover_typename ?? 'Not specified',
+    planDetails: inquiryRecord.aur_plan_details ?? '',
     fee: record.aur_fee ?? 0,
     declaredValue: record.aur_declared_value ?? 0,
     basePremium: inquiryRecord.aur_base_premium ?? 0,

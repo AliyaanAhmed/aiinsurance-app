@@ -145,6 +145,7 @@ export interface InquiryDetail extends InquirySummary {
   paymentTerm: string
   territorialScope: string
   coverType: string
+  planDetails: string
   fee: number
   declaredValue: number
   basePremium: number
@@ -505,4 +506,20 @@ export interface AnalyticsSnapshot {
     helper: string
     tone: 'primary' | 'success' | 'warning' | 'danger' | 'secondary' | 'info'
   }>
+}
+
+export interface EmailQueueSummary {
+  id: string
+  name: string
+  mailbox: string
+  inquiryId?: string
+  inquiryName: string
+  bodyPreview: string
+  status: string
+  createdOn?: string
+  modifiedOn?: string
+}
+
+export interface EmailQueueDetail extends EmailQueueSummary {
+  emailBody: string
 }

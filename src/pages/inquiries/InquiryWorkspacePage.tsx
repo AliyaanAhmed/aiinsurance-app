@@ -37,6 +37,7 @@ interface InquiryFormState {
   planId: string
   brokerId: string
   brokerAgentName: string
+  planDetails: string
   coverType: string
   riskScore: string
   riskDescription: string
@@ -523,6 +524,7 @@ export function InquiryWorkspacePage() {
         inquiryStatus: form.inquiryStatus ? Number(form.inquiryStatus) : undefined,
         planId: form.planId || undefined,
         brokerId: form.brokerId || undefined,
+        planDetails: form.planDetails,
         coverType: form.coverType ? Number(form.coverType) : undefined,
         riskScore: Number(form.riskScore) || 0,
         riskDescription: form.riskDescription,
@@ -552,6 +554,7 @@ export function InquiryWorkspacePage() {
               inquiryStatusValue: form.inquiryStatus ? Number(form.inquiryStatus) : current.inquiryStatusValue,
               planId: form.planId || undefined,
               planName: findOptionName(options.plans.map((item) => ({ id: item.id, name: item.name })), form.planId, current.planName),
+              planDetails: form.planDetails,
               brokerId: form.brokerId || undefined,
               brokerName: findOptionName(options.brokers, form.brokerId, current.brokerName),
               coverType: findOptionLabel(options.coverTypes, form.coverType, current.coverType),
@@ -1244,6 +1247,20 @@ export function InquiryWorkspacePage() {
                       <Field label="Broker Agent">
                         <ReadOnlyValue value={form.brokerAgentName} />
                       </Field>
+                      <div className="md:col-span-2">
+                        <Field label="Plan Details">
+                          {isEditing ? (
+                            <textarea
+                              className="form-field-surface min-h-[118px] w-full rounded-[16px] border border-border-soft px-4 py-3 text-sm font-medium text-foreground outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10"
+                              value={form.planDetails}
+                              onChange={(event) => setForm({ ...form, planDetails: event.target.value })}
+                              placeholder="Enter plan details"
+                            />
+                          ) : (
+                            <PlanDetailsPreview value={form.planDetails} />
+                          )}
+                        </Field>
+                      </div>
                     </div>
                   </Card>
 
@@ -3075,6 +3092,58 @@ function ReadOnlyText({ value }: { value: string }) {
   )
 }
 
+function PlanDetailsPreview({ value }: { value: string }) {
+  const sections = parsePlanDetails(value)
+
+  if (!sections.length) {
+    return <ReadOnlyText value="No plan details captured" />
+  }
+
+  return (
+    <div className="form-field-surface min-h-28 rounded-[16px] border border-border-soft px-4 py-4 text-sm text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.35)]">
+      <div className="space-y-5">
+        {sections.map((section) => (
+          <div key={section.title} className="space-y-2">
+            <p className="text-[12px] font-bold uppercase tracking-[0.14em] text-primary">
+              {section.title}
+            </p>
+            <div className="space-y-2">
+              {section.items.map((item) => (
+                <p key={item} className="whitespace-pre-wrap text-sm leading-7 text-foreground/90">
+                  {item}
+                </p>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function parsePlanDetails(value: string) {
+  const lines = value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+
+  const sections: Array<{ title: string; items: string[] }> = []
+
+  for (const line of lines) {
+    if (line.endsWith(':')) {
+      sections.push({ title: line.replace(/:$/, ''), items: [] })
+      continue
+    }
+
+    if (!sections.length) {
+      sections.push({ title: 'Plan Details', items: [] })
+    }
+    sections[sections.length - 1].items.push(line)
+  }
+
+  return sections.filter((section) => section.items.length)
+}
+
 function SelectField({
   value,
   onChange,
@@ -3552,6 +3621,7 @@ function buildFormState(
     brokerName: string
     contactName: string
     coverType: string
+    planDetails: string
     riskScore?: number
     riskDescription: string
     aiSummary: string
@@ -3587,6 +3657,7 @@ function buildFormState(
     planId: inquiry.planId ?? options.plans.find((item) => item.name === inquiry.planName)?.id ?? '',
     brokerId: inquiry.brokerId ?? options.brokers.find((item) => item.name === inquiry.brokerName)?.id ?? '',
     brokerAgentName: inquiry.contactName || 'No broker agent linked',
+    planDetails: inquiry.planDetails ?? '',
     coverType: choiceValue(options.coverTypes, inquiry.coverType),
     riskScore: String(inquiry.riskScore ?? 0),
     riskDescription: inquiry.riskDescription,
@@ -3619,6 +3690,7 @@ function buildInquirySavePayload(
       (form.inquiryStatus ? Number(form.inquiryStatus) : undefined),
     planId: form.planId || undefined,
     brokerId: form.brokerId || undefined,
+    planDetails: form.planDetails,
     coverType: form.coverType ? Number(form.coverType) : undefined,
     riskScore: overrides?.riskScore ?? (Number(form.riskScore) || 0),
     riskDescription: form.riskDescription,

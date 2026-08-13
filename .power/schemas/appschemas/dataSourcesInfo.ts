@@ -117,6 +117,13 @@ export const dataSourcesInfo = {
     "dataSourceType": "Dataverse",
     "apis": {}
   },
+  "aur_email_queueses": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "aur_email_queuesid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
   "aur_email_records": {
     "tableId": "",
     "version": "",

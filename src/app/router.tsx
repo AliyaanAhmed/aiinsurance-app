@@ -1,6 +1,8 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom'
 import { AppShell } from '../components/layout/AppShell'
 import { DashboardPage } from '../pages/dashboard/ExecutiveDashboard'
+import { EmailQueuesPage } from '../pages/email-queues/EmailQueuesPage'
+import { EmailQueueWorkspacePage } from '../pages/email-queues/EmailQueueWorkspacePage'
 import { InquiriesPage } from '../pages/inquiries/InquiryListPage'
 import { InquiryWorkspacePage } from '../pages/inquiries/InquiryWorkspacePage'
 import { QuotesPage } from '../pages/quotes/QuotesPage'
@@ -44,6 +46,22 @@ export const router = createBrowserRouter([
     element: <AppShell />,
     children: [
       { index: true, element: <DashboardPage /> },
+      {
+        path: 'email-queues',
+        element: (
+          <GuardedRoute bucket="leads">
+            <EmailQueuesPage />
+          </GuardedRoute>
+        ),
+      },
+      {
+        path: 'email-queues/:id',
+        element: (
+          <GuardedRoute bucket="leads">
+            <EmailQueueWorkspacePage />
+          </GuardedRoute>
+        ),
+      },
       {
         path: 'inquiries',
         element: (

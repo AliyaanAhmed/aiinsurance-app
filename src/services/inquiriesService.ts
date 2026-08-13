@@ -574,6 +574,7 @@ export async function saveInquiryDetail(
     inquiryStatus?: number
     planId?: string
     brokerId?: string
+    planDetails: string
     coverType?: number
     riskScore: number
     riskDescription: string
@@ -596,6 +597,7 @@ export async function saveInquiryDetail(
     ...(payload.productId ? { 'aur_product@odata.bind': `/aur_productses(${payload.productId})` } : {}),
     ...(payload.planId ? { 'aur_plan@odata.bind': `/aur_plans(${payload.planId})` } : {}),
     ...(payload.brokerId ? { 'aur_account@odata.bind': `/accounts(${payload.brokerId})` } : {}),
+    aur_plan_details: payload.planDetails,
     ...(payload.inquiryType !== undefined ? { aur_inquiry_type: payload.inquiryType as never } : {}),
     ...(payload.inquiryStatus !== undefined ? { statuscode: payload.inquiryStatus as never } : {}),
     ...(payload.coverType !== undefined ? { aur_cover_type: payload.coverType as never } : {}),

@@ -51,6 +51,13 @@ export const APP_ROUTES: RouteDefinition[] = [
     group: 'Main',
   },
   {
+    path: '/email-queues',
+    label: 'Email Queues',
+    bucket: 'leads',
+    icon: Mail,
+    group: 'Leads Management',
+  },
+  {
     path: '/inquiries',
     label: 'All Inquiries',
     bucket: 'leads',

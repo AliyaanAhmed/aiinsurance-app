@@ -186,6 +186,11 @@
           "entitySetName": "aur_plan_pricing_orders",
           "logicalName": "aur_plan_pricing_order",
           "isHidden": false
+        },
+        "emailqueues": {
+          "entitySetName": "aur_email_queueses",
+          "logicalName": "aur_email_queues",
+          "isHidden": false
         }
       },
       "environmentVariableName": ""
