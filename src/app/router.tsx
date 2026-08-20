@@ -26,6 +26,7 @@ import { DocumentTemplatesPage } from '../pages/admin/DocumentTemplatesPage'
 import { BusinessRulesPage } from '../pages/admin/BusinessRulesPage'
 import { BusinessRuleWorkspacePage } from '../pages/admin/BusinessRuleWorkspacePage'
 import { PlanWorkspacePage } from '../pages/admin/PlanWorkspacePage'
+import { ReinsurancePlaceholderPage } from '../pages/reinsurance/ReinsurancePlaceholderPage'
 import {
   Boxes,
   BriefcaseBusiness,
@@ -347,6 +348,78 @@ export const router = createBrowserRouter([
         element: (
           <GuardedRoute bucket="admin">
             <DocumentTemplatePreviewPage />
+          </GuardedRoute>
+        ),
+      },
+      {
+        path: 'reinsurance/reinsurers',
+        element: (
+          <GuardedRoute bucket="admin">
+            <ReinsurancePlaceholderPage title="Reinsurers" />
+          </GuardedRoute>
+        ),
+      },
+      {
+        path: 'reinsurance/treaties',
+        element: (
+          <GuardedRoute bucket="admin">
+            <ReinsurancePlaceholderPage title="Treaties" />
+          </GuardedRoute>
+        ),
+      },
+      {
+        path: 'reinsurance/treaty-layers',
+        element: (
+          <GuardedRoute bucket="admin">
+            <ReinsurancePlaceholderPage title="Treaty Layers" />
+          </GuardedRoute>
+        ),
+      },
+      {
+        path: 'reinsurance/treaty-participations',
+        element: (
+          <GuardedRoute bucket="admin">
+            <ReinsurancePlaceholderPage title="Treaty Participations" />
+          </GuardedRoute>
+        ),
+      },
+      {
+        path: 'reinsurance/ri-capacity-checks',
+        element: (
+          <GuardedRoute bucket="admin">
+            <ReinsurancePlaceholderPage title="Ri-Capacity Checks" />
+          </GuardedRoute>
+        ),
+      },
+      {
+        path: 'reinsurance/fac-placements',
+        element: (
+          <GuardedRoute bucket="admin">
+            <ReinsurancePlaceholderPage title="Fac Placements" />
+          </GuardedRoute>
+        ),
+      },
+      {
+        path: 'reinsurance/fac-offers',
+        element: (
+          <GuardedRoute bucket="admin">
+            <ReinsurancePlaceholderPage title="Fac Offers" />
+          </GuardedRoute>
+        ),
+      },
+      {
+        path: 'reinsurance/cessions',
+        element: (
+          <GuardedRoute bucket="admin">
+            <ReinsurancePlaceholderPage title="Cessions" />
+          </GuardedRoute>
+        ),
+      },
+      {
+        path: 'reinsurance/cession-lines',
+        element: (
+          <GuardedRoute bucket="admin">
+            <ReinsurancePlaceholderPage title="Cession Lines" />
           </GuardedRoute>
         ),
       },
