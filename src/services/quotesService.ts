@@ -5,16 +5,19 @@ import { Aur_deductiblesesService } from '../generated/services/Aur_deductiblese
 import { Aur_exclusionsesService } from '../generated/services/Aur_exclusionsesService'
 import { Aur_inclusionsesService } from '../generated/services/Aur_inclusionsesService'
 import { Aur_plansService } from '../generated/services/Aur_plansService'
+import { Aur_plan_details_extractionsService } from '../generated/services/Aur_plan_details_extractionsService'
 import { Aur_productsesService } from '../generated/services/Aur_productsesService'
 import { Aur_quotes_detailsesService } from '../generated/services/Aur_quotes_detailsesService'
 import { Aur_quotesService } from '../generated/services/Aur_quotesService'
 import { Aur_quotesesService } from '../generated/services/Aur_quotesesService'
 import { Aur_warrantiesesService } from '../generated/services/Aur_warrantiesesService'
 import { Cr058_emailtemplatesService } from '../generated/services/Cr058_emailtemplatesService'
+import { HTTP_OnUploadFileforPlanDetailsComparison_RunAIEvaluationService } from '../generated/services/HTTP_OnUploadFileforPlanDetailsComparison_RunAIEvaluationService'
 import type {
   DocumentTemplateSummary,
   EmailTemplateSummary,
   QuoteDetail,
+  QuotePlanComparison,
   QuoteSummary,
 } from '../domain/app'
 import { mapInquirySummary, mapQuoteDetail, mapQuoteResponse, mapQuoteSummary } from './dataMappers'
@@ -37,6 +40,15 @@ export interface QuotePlanLinkedSection {
   key: QuotePlanLinkedEntityKey
   title: string
   records: QuotePlanLinkedRecord[]
+}
+
+export interface QuotePlanComparisonUploadPayload {
+  recordId: string
+  uploadedFile: {
+    fileName: string
+    fileType: string
+    fileContent: string
+  }
 }
 
 export async function listQuotes(): Promise<QuoteSummary[]> {
@@ -98,6 +110,41 @@ export async function getQuoteDetail(id: string): Promise<QuoteDetail> {
     emailTemplates,
     documentTemplates,
   )
+}
+
+export async function listQuotePlanComparisons(quoteId: string): Promise<QuotePlanComparison[]> {
+  const normalizedQuoteId = normalizeDataverseId(quoteId)
+  const result = await Aur_plan_details_extractionsService.getAll({ orderBy: ['createdon desc'] })
+
+  return (result.data ?? [])
+    .filter((record) => normalizeDataverseId(record._aur_quotes_value) === normalizedQuoteId)
+    .map((record) => ({
+      id: record.aur_plan_details_extractionid,
+      name: record.aur_name || 'Plan comparison',
+      response: record.aur_open_ai_response ?? '',
+      quoteId: record._aur_quotes_value,
+      quoteName: record.aur_quotesname,
+      createdOn: record.createdon,
+    }))
+}
+
+export async function analyzeQuotePlanComparison(
+  payload: QuotePlanComparisonUploadPayload,
+): Promise<{ comparisonId?: string }> {
+  const result = await HTTP_OnUploadFileforPlanDetailsComparison_RunAIEvaluationService.Run({
+    text: payload.recordId,
+    file: {
+      name: payload.uploadedFile.fileName,
+      contentBytes: payload.uploadedFile.fileContent,
+    },
+  })
+
+  const comparisonId = result.data?.plan_details_guid
+  if (!comparisonId) {
+    throw new Error('Plan comparison completed, but no comparison record was returned. Please try again.')
+  }
+
+  return { comparisonId }
 }
 
 export async function getQuoteEditorOptions() {
