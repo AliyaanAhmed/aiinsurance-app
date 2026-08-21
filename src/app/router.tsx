@@ -26,7 +26,15 @@ import { DocumentTemplatesPage } from '../pages/admin/DocumentTemplatesPage'
 import { BusinessRulesPage } from '../pages/admin/BusinessRulesPage'
 import { BusinessRuleWorkspacePage } from '../pages/admin/BusinessRuleWorkspacePage'
 import { PlanWorkspacePage } from '../pages/admin/PlanWorkspacePage'
-import { ReinsurancePlaceholderPage } from '../pages/reinsurance/ReinsurancePlaceholderPage'
+import { ReinsurersPage } from '../pages/reinsurance/ReinsurersPage'
+import { TreatiesPage } from '../pages/reinsurance/TreatiesPage'
+import { TreatyLayersPage } from '../pages/reinsurance/TreatyLayersPage'
+import { TreatyParticipationsPage } from '../pages/reinsurance/TreatyParticipationsPage'
+import { RiCapacityChecksPage } from '../pages/reinsurance/RiCapacityChecksPage'
+import { FacPlacementsPage } from '../pages/reinsurance/FacPlacementsPage'
+import { FacOffersPage } from '../pages/reinsurance/FacOffersPage'
+import { CessionsPage } from '../pages/reinsurance/CessionsPage'
+import { CessionLinesPage } from '../pages/reinsurance/CessionLinesPage'
 import {
   Boxes,
   BriefcaseBusiness,
@@ -355,7 +363,7 @@ export const router = createBrowserRouter([
         path: 'reinsurance/reinsurers',
         element: (
           <GuardedRoute bucket="admin">
-            <ReinsurancePlaceholderPage title="Reinsurers" />
+            <ReinsurersPage />
           </GuardedRoute>
         ),
       },
@@ -363,7 +371,7 @@ export const router = createBrowserRouter([
         path: 'reinsurance/treaties',
         element: (
           <GuardedRoute bucket="admin">
-            <ReinsurancePlaceholderPage title="Treaties" />
+            <TreatiesPage />
           </GuardedRoute>
         ),
       },
@@ -371,7 +379,7 @@ export const router = createBrowserRouter([
         path: 'reinsurance/treaty-layers',
         element: (
           <GuardedRoute bucket="admin">
-            <ReinsurancePlaceholderPage title="Treaty Layers" />
+            <TreatyLayersPage />
           </GuardedRoute>
         ),
       },
@@ -379,7 +387,7 @@ export const router = createBrowserRouter([
         path: 'reinsurance/treaty-participations',
         element: (
           <GuardedRoute bucket="admin">
-            <ReinsurancePlaceholderPage title="Treaty Participations" />
+            <TreatyParticipationsPage />
           </GuardedRoute>
         ),
       },
@@ -387,7 +395,7 @@ export const router = createBrowserRouter([
         path: 'reinsurance/ri-capacity-checks',
         element: (
           <GuardedRoute bucket="admin">
-            <ReinsurancePlaceholderPage title="Ri-Capacity Checks" />
+            <RiCapacityChecksPage />
           </GuardedRoute>
         ),
       },
@@ -395,7 +403,7 @@ export const router = createBrowserRouter([
         path: 'reinsurance/fac-placements',
         element: (
           <GuardedRoute bucket="admin">
-            <ReinsurancePlaceholderPage title="Fac Placements" />
+            <FacPlacementsPage />
           </GuardedRoute>
         ),
       },
@@ -403,7 +411,7 @@ export const router = createBrowserRouter([
         path: 'reinsurance/fac-offers',
         element: (
           <GuardedRoute bucket="admin">
-            <ReinsurancePlaceholderPage title="Fac Offers" />
+            <FacOffersPage />
           </GuardedRoute>
         ),
       },
@@ -411,7 +419,7 @@ export const router = createBrowserRouter([
         path: 'reinsurance/cessions',
         element: (
           <GuardedRoute bucket="admin">
-            <ReinsurancePlaceholderPage title="Cessions" />
+            <CessionsPage />
           </GuardedRoute>
         ),
       },
@@ -419,7 +427,7 @@ export const router = createBrowserRouter([
         path: 'reinsurance/cession-lines',
         element: (
           <GuardedRoute bucket="admin">
-            <ReinsurancePlaceholderPage title="Cession Lines" />
+            <CessionLinesPage />
           </GuardedRoute>
         ),
       },
