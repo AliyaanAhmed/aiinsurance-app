@@ -4,60 +4,17 @@ import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
 import { Input } from '../../components/ui/Input'
 import { PageHeader } from '../../components/layout/PageHeader'
-
-interface TreatyLayerRecord {
-  id: string
-  name: string
-  attachmentPoint: number | null
-  layerCapacity: number
-  layerLimit: number
-  lineNumber: number
-  linesCount: number
-  treatyId: string
-}
-
-const treatyLayers: TreatyLayerRecord[] = [
-  {
-    id: 'treaty-layer-tl-001',
-    name: 'TL-001',
-    attachmentPoint: 5000000,
-    layerCapacity: 25000000,
-    layerLimit: 5000000,
-    lineNumber: 1,
-    linesCount: 5,
-    treatyId: '---',
-  },
-  {
-    id: 'treaty-layer-tl-002',
-    name: 'TL-002',
-    attachmentPoint: null,
-    layerCapacity: 20000000,
-    layerLimit: 20000000,
-    lineNumber: 1,
-    linesCount: 0,
-    treatyId: '---',
-  },
-  {
-    id: 'treaty-layer-tl-003',
-    name: 'TL-003',
-    attachmentPoint: 5000000,
-    layerCapacity: 15000000,
-    layerLimit: 15000000,
-    lineNumber: 1,
-    linesCount: 0,
-    treatyId: '---',
-  },
-  {
-    id: 'treaty-layer-tl-004',
-    name: 'TL-004',
-    attachmentPoint: 20000000,
-    layerCapacity: 30000000,
-    layerLimit: 30000000,
-    lineNumber: 2,
-    linesCount: 0,
-    treatyId: '---',
-  },
-]
+import { Select } from '../../components/ui/Select'
+import { useAsyncData } from '../../hooks/useAsyncData'
+import {
+  createTreatyLayer,
+  listTreatyLayers,
+  listTreatyLayerLookupOptions,
+  updateTreatyLayer,
+  type ReinsuranceLookupOption,
+  type TreatyLayerRecord,
+  type TreatyLayerSaveInput,
+} from '../../services/reinsuranceService'
 
 const tableColumns: Array<{
   key: keyof TreatyLayerRecord
@@ -90,13 +47,22 @@ const emptyTreatyLayerCreateForm: TreatyLayerCreateFormState = {
   layerLimit: '',
   lineNumber: '',
   linesCount: '',
-  treatyId: '',
+  treatyId: 'Select',
 }
 
 export function TreatyLayersPage() {
-  const [records, setRecords] = useState(treatyLayers)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [isCreateOpen, setIsCreateOpen] = useState(false)
+  const [refreshKey, setRefreshKey] = useState(0)
+  const { data, loading, error } = useAsyncData(async () => {
+    const [records, treatyOptions] = await Promise.all([
+      listTreatyLayers(),
+      listTreatyLayerLookupOptions(),
+    ])
+    return { records, treatyOptions }
+  }, [refreshKey])
+  const records = data?.records ?? []
+  const treatyOptions = data?.treatyOptions ?? []
   const selected = useMemo(
     () => records.find((record) => record.id === selectedId),
     [records, selectedId],
@@ -106,11 +72,11 @@ export function TreatyLayersPage() {
     return (
       <TreatyLayerDetail
         record={selected}
+        treatyOptions={treatyOptions}
         onBack={() => setSelectedId(null)}
-        onSave={(updatedRecord) => {
-          setRecords((current) =>
-            current.map((record) => (record.id === updatedRecord.id ? updatedRecord : record)),
-          )
+        onSave={async (input) => {
+          await updateTreatyLayer(selected.id, input)
+          setRefreshKey((value) => value + 1)
         }}
       />
     )
@@ -131,18 +97,33 @@ export function TreatyLayersPage() {
         }
       />
 
-      <Card padding="none" variant="premium" className="overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-full table-fixed border-collapse">
-            <thead className="bg-surface-muted/90">
-              <tr>
-                {tableColumns.map((column) => (
-                  <TableHeader key={column.key}>{column.label}</TableHeader>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {records.map((record) => (
+      {loading ? (
+        <Card className="text-sm text-muted-foreground">Loading treaty layers...</Card>
+      ) : error ? (
+        <Card className="border-danger/20 bg-danger/5 text-sm text-danger">{error}</Card>
+      ) : (
+        <Card padding="none" variant="premium" className="overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-full table-fixed border-collapse">
+              <thead className="bg-surface-muted/90">
+                <tr>
+                  {tableColumns.map((column) => (
+                    <TableHeader key={column.key}>{column.label}</TableHeader>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {records.length === 0 ? (
+                  <tr className="bg-surface">
+                    <td colSpan={tableColumns.length} className="px-6 py-12 text-center">
+                      <p className="text-base font-semibold">No treaty layers found</p>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        The aur_treaty_layers datasource is connected, but there are no records for this view yet.
+                      </p>
+                    </td>
+                  </tr>
+                ) : (
+                  records.map((record) => (
                 <tr
                   key={record.id}
                   onClick={() => setSelectedId(record.id)}
@@ -162,6 +143,10 @@ export function TreatyLayersPage() {
                           {record.name}
                           <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
                         </button>
+                      ) : column.key === 'treatyId' ? (
+                        <span className="font-semibold text-primary">
+                          {getLookupDisplayValue(treatyOptions, record.treatyLookupId, record.treatyId)}
+                        </span>
                       ) : (
                         <span className="text-foreground">
                           {column.render ? column.render(record) : String(record[column.key])}
@@ -170,27 +155,29 @@ export function TreatyLayersPage() {
                     </td>
                   ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Card>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
 
       {isCreateOpen ? (
         <CreateTreatyLayerModal
+          treatyOptions={treatyOptions}
           onClose={() => setIsCreateOpen(false)}
-          onCreate={(form) => {
-            const created: TreatyLayerRecord = {
-              id: `treaty-layer-${Date.now()}`,
+          onCreate={async (form) => {
+            await createTreatyLayer({
               name: form.name.trim() || 'Untitled Layer',
               attachmentPoint: form.attachmentPoint.trim() ? parseMoneyInput(form.attachmentPoint) : null,
               layerCapacity: parseMoneyInput(form.layerCapacity),
               layerLimit: parseMoneyInput(form.layerLimit),
               lineNumber: parseNumberInput(form.lineNumber),
               linesCount: parseNumberInput(form.linesCount),
-              treatyId: form.treatyId.trim() || '---',
-            }
-            setRecords((current) => [created, ...current])
+              treatyLookupId: resolveLookupValue(form.treatyId),
+            })
+            setRefreshKey((value) => value + 1)
             setIsCreateOpen(false)
           }}
         />
@@ -200,19 +187,35 @@ export function TreatyLayersPage() {
 }
 
 function CreateTreatyLayerModal({
+  treatyOptions,
   onClose,
   onCreate,
 }: {
+  treatyOptions: ReinsuranceLookupOption[]
   onClose: () => void
-  onCreate: (form: TreatyLayerCreateFormState) => void
+  onCreate: (form: TreatyLayerCreateFormState) => Promise<void>
 }) {
   const [form, setForm] = useState<TreatyLayerCreateFormState>(emptyTreatyLayerCreateForm)
+  const [submitting, setSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
 
   const updateForm = <Key extends keyof TreatyLayerCreateFormState>(
     key: Key,
     value: TreatyLayerCreateFormState[Key],
   ) => {
     setForm((current) => ({ ...current, [key]: value }))
+  }
+
+  const submitForm = async () => {
+    setSubmitting(true)
+    setSubmitError(null)
+    try {
+      await onCreate(form)
+    } catch (cause) {
+      setSubmitError(cause instanceof Error ? cause.message : 'Unable to create treaty layer.')
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   return (
@@ -285,22 +288,26 @@ function CreateTreatyLayerModal({
               />
             </ModalField>
             <ModalField label="Treaty Id">
-              <Input
+              <Select
                 value={form.treatyId}
-                onChange={(event) => updateForm('treatyId', event.target.value)}
+                onValueChange={(value) => updateForm('treatyId', value)}
+                options={buildLookupOptions(treatyOptions, 'Look for Treaty Id')}
                 placeholder="Look for Treaty Id"
               />
             </ModalField>
           </div>
         </div>
 
-        <div className="flex items-center justify-end gap-3 border-t border-border-soft bg-surface px-5 py-4">
-          <Button type="button" variant="secondary" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button type="button" onClick={() => onCreate(form)}>
-            Create Record
-          </Button>
+        <div className="flex items-center justify-between gap-3 border-t border-border-soft bg-surface px-5 py-4">
+          {submitError ? <p className="text-sm text-danger">{submitError}</p> : <span />}
+          <div className="flex items-center gap-3">
+            <Button type="button" variant="secondary" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="button" disabled={submitting} onClick={() => void submitForm()}>
+              {submitting ? 'Creating...' : 'Create Record'}
+            </Button>
+          </div>
         </div>
       </div>
     </div>
@@ -326,15 +333,19 @@ function ModalField({
 
 function TreatyLayerDetail({
   record,
+  treatyOptions,
   onBack,
   onSave,
 }: {
   record: TreatyLayerRecord
+  treatyOptions: ReinsuranceLookupOption[]
   onBack: () => void
-  onSave: (record: TreatyLayerRecord) => void
+  onSave: (input: TreatyLayerSaveInput) => Promise<void>
 }) {
   const [isEditing, setIsEditing] = useState(false)
   const [form, setForm] = useState<TreatyLayerCreateFormState>(() => toTreatyLayerForm(record))
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   const updateForm = <Key extends keyof TreatyLayerCreateFormState>(key: Key, value: TreatyLayerCreateFormState[Key]) => {
     setForm((current) => ({ ...current, [key]: value }))
@@ -345,18 +356,25 @@ function TreatyLayerDetail({
     setIsEditing(false)
   }
 
-  const saveEdit = () => {
-    onSave({
-      ...record,
-      name: form.name.trim() || record.name,
-      attachmentPoint: form.attachmentPoint.trim() ? parseMoneyInput(form.attachmentPoint) : null,
-      layerCapacity: parseMoneyInput(form.layerCapacity),
-      layerLimit: parseMoneyInput(form.layerLimit),
-      lineNumber: parseNumberInput(form.lineNumber),
-      linesCount: parseNumberInput(form.linesCount),
-      treatyId: form.treatyId.trim() || '---',
-    })
-    setIsEditing(false)
+  const saveEdit = async () => {
+    setSaving(true)
+    setSaveError(null)
+    try {
+      await onSave({
+        name: form.name.trim() || record.name,
+        attachmentPoint: form.attachmentPoint.trim() ? parseMoneyInput(form.attachmentPoint) : null,
+        layerCapacity: parseMoneyInput(form.layerCapacity),
+        layerLimit: parseMoneyInput(form.layerLimit),
+        lineNumber: parseNumberInput(form.lineNumber),
+        linesCount: parseNumberInput(form.linesCount),
+        treatyLookupId: resolveLookupValue(form.treatyId) || record.treatyLookupId,
+      })
+      setIsEditing(false)
+    } catch (cause) {
+      setSaveError(cause instanceof Error ? cause.message : 'Unable to save treaty layer.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -375,7 +393,9 @@ function TreatyLayerDetail({
           isEditing ? (
             <div className="flex flex-wrap items-center justify-end gap-2">
               <Button variant="secondary" onClick={cancelEdit}>Cancel</Button>
-              <Button onClick={saveEdit}>Save Treaty Layer</Button>
+              <Button disabled={saving} onClick={() => void saveEdit()}>
+                {saving ? 'Saving...' : 'Save Treaty Layer'}
+              </Button>
             </div>
           ) : (
             <Button onClick={() => setIsEditing(true)}>Edit Treaty Layer</Button>
@@ -392,6 +412,11 @@ function TreatyLayerDetail({
         </div>
 
         <div className="grid gap-4 lg:grid-cols-2">
+          {saveError ? (
+            <div className="lg:col-span-2 rounded-xl border border-danger/20 bg-danger/5 px-4 py-3 text-sm text-danger">
+              {saveError}
+            </div>
+          ) : null}
           {isEditing ? (
             <>
               <EditableField label="Name"><Input value={form.name} onChange={(event) => updateForm('name', event.target.value)} /></EditableField>
@@ -400,7 +425,14 @@ function TreatyLayerDetail({
               <EditableField label="Layer Limit"><Input value={form.layerLimit} onChange={(event) => updateForm('layerLimit', event.target.value)} /></EditableField>
               <EditableField label="Line Number"><Input value={form.lineNumber} onChange={(event) => updateForm('lineNumber', event.target.value)} /></EditableField>
               <EditableField label="Lines Count"><Input value={form.linesCount} onChange={(event) => updateForm('linesCount', event.target.value)} /></EditableField>
-              <EditableField label="Treaty Id"><Input value={form.treatyId} onChange={(event) => updateForm('treatyId', event.target.value)} /></EditableField>
+              <EditableField label="Treaty Id">
+                <Select
+                  value={form.treatyId}
+                  onValueChange={(value) => updateForm('treatyId', value)}
+                  options={buildLookupOptions(treatyOptions, 'Look for Treaty Id')}
+                  placeholder="Look for Treaty Id"
+                />
+              </EditableField>
             </>
           ) : (
             <>
@@ -410,7 +442,7 @@ function TreatyLayerDetail({
               <ReadOnlyField label="Layer Limit" value={formatMoney(record.layerLimit)} />
               <ReadOnlyField label="Line Number" value={formatNumber(record.lineNumber)} />
               <ReadOnlyField label="Lines Count" value={formatNumber(record.linesCount)} />
-              <ReadOnlyField label="Treaty Id" value={record.treatyId} />
+              <ReadOnlyField label="Treaty Id" value={getLookupDisplayValue(treatyOptions, record.treatyLookupId, record.treatyId)} />
             </>
           )}
         </div>
@@ -471,7 +503,7 @@ function toTreatyLayerForm(record: TreatyLayerRecord): TreatyLayerCreateFormStat
     layerLimit: formatMoney(record.layerLimit),
     lineNumber: String(record.lineNumber),
     linesCount: String(record.linesCount),
-    treatyId: record.treatyId,
+    treatyId: record.treatyLookupId || 'Select',
   }
 }
 
@@ -496,6 +528,22 @@ function parseMoneyInput(value: string) {
 function parseNumberInput(value: string) {
   const normalized = Number.parseFloat(value.replace(/[,\s]/g, ''))
   return Number.isFinite(normalized) ? normalized : 0
+}
+
+function buildLookupOptions(options: ReinsuranceLookupOption[], placeholder: string) {
+  return [
+    { value: 'Select', label: placeholder },
+    ...options.map((option) => ({ value: option.value, label: option.label })),
+  ]
+}
+
+function resolveLookupValue(value: string) {
+  return value && value !== 'Select' ? value : ''
+}
+
+function getLookupDisplayValue(options: ReinsuranceLookupOption[], lookupId: string, fallback: string) {
+  if (!lookupId) return fallback
+  return options.find((option) => option.value.toLowerCase() === lookupId.toLowerCase())?.label ?? fallback
 }
 
 function formatNumber(value: number) {

@@ -6,82 +6,16 @@ import { Card } from '../../components/ui/Card'
 import { Input } from '../../components/ui/Input'
 import { PageHeader } from '../../components/layout/PageHeader'
 import { Select } from '../../components/ui/Select'
-
-interface TreatyRecord {
-  id: string
-  treatyName: string
-  cessionPercentage: number
-  commissionPercentage: number
-  exchangeRate: number
-  inceptionDate: string
-  isCedable: 'Yes' | 'No'
-  ownRetention: number | null
-  productId: string
-  profitCommissionPct: number
-  shariahBasis: string
-  surplusSharingPct: number
-  treatyCapacity: number
-  treatyType: string
-  treatyYear: number
-  wakalaFeePercentage: number
-}
-
-const treaties: TreatyRecord[] = [
-  {
-    id: 'treaty-fire-surplus-2026',
-    treatyName: 'Fire Surplus 2026',
-    cessionPercentage: 0,
-    commissionPercentage: 0.28,
-    exchangeRate: 1,
-    inceptionDate: '2026-01-01',
-    isCedable: 'Yes',
-    ownRetention: 5000000,
-    productId: '---',
-    profitCommissionPct: 0.15,
-    shariahBasis: 'Retakaful',
-    surplusSharingPct: 0.5,
-    treatyCapacity: 25000000,
-    treatyType: 'Surplus',
-    treatyYear: 2026,
-    wakalaFeePercentage: 0.12,
-  },
-  {
-    id: 'treaty-fire-xol-2026',
-    treatyName: 'Fire XoL 2026',
-    cessionPercentage: 0,
-    commissionPercentage: 0,
-    exchangeRate: 1,
-    inceptionDate: '2026-01-01',
-    isCedable: 'No',
-    ownRetention: null,
-    productId: '---',
-    profitCommissionPct: 0,
-    shariahBasis: 'Retakaful',
-    surplusSharingPct: 0,
-    treatyCapacity: 18000000,
-    treatyType: 'Excess of Loss',
-    treatyYear: 2026,
-    wakalaFeePercentage: 0,
-  },
-  {
-    id: 'treaty-motor-qs-2026',
-    treatyName: 'Motor QS 2026',
-    cessionPercentage: 0.4,
-    commissionPercentage: 0.3,
-    exchangeRate: 1,
-    inceptionDate: '2026-01-01',
-    isCedable: 'Yes',
-    ownRetention: 3000000,
-    productId: '---',
-    profitCommissionPct: 0.1,
-    shariahBasis: 'Retakaful',
-    surplusSharingPct: 0.35,
-    treatyCapacity: 15000000,
-    treatyType: 'Quota Share',
-    treatyYear: 2026,
-    wakalaFeePercentage: 0.08,
-  },
-]
+import { useAsyncData } from '../../hooks/useAsyncData'
+import {
+  createTreaty,
+  listTreaties,
+  listTreatyProductOptions,
+  updateTreaty,
+  type ReinsuranceLookupOption,
+  type TreatyRecord,
+  type TreatySaveInput,
+} from '../../services/reinsuranceService'
 
 const tableColumns: Array<{
   key: keyof TreatyRecord
@@ -151,7 +85,7 @@ const emptyTreatyCreateForm: TreatyCreateFormState = {
   inceptionDate: '',
   isCedable: 'Select',
   ownRetention: '',
-  productId: '',
+  productId: 'Select',
   profitCommissionPct: '',
   shariahBasis: 'Select',
   surplusSharingPct: '',
@@ -162,9 +96,18 @@ const emptyTreatyCreateForm: TreatyCreateFormState = {
 }
 
 export function TreatiesPage() {
-  const [records, setRecords] = useState(treaties)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [isCreateOpen, setIsCreateOpen] = useState(false)
+  const [refreshKey, setRefreshKey] = useState(0)
+  const { data, loading, error } = useAsyncData(async () => {
+    const [records, productOptions] = await Promise.all([
+      listTreaties(),
+      listTreatyProductOptions(),
+    ])
+    return { records, productOptions }
+  }, [refreshKey])
+  const records = data?.records ?? []
+  const productOptions = data?.productOptions ?? []
   const selected = useMemo(
     () => records.find((record) => record.id === selectedId),
     [records, selectedId],
@@ -174,11 +117,11 @@ export function TreatiesPage() {
     return (
       <TreatyDetail
         record={selected}
+        productOptions={productOptions}
         onBack={() => setSelectedId(null)}
-        onSave={(updatedRecord) => {
-          setRecords((current) =>
-            current.map((record) => (record.id === updatedRecord.id ? updatedRecord : record)),
-          )
+        onSave={async (updatedRecord) => {
+          await updateTreaty(updatedRecord.id, toTreatySaveInput(updatedRecord))
+          setRefreshKey((value) => value + 1)
         }}
       />
     )
@@ -199,18 +142,33 @@ export function TreatiesPage() {
         }
       />
 
-      <Card padding="none" variant="premium" className="overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="min-w-[1540px] border-collapse">
-            <thead className="bg-surface-muted/90">
-              <tr>
-                {tableColumns.map((column) => (
-                  <TableHeader key={column.key}>{column.label}</TableHeader>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {records.map((record) => (
+      {loading ? (
+        <Card className="text-sm text-muted-foreground">Loading treaties...</Card>
+      ) : error ? (
+        <Card className="border-danger/20 bg-danger/5 text-sm text-danger">{error}</Card>
+      ) : (
+        <Card padding="none" variant="premium" className="overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="min-w-[1540px] border-collapse">
+              <thead className="bg-surface-muted/90">
+                <tr>
+                  {tableColumns.map((column) => (
+                    <TableHeader key={column.key}>{column.label}</TableHeader>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {records.length === 0 ? (
+                  <tr className="bg-surface">
+                    <td colSpan={tableColumns.length} className="px-6 py-12 text-center">
+                      <p className="text-base font-semibold">No treaties found</p>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        The aur_treaties datasource is connected, but there are no records for this view yet.
+                      </p>
+                    </td>
+                  </tr>
+                ) : (
+                  records.map((record) => (
                 <tr
                   key={record.id}
                   onClick={() => setSelectedId(record.id)}
@@ -234,6 +192,10 @@ export function TreatiesPage() {
                         <Badge variant={record.isCedable === 'Yes' ? 'approved' : 'neutral'}>
                           {record.isCedable}
                         </Badge>
+                      ) : column.key === 'productId' ? (
+                        <span className="font-semibold text-primary">
+                          {getLookupDisplayValue(productOptions, record.productLookupId, record.productId)}
+                        </span>
                       ) : (
                         <span className="text-foreground">
                           {column.render ? column.render(record) : String(record[column.key])}
@@ -242,18 +204,20 @@ export function TreatiesPage() {
                     </td>
                   ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Card>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
 
       {isCreateOpen ? (
         <CreateTreatyModal
+          productOptions={productOptions}
           onClose={() => setIsCreateOpen(false)}
-          onCreate={(form) => {
-            const created: TreatyRecord = {
-              id: `treaty-${Date.now()}`,
+          onCreate={async (form) => {
+            await createTreaty({
               treatyName: form.treatyName.trim() || 'Untitled Treaty',
               cessionPercentage: parseNumberInput(form.cessionPercentage),
               commissionPercentage: parseNumberInput(form.commissionPercentage),
@@ -261,7 +225,7 @@ export function TreatiesPage() {
               inceptionDate: form.inceptionDate || new Date().toISOString(),
               isCedable: resolveYesNo(form.isCedable, 'No'),
               ownRetention: form.ownRetention.trim() ? parseMoneyInput(form.ownRetention) : null,
-              productId: form.productId.trim() || '---',
+              productLookupId: resolveLookupValue(form.productId),
               profitCommissionPct: parseNumberInput(form.profitCommissionPct),
               shariahBasis: resolveSelectValue(form.shariahBasis, 'Retakaful'),
               surplusSharingPct: parseNumberInput(form.surplusSharingPct),
@@ -269,8 +233,8 @@ export function TreatiesPage() {
               treatyType: resolveSelectValue(form.treatyType, 'Surplus'),
               treatyYear: parseNumberInput(form.treatyYear) || new Date().getFullYear(),
               wakalaFeePercentage: parseNumberInput(form.wakalaFeePercentage),
-            }
-            setRecords((current) => [created, ...current])
+            })
+            setRefreshKey((value) => value + 1)
             setIsCreateOpen(false)
           }}
         />
@@ -280,19 +244,35 @@ export function TreatiesPage() {
 }
 
 function CreateTreatyModal({
+  productOptions,
   onClose,
   onCreate,
 }: {
+  productOptions: ReinsuranceLookupOption[]
   onClose: () => void
-  onCreate: (form: TreatyCreateFormState) => void
+  onCreate: (form: TreatyCreateFormState) => Promise<void>
 }) {
   const [form, setForm] = useState<TreatyCreateFormState>(emptyTreatyCreateForm)
+  const [submitting, setSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
 
   const updateForm = <Key extends keyof TreatyCreateFormState>(
     key: Key,
     value: TreatyCreateFormState[Key],
   ) => {
     setForm((current) => ({ ...current, [key]: value }))
+  }
+
+  const submitForm = async () => {
+    setSubmitting(true)
+    setSubmitError(null)
+    try {
+      await onCreate(form)
+    } catch (cause) {
+      setSubmitError(cause instanceof Error ? cause.message : 'Unable to create treaty.')
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   return (
@@ -372,10 +352,11 @@ function CreateTreatyModal({
               />
             </ModalField>
             <ModalField label="Product Id">
-              <Input
+              <Select
                 value={form.productId}
-                onChange={(event) => updateForm('productId', event.target.value)}
-                placeholder="Enter product id"
+                onValueChange={(value) => updateForm('productId', value)}
+                options={buildLookupOptions(productOptions, 'Look for Product Id')}
+                placeholder="Look for Product Id"
               />
             </ModalField>
             <ModalField label="Profit Commission PCT">
@@ -432,13 +413,16 @@ function CreateTreatyModal({
           </div>
         </div>
 
-        <div className="flex items-center justify-end gap-3 border-t border-border-soft bg-surface px-5 py-4">
-          <Button type="button" variant="secondary" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button type="button" onClick={() => onCreate(form)}>
-            Create Record
-          </Button>
+        <div className="flex items-center justify-between gap-3 border-t border-border-soft bg-surface px-5 py-4">
+          {submitError ? <p className="text-sm text-danger">{submitError}</p> : <span />}
+          <div className="flex items-center gap-3">
+            <Button type="button" variant="secondary" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="button" disabled={submitting} onClick={() => void submitForm()}>
+              {submitting ? 'Creating...' : 'Create Record'}
+            </Button>
+          </div>
         </div>
       </div>
     </div>
@@ -578,15 +562,19 @@ function ModalField({
 
 function TreatyDetail({
   record,
+  productOptions,
   onBack,
   onSave,
 }: {
   record: TreatyRecord
+  productOptions: ReinsuranceLookupOption[]
   onBack: () => void
-  onSave: (record: TreatyRecord) => void
+  onSave: (record: TreatyRecord) => Promise<void>
 }) {
   const [isEditing, setIsEditing] = useState(false)
   const [form, setForm] = useState<TreatyCreateFormState>(() => toTreatyForm(record))
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   const updateForm = <Key extends keyof TreatyCreateFormState>(key: Key, value: TreatyCreateFormState[Key]) => {
     setForm((current) => ({ ...current, [key]: value }))
@@ -597,26 +585,35 @@ function TreatyDetail({
     setIsEditing(false)
   }
 
-  const saveEdit = () => {
-    onSave({
-      ...record,
-      treatyName: form.treatyName.trim() || record.treatyName,
-      cessionPercentage: parseNumberInput(form.cessionPercentage),
-      commissionPercentage: parseNumberInput(form.commissionPercentage),
-      exchangeRate: parseNumberInput(form.exchangeRate),
-      inceptionDate: form.inceptionDate || record.inceptionDate,
-      isCedable: resolveYesNo(form.isCedable, record.isCedable),
-      ownRetention: form.ownRetention.trim() ? parseMoneyInput(form.ownRetention) : null,
-      productId: form.productId.trim() || '---',
-      profitCommissionPct: parseNumberInput(form.profitCommissionPct),
-      shariahBasis: resolveSelectValue(form.shariahBasis, record.shariahBasis),
-      surplusSharingPct: parseNumberInput(form.surplusSharingPct),
-      treatyCapacity: parseMoneyInput(form.treatyCapacity),
-      treatyType: resolveSelectValue(form.treatyType, record.treatyType),
-      treatyYear: parseNumberInput(form.treatyYear),
-      wakalaFeePercentage: parseNumberInput(form.wakalaFeePercentage),
-    })
-    setIsEditing(false)
+  const saveEdit = async () => {
+    setSaving(true)
+    setSaveError(null)
+    try {
+      await onSave({
+        ...record,
+        treatyName: form.treatyName.trim() || record.treatyName,
+        cessionPercentage: parseNumberInput(form.cessionPercentage),
+        commissionPercentage: parseNumberInput(form.commissionPercentage),
+        exchangeRate: parseNumberInput(form.exchangeRate),
+        inceptionDate: form.inceptionDate || record.inceptionDate,
+        isCedable: resolveYesNo(form.isCedable, record.isCedable),
+        ownRetention: form.ownRetention.trim() ? parseMoneyInput(form.ownRetention) : null,
+        productId: resolveLookupLabel(productOptions, form.productId, record.productId),
+        productLookupId: resolveLookupValue(form.productId),
+        profitCommissionPct: parseNumberInput(form.profitCommissionPct),
+        shariahBasis: resolveSelectValue(form.shariahBasis, record.shariahBasis),
+        surplusSharingPct: parseNumberInput(form.surplusSharingPct),
+        treatyCapacity: parseMoneyInput(form.treatyCapacity),
+        treatyType: resolveSelectValue(form.treatyType, record.treatyType),
+        treatyYear: parseNumberInput(form.treatyYear),
+        wakalaFeePercentage: parseNumberInput(form.wakalaFeePercentage),
+      })
+      setIsEditing(false)
+    } catch (cause) {
+      setSaveError(cause instanceof Error ? cause.message : 'Unable to save treaty.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -635,7 +632,9 @@ function TreatyDetail({
           isEditing ? (
             <div className="flex flex-wrap items-center justify-end gap-2">
               <Button variant="secondary" onClick={cancelEdit}>Cancel</Button>
-              <Button onClick={saveEdit}>Save Treaty</Button>
+              <Button disabled={saving} onClick={() => void saveEdit()}>
+                {saving ? 'Saving...' : 'Save Treaty'}
+              </Button>
             </div>
           ) : (
             <Button onClick={() => setIsEditing(true)}>Edit Treaty</Button>
@@ -660,6 +659,11 @@ function TreatyDetail({
         </div>
 
         <div className="grid gap-4 lg:grid-cols-2">
+          {saveError ? (
+            <div className="lg:col-span-2 rounded-xl border border-danger/20 bg-danger/5 px-4 py-3 text-sm text-danger">
+              {saveError}
+            </div>
+          ) : null}
           {isEditing ? (
             <>
               <EditableField label="Treaty Name"><Input value={form.treatyName} onChange={(event) => updateForm('treatyName', event.target.value)} /></EditableField>
@@ -669,7 +673,14 @@ function TreatyDetail({
               <EditableField label="Inception Date"><CalendarDateField value={form.inceptionDate} onChange={(value) => updateForm('inceptionDate', value)} /></EditableField>
               <EditableField label="Is Cedable"><Select value={form.isCedable} onValueChange={(value) => updateForm('isCedable', value)} options={yesNoOptions} /></EditableField>
               <EditableField label="Own Retention"><Input value={form.ownRetention} onChange={(event) => updateForm('ownRetention', event.target.value)} /></EditableField>
-              <EditableField label="Product Id"><Input value={form.productId} onChange={(event) => updateForm('productId', event.target.value)} /></EditableField>
+              <EditableField label="Product Id">
+                <Select
+                  value={form.productId}
+                  onValueChange={(value) => updateForm('productId', value)}
+                  options={buildLookupOptions(productOptions, 'Look for Product Id')}
+                  placeholder="Look for Product Id"
+                />
+              </EditableField>
               <EditableField label="Profit Commission PCT"><Input value={form.profitCommissionPct} onChange={(event) => updateForm('profitCommissionPct', event.target.value)} /></EditableField>
               <EditableField label="Shariah Basis"><Select value={form.shariahBasis} onValueChange={(value) => updateForm('shariahBasis', value)} options={shariahBasisOptions} /></EditableField>
               <EditableField label="Surplus Sharing PCT"><Input value={form.surplusSharingPct} onChange={(event) => updateForm('surplusSharingPct', event.target.value)} /></EditableField>
@@ -687,7 +698,7 @@ function TreatyDetail({
               <ReadOnlyField label="Inception Date" value={formatDate(record.inceptionDate)} />
               <ReadOnlyField label="Is Cedable" value={record.isCedable} />
               <ReadOnlyField label="Own Retention" value={formatOptionalMoney(record.ownRetention)} />
-              <ReadOnlyField label="Product Id" value={record.productId} />
+              <ReadOnlyField label="Product Id" value={getLookupDisplayValue(productOptions, record.productLookupId, record.productId)} />
               <ReadOnlyField label="Profit Commission PCT" value={formatDecimal(record.profitCommissionPct)} />
               <ReadOnlyField label="Shariah Basis" value={record.shariahBasis} />
               <ReadOnlyField label="Surplus Sharing PCT" value={formatDecimal(record.surplusSharingPct)} />
@@ -756,7 +767,7 @@ function toTreatyForm(record: TreatyRecord): TreatyCreateFormState {
     inceptionDate: record.inceptionDate,
     isCedable: record.isCedable,
     ownRetention: formatOptionalMoney(record.ownRetention),
-    productId: record.productId,
+    productId: record.productLookupId || 'Select',
     profitCommissionPct: formatDecimal(record.profitCommissionPct),
     shariahBasis: record.shariahBasis,
     surplusSharingPct: formatDecimal(record.surplusSharingPct),
@@ -764,6 +775,26 @@ function toTreatyForm(record: TreatyRecord): TreatyCreateFormState {
     treatyType: record.treatyType,
     treatyYear: String(record.treatyYear),
     wakalaFeePercentage: formatDecimal(record.wakalaFeePercentage),
+  }
+}
+
+function toTreatySaveInput(record: TreatyRecord): TreatySaveInput {
+  return {
+    treatyName: record.treatyName,
+    cessionPercentage: record.cessionPercentage,
+    commissionPercentage: record.commissionPercentage,
+    exchangeRate: record.exchangeRate,
+    inceptionDate: record.inceptionDate,
+    isCedable: record.isCedable,
+    ownRetention: record.ownRetention,
+    productLookupId: record.productLookupId,
+    profitCommissionPct: record.profitCommissionPct,
+    shariahBasis: record.shariahBasis,
+    surplusSharingPct: record.surplusSharingPct,
+    treatyCapacity: record.treatyCapacity,
+    treatyType: record.treatyType,
+    treatyYear: record.treatyYear,
+    wakalaFeePercentage: record.wakalaFeePercentage,
   }
 }
 
@@ -796,6 +827,27 @@ function resolveSelectValue(value: string, fallback: string) {
 
 function resolveYesNo(value: string, fallback: 'Yes' | 'No'): 'Yes' | 'No' {
   return value === 'Yes' || value === 'No' ? value : fallback
+}
+
+function buildLookupOptions(options: ReinsuranceLookupOption[], placeholder: string) {
+  return [
+    { value: 'Select', label: placeholder },
+    ...options.map((option) => ({ value: option.value, label: option.label })),
+  ]
+}
+
+function resolveLookupValue(value: string) {
+  return value && value !== 'Select' ? value : ''
+}
+
+function resolveLookupLabel(options: ReinsuranceLookupOption[], value: string, fallback: string) {
+  if (!value || value === 'Select') return '---'
+  return options.find((option) => option.value === value)?.label ?? fallback
+}
+
+function getLookupDisplayValue(options: ReinsuranceLookupOption[], lookupId: string, fallback: string) {
+  if (!lookupId) return fallback
+  return options.find((option) => option.value.toLowerCase() === lookupId.toLowerCase())?.label ?? fallback
 }
 
 function parseDateValue(value: string) {
@@ -850,9 +902,12 @@ function formatNumber(value: number) {
 }
 
 function formatDate(value: string) {
+  if (!value) return '---'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '---'
   return new Intl.DateTimeFormat('en-US', {
     month: 'numeric',
     day: 'numeric',
     year: 'numeric',
-  }).format(new Date(value))
+  }).format(date)
 }

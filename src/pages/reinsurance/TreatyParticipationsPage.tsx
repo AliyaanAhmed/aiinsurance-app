@@ -6,82 +6,18 @@ import { Card } from '../../components/ui/Card'
 import { Input } from '../../components/ui/Input'
 import { PageHeader } from '../../components/layout/PageHeader'
 import { Select } from '../../components/ui/Select'
-
-interface TreatyParticipationRecord {
-  id: string
-  name: string
-  isLeader: 'Yes' | 'No'
-  reinsurerId: string
-  sharePercentage: number
-  treatyId: string
-  treatyLayerId: string
-}
-
-const treatyParticipations: TreatyParticipationRecord[] = [
-  {
-    id: 'treaty-participation-tp-001',
-    name: 'TP-001',
-    isLeader: 'No',
-    reinsurerId: 'Arabian Shield Re',
-    sharePercentage: 0.25,
-    treatyId: 'Fire Surplus 2026',
-    treatyLayerId: 'TL-001',
-  },
-  {
-    id: 'treaty-participation-tp-002',
-    name: 'TP-002',
-    isLeader: 'Yes',
-    reinsurerId: 'Delta Reinsurance',
-    sharePercentage: 0.6,
-    treatyId: 'Fire Surplus 2026',
-    treatyLayerId: 'TL-001',
-  },
-  {
-    id: 'treaty-participation-tp-003',
-    name: 'TP-003',
-    isLeader: 'No',
-    reinsurerId: 'Emirates Retakaful',
-    sharePercentage: 0.35,
-    treatyId: 'Fire Surplus 2026',
-    treatyLayerId: 'TL-001',
-  },
-  {
-    id: 'treaty-participation-tp-004',
-    name: 'TP-004',
-    isLeader: 'No',
-    reinsurerId: 'Emirates Retakaful',
-    sharePercentage: 0.5,
-    treatyId: 'Fire XoL 2026',
-    treatyLayerId: 'TL-004',
-  },
-  {
-    id: 'treaty-participation-tp-005',
-    name: 'TP-005',
-    isLeader: 'Yes',
-    reinsurerId: 'Gulf Re',
-    sharePercentage: 0.4,
-    treatyId: 'Fire XoL 2026',
-    treatyLayerId: 'TL-003',
-  },
-  {
-    id: 'treaty-participation-tp-006',
-    name: 'TP-006',
-    isLeader: 'Yes',
-    reinsurerId: 'Gulf Re',
-    sharePercentage: 0.5,
-    treatyId: 'Motor QS 2026',
-    treatyLayerId: 'TL-003',
-  },
-  {
-    id: 'treaty-participation-tp-007',
-    name: 'TP-007',
-    isLeader: 'No',
-    reinsurerId: 'Gulf Re',
-    sharePercentage: 0.4,
-    treatyId: 'Motor QS 2026',
-    treatyLayerId: 'TL-003',
-  },
-]
+import { useAsyncData } from '../../hooks/useAsyncData'
+import {
+  createTreatyParticipation,
+  listReinsurerLookupOptions,
+  listTreatyLayerLookupOptions,
+  listTreatyLookupOptions,
+  listTreatyParticipations,
+  updateTreatyParticipation,
+  type ReinsuranceLookupOption,
+  type TreatyParticipationRecord,
+  type TreatyParticipationSaveInput,
+} from '../../services/reinsuranceService'
 
 const tableColumns: Array<{
   key: keyof TreatyParticipationRecord
@@ -114,16 +50,29 @@ interface TreatyParticipationCreateFormState {
 const emptyTreatyParticipationCreateForm: TreatyParticipationCreateFormState = {
   name: '',
   isLeader: 'Select',
-  reinsurerId: '',
+  reinsurerId: 'Select',
   sharePercentage: '',
-  treatyId: '',
-  treatyLayerId: '',
+  treatyId: 'Select',
+  treatyLayerId: 'Select',
 }
 
 export function TreatyParticipationsPage() {
-  const [records, setRecords] = useState(treatyParticipations)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [isCreateOpen, setIsCreateOpen] = useState(false)
+  const [refreshKey, setRefreshKey] = useState(0)
+  const { data, loading, error } = useAsyncData(async () => {
+    const [records, reinsurerOptions, treatyOptions, treatyLayerOptions] = await Promise.all([
+      listTreatyParticipations(),
+      listReinsurerLookupOptions(),
+      listTreatyLookupOptions(),
+      listTreatyLayerLookupOptions(),
+    ])
+    return { records, reinsurerOptions, treatyOptions, treatyLayerOptions }
+  }, [refreshKey])
+  const records = data?.records ?? []
+  const reinsurerOptions = data?.reinsurerOptions ?? []
+  const treatyOptions = data?.treatyOptions ?? []
+  const treatyLayerOptions = data?.treatyLayerOptions ?? []
   const selected = useMemo(
     () => records.find((record) => record.id === selectedId),
     [records, selectedId],
@@ -133,11 +82,13 @@ export function TreatyParticipationsPage() {
     return (
       <TreatyParticipationDetail
         record={selected}
+        reinsurerOptions={reinsurerOptions}
+        treatyOptions={treatyOptions}
+        treatyLayerOptions={treatyLayerOptions}
         onBack={() => setSelectedId(null)}
-        onSave={(updatedRecord) => {
-          setRecords((current) =>
-            current.map((record) => (record.id === updatedRecord.id ? updatedRecord : record)),
-          )
+        onSave={async (updatedRecord) => {
+          await updateTreatyParticipation(updatedRecord.id, toTreatyParticipationSaveInput(updatedRecord))
+          setRefreshKey((value) => value + 1)
         }}
       />
     )
@@ -158,6 +109,11 @@ export function TreatyParticipationsPage() {
         }
       />
 
+      {loading ? (
+        <Card className="text-sm text-muted-foreground">Loading treaty participations...</Card>
+      ) : error ? (
+        <Card className="border-danger/20 bg-danger/5 text-sm text-danger">{error}</Card>
+      ) : (
       <Card padding="none" variant="premium" className="overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full min-w-full table-fixed border-collapse">
@@ -169,7 +125,17 @@ export function TreatyParticipationsPage() {
               </tr>
             </thead>
             <tbody>
-              {records.map((record) => (
+              {records.length === 0 ? (
+                <tr className="bg-surface">
+                  <td colSpan={tableColumns.length} className="px-6 py-12 text-center">
+                    <p className="text-base font-semibold">No treaty participations found</p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      The aur_treaty_participations datasource is connected, but there are no records for this view yet.
+                    </p>
+                  </td>
+                </tr>
+              ) : (
+                records.map((record) => (
                 <tr
                   key={record.id}
                   onClick={() => setSelectedId(record.id)}
@@ -193,9 +159,17 @@ export function TreatyParticipationsPage() {
                         <Badge variant={record.isLeader === 'Yes' ? 'approved' : 'neutral'}>
                           {record.isLeader}
                         </Badge>
-                      ) : column.key === 'reinsurerId' || column.key === 'treatyId' || column.key === 'treatyLayerId' ? (
+                      ) : column.key === 'reinsurerId' ? (
                         <span className="font-semibold text-primary">
-                          {column.render ? column.render(record) : String(record[column.key])}
+                          {getLookupDisplayValue(reinsurerOptions, record.reinsurerLookupId, record.reinsurerId)}
+                        </span>
+                      ) : column.key === 'treatyId' ? (
+                        <span className="font-semibold text-primary">
+                          {getLookupDisplayValue(treatyOptions, record.treatyLookupId, record.treatyId)}
+                        </span>
+                      ) : column.key === 'treatyLayerId' ? (
+                        <span className="font-semibold text-primary">
+                          {getLookupDisplayValue(treatyLayerOptions, record.treatyLayerLookupId, record.treatyLayerId)}
                         </span>
                       ) : (
                         <span className="text-foreground">
@@ -205,26 +179,30 @@ export function TreatyParticipationsPage() {
                     </td>
                   ))}
                 </tr>
-              ))}
+                ))
+              )}
             </tbody>
           </table>
         </div>
       </Card>
+      )}
 
       {isCreateOpen ? (
         <CreateTreatyParticipationModal
+          reinsurerOptions={reinsurerOptions}
+          treatyOptions={treatyOptions}
+          treatyLayerOptions={treatyLayerOptions}
           onClose={() => setIsCreateOpen(false)}
-          onCreate={(form) => {
-            const created: TreatyParticipationRecord = {
-              id: `treaty-participation-${Date.now()}`,
+          onCreate={async (form) => {
+            await createTreatyParticipation({
               name: form.name.trim() || 'Untitled Participation',
               isLeader: resolveYesNo(form.isLeader, 'No'),
-              reinsurerId: form.reinsurerId.trim() || '---',
+              reinsurerLookupId: resolveLookupValue(form.reinsurerId),
               sharePercentage: parseNumberInput(form.sharePercentage),
-              treatyId: form.treatyId.trim() || '---',
-              treatyLayerId: form.treatyLayerId.trim() || '---',
-            }
-            setRecords((current) => [created, ...current])
+              treatyLookupId: resolveLookupValue(form.treatyId),
+              treatyLayerLookupId: resolveLookupValue(form.treatyLayerId),
+            })
+            setRefreshKey((value) => value + 1)
             setIsCreateOpen(false)
           }}
         />
@@ -234,19 +212,39 @@ export function TreatyParticipationsPage() {
 }
 
 function CreateTreatyParticipationModal({
+  reinsurerOptions,
+  treatyOptions,
+  treatyLayerOptions,
   onClose,
   onCreate,
 }: {
+  reinsurerOptions: ReinsuranceLookupOption[]
+  treatyOptions: ReinsuranceLookupOption[]
+  treatyLayerOptions: ReinsuranceLookupOption[]
   onClose: () => void
-  onCreate: (form: TreatyParticipationCreateFormState) => void
+  onCreate: (form: TreatyParticipationCreateFormState) => Promise<void>
 }) {
   const [form, setForm] = useState<TreatyParticipationCreateFormState>(emptyTreatyParticipationCreateForm)
+  const [submitting, setSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
 
   const updateForm = <Key extends keyof TreatyParticipationCreateFormState>(
     key: Key,
     value: TreatyParticipationCreateFormState[Key],
   ) => {
     setForm((current) => ({ ...current, [key]: value }))
+  }
+
+  const submitForm = async () => {
+    setSubmitting(true)
+    setSubmitError(null)
+    try {
+      await onCreate(form)
+    } catch (cause) {
+      setSubmitError(cause instanceof Error ? cause.message : 'Unable to create treaty participation.')
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   return (
@@ -292,9 +290,10 @@ function CreateTreatyParticipationModal({
               />
             </ModalField>
             <ModalField label="Reinsurer Id">
-              <Input
+              <Select
                 value={form.reinsurerId}
-                onChange={(event) => updateForm('reinsurerId', event.target.value)}
+                onValueChange={(value) => updateForm('reinsurerId', value)}
+                options={buildLookupOptions(reinsurerOptions, 'Look for Reinsurer Id')}
                 placeholder="Look for Reinsurer Id"
               />
             </ModalField>
@@ -306,29 +305,34 @@ function CreateTreatyParticipationModal({
               />
             </ModalField>
             <ModalField label="Treaty Id">
-              <Input
+              <Select
                 value={form.treatyId}
-                onChange={(event) => updateForm('treatyId', event.target.value)}
+                onValueChange={(value) => updateForm('treatyId', value)}
+                options={buildLookupOptions(treatyOptions, 'Look for Treaty Id')}
                 placeholder="Look for Treaty Id"
               />
             </ModalField>
             <ModalField label="Treaty Layer Id">
-              <Input
+              <Select
                 value={form.treatyLayerId}
-                onChange={(event) => updateForm('treatyLayerId', event.target.value)}
+                onValueChange={(value) => updateForm('treatyLayerId', value)}
+                options={buildLookupOptions(treatyLayerOptions, 'Look for Treaty Layer Id')}
                 placeholder="Look for Treaty Layer Id"
               />
             </ModalField>
           </div>
         </div>
 
-        <div className="flex items-center justify-end gap-3 border-t border-border-soft bg-surface px-5 py-4">
-          <Button type="button" variant="secondary" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button type="button" onClick={() => onCreate(form)}>
-            Create Record
-          </Button>
+        <div className="flex items-center justify-between gap-3 border-t border-border-soft bg-surface px-5 py-4">
+          {submitError ? <p className="text-sm text-danger">{submitError}</p> : <span />}
+          <div className="flex items-center gap-3">
+            <Button type="button" variant="secondary" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="button" disabled={submitting} onClick={() => void submitForm()}>
+              {submitting ? 'Creating...' : 'Create Record'}
+            </Button>
+          </div>
         </div>
       </div>
     </div>
@@ -354,15 +358,23 @@ function ModalField({
 
 function TreatyParticipationDetail({
   record,
+  reinsurerOptions,
+  treatyOptions,
+  treatyLayerOptions,
   onBack,
   onSave,
 }: {
   record: TreatyParticipationRecord
+  reinsurerOptions: ReinsuranceLookupOption[]
+  treatyOptions: ReinsuranceLookupOption[]
+  treatyLayerOptions: ReinsuranceLookupOption[]
   onBack: () => void
-  onSave: (record: TreatyParticipationRecord) => void
+  onSave: (record: TreatyParticipationRecord) => Promise<void>
 }) {
   const [isEditing, setIsEditing] = useState(false)
   const [form, setForm] = useState<TreatyParticipationCreateFormState>(() => toTreatyParticipationForm(record))
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   const updateForm = <Key extends keyof TreatyParticipationCreateFormState>(
     key: Key,
@@ -376,17 +388,28 @@ function TreatyParticipationDetail({
     setIsEditing(false)
   }
 
-  const saveEdit = () => {
-    onSave({
-      ...record,
-      name: form.name.trim() || record.name,
-      isLeader: resolveYesNo(form.isLeader, record.isLeader),
-      reinsurerId: form.reinsurerId.trim() || '---',
-      sharePercentage: parseNumberInput(form.sharePercentage),
-      treatyId: form.treatyId.trim() || '---',
-      treatyLayerId: form.treatyLayerId.trim() || '---',
-    })
-    setIsEditing(false)
+  const saveEdit = async () => {
+    setSaving(true)
+    setSaveError(null)
+    try {
+      await onSave({
+        ...record,
+        name: form.name.trim() || record.name,
+        isLeader: resolveYesNo(form.isLeader, record.isLeader),
+        reinsurerId: resolveLookupLabel(reinsurerOptions, form.reinsurerId, record.reinsurerId),
+        reinsurerLookupId: resolveLookupValue(form.reinsurerId),
+        sharePercentage: parseNumberInput(form.sharePercentage),
+        treatyId: resolveLookupLabel(treatyOptions, form.treatyId, record.treatyId),
+        treatyLookupId: resolveLookupValue(form.treatyId),
+        treatyLayerId: resolveLookupLabel(treatyLayerOptions, form.treatyLayerId, record.treatyLayerId),
+        treatyLayerLookupId: resolveLookupValue(form.treatyLayerId),
+      })
+      setIsEditing(false)
+    } catch (cause) {
+      setSaveError(cause instanceof Error ? cause.message : 'Unable to save treaty participation.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -405,7 +428,9 @@ function TreatyParticipationDetail({
           isEditing ? (
             <div className="flex flex-wrap items-center justify-end gap-2">
               <Button variant="secondary" onClick={cancelEdit}>Cancel</Button>
-              <Button onClick={saveEdit}>Save Participation</Button>
+              <Button disabled={saving} onClick={() => void saveEdit()}>
+                {saving ? 'Saving...' : 'Save Participation'}
+              </Button>
             </div>
           ) : (
             <Button onClick={() => setIsEditing(true)}>Edit Participation</Button>
@@ -427,23 +452,49 @@ function TreatyParticipationDetail({
         </div>
 
         <div className="grid gap-4 lg:grid-cols-2">
+          {saveError ? (
+            <div className="lg:col-span-2 rounded-xl border border-danger/20 bg-danger/5 px-4 py-3 text-sm text-danger">
+              {saveError}
+            </div>
+          ) : null}
           {isEditing ? (
             <>
               <EditableField label="Name"><Input value={form.name} onChange={(event) => updateForm('name', event.target.value)} /></EditableField>
               <EditableField label="Is Leader"><Select value={form.isLeader} onValueChange={(value) => updateForm('isLeader', value)} options={yesNoOptions} /></EditableField>
-              <EditableField label="Reinsurer Id"><Input value={form.reinsurerId} onChange={(event) => updateForm('reinsurerId', event.target.value)} /></EditableField>
+              <EditableField label="Reinsurer Id">
+                <Select
+                  value={form.reinsurerId}
+                  onValueChange={(value) => updateForm('reinsurerId', value)}
+                  options={buildLookupOptions(reinsurerOptions, 'Look for Reinsurer Id')}
+                  placeholder="Look for Reinsurer Id"
+                />
+              </EditableField>
               <EditableField label="Share Percentage"><Input value={form.sharePercentage} onChange={(event) => updateForm('sharePercentage', event.target.value)} /></EditableField>
-              <EditableField label="Treaty Id"><Input value={form.treatyId} onChange={(event) => updateForm('treatyId', event.target.value)} /></EditableField>
-              <EditableField label="Treaty Layer Id"><Input value={form.treatyLayerId} onChange={(event) => updateForm('treatyLayerId', event.target.value)} /></EditableField>
+              <EditableField label="Treaty Id">
+                <Select
+                  value={form.treatyId}
+                  onValueChange={(value) => updateForm('treatyId', value)}
+                  options={buildLookupOptions(treatyOptions, 'Look for Treaty Id')}
+                  placeholder="Look for Treaty Id"
+                />
+              </EditableField>
+              <EditableField label="Treaty Layer Id">
+                <Select
+                  value={form.treatyLayerId}
+                  onValueChange={(value) => updateForm('treatyLayerId', value)}
+                  options={buildLookupOptions(treatyLayerOptions, 'Look for Treaty Layer Id')}
+                  placeholder="Look for Treaty Layer Id"
+                />
+              </EditableField>
             </>
           ) : (
             <>
               <ReadOnlyField label="Name" value={record.name} />
               <ReadOnlyField label="Is Leader" value={record.isLeader} />
-              <ReadOnlyField label="Reinsurer Id" value={record.reinsurerId} />
+              <ReadOnlyField label="Reinsurer Id" value={getLookupDisplayValue(reinsurerOptions, record.reinsurerLookupId, record.reinsurerId)} />
               <ReadOnlyField label="Share Percentage" value={formatDecimal(record.sharePercentage)} />
-              <ReadOnlyField label="Treaty Id" value={record.treatyId} />
-              <ReadOnlyField label="Treaty Layer Id" value={record.treatyLayerId} />
+              <ReadOnlyField label="Treaty Id" value={getLookupDisplayValue(treatyOptions, record.treatyLookupId, record.treatyId)} />
+              <ReadOnlyField label="Treaty Layer Id" value={getLookupDisplayValue(treatyLayerOptions, record.treatyLayerLookupId, record.treatyLayerId)} />
             </>
           )}
         </div>
@@ -500,10 +551,21 @@ function toTreatyParticipationForm(record: TreatyParticipationRecord): TreatyPar
   return {
     name: record.name,
     isLeader: record.isLeader,
-    reinsurerId: record.reinsurerId,
+    reinsurerId: record.reinsurerLookupId || 'Select',
     sharePercentage: formatDecimal(record.sharePercentage),
-    treatyId: record.treatyId,
-    treatyLayerId: record.treatyLayerId,
+    treatyId: record.treatyLookupId || 'Select',
+    treatyLayerId: record.treatyLayerLookupId || 'Select',
+  }
+}
+
+function toTreatyParticipationSaveInput(record: TreatyParticipationRecord): TreatyParticipationSaveInput {
+  return {
+    name: record.name,
+    isLeader: record.isLeader,
+    reinsurerLookupId: record.reinsurerLookupId,
+    sharePercentage: record.sharePercentage,
+    treatyLookupId: record.treatyLookupId,
+    treatyLayerLookupId: record.treatyLayerLookupId,
   }
 }
 
@@ -514,6 +576,27 @@ function parseNumberInput(value: string) {
 
 function resolveYesNo(value: string, fallback: 'Yes' | 'No'): 'Yes' | 'No' {
   return value === 'Yes' || value === 'No' ? value : fallback
+}
+
+function buildLookupOptions(options: ReinsuranceLookupOption[], placeholder: string) {
+  return [
+    { value: 'Select', label: placeholder },
+    ...options.map((option) => ({ value: option.value, label: option.label })),
+  ]
+}
+
+function resolveLookupValue(value: string) {
+  return value && value !== 'Select' ? value : ''
+}
+
+function resolveLookupLabel(options: ReinsuranceLookupOption[], value: string, fallback: string) {
+  if (!value || value === 'Select') return '---'
+  return options.find((option) => option.value === value)?.label ?? fallback
+}
+
+function getLookupDisplayValue(options: ReinsuranceLookupOption[], lookupId: string, fallback: string) {
+  if (!lookupId) return fallback
+  return options.find((option) => option.value.toLowerCase() === lookupId.toLowerCase())?.label ?? fallback
 }
 
 function formatDecimal(value: number) {

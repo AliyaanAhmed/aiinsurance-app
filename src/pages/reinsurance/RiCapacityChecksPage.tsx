@@ -6,58 +6,17 @@ import { Card } from '../../components/ui/Card'
 import { Input } from '../../components/ui/Input'
 import { PageHeader } from '../../components/layout/PageHeader'
 import { Select } from '../../components/ui/Select'
-
-interface RiCapacityCheckRecord {
-  id: string
-  name: string
-  calculatedOn: string
-  calculatedTime: string
-  calculationSource: string
-  excessToPlace: number | null
-  inquiryId: string
-  isActive: 'Yes' | 'No'
-  outcome: string
-  quoteId: string
-  retainedAmount: number
-  sumInsured: number
-  treatyAbsorbed: number
-  treatyId: string
-}
-
-const riCapacityChecks: RiCapacityCheckRecord[] = [
-  {
-    id: 'ri-capacity-check-cc-001',
-    name: 'CC-001',
-    calculatedOn: '2026-01-18',
-    calculatedTime: '3:00 AM',
-    calculationSource: 'AI Extraction',
-    excessToPlace: 10000000,
-    inquiryId: 'Inquiry for Aviation - anees.rehman@datanox.io',
-    isActive: 'Yes',
-    outcome: 'Facultative Required',
-    quoteId: '---',
-    retainedAmount: 5000000,
-    sumInsured: 40000000,
-    treatyAbsorbed: 25000000,
-    treatyId: 'Fire Surplus 2026',
-  },
-  {
-    id: 'ri-capacity-check-cc-002',
-    name: 'CC-002',
-    calculatedOn: '2026-02-23',
-    calculatedTime: '7:00 AM',
-    calculationSource: 'AI Extraction',
-    excessToPlace: null,
-    inquiryId: 'Inquiry for Aviation - hassan.naeem@datanox.io',
-    isActive: 'Yes',
-    outcome: 'Within Treaty Capacity',
-    quoteId: '---',
-    retainedAmount: 300000,
-    sumInsured: 12500000,
-    treatyAbsorbed: 12200000,
-    treatyId: 'Fire Surplus 2026',
-  },
-]
+import { useAsyncData } from '../../hooks/useAsyncData'
+import {
+  listInquiryLookupOptions,
+  listQuoteLookupOptions,
+  listRiCapacityChecks,
+  listTreatyLookupOptions,
+  updateRiCapacityCheck,
+  type ReinsuranceLookupOption,
+  type RiCapacityCheckRecord,
+  type RiCapacityCheckSaveInput,
+} from '../../services/reinsuranceService'
 
 const tableColumns: Array<{
   key: keyof RiCapacityCheckRecord
@@ -129,8 +88,21 @@ interface RiCapacityCheckCreateFormState {
 }
 
 export function RiCapacityChecksPage() {
-  const [records, setRecords] = useState(riCapacityChecks)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [refreshKey, setRefreshKey] = useState(0)
+  const { data, loading, error } = useAsyncData(async () => {
+    const [records, inquiryOptions, quoteOptions, treatyOptions] = await Promise.all([
+      listRiCapacityChecks(),
+      listInquiryLookupOptions(),
+      listQuoteLookupOptions(),
+      listTreatyLookupOptions(),
+    ])
+    return { records, inquiryOptions, quoteOptions, treatyOptions }
+  }, [refreshKey])
+  const records = data?.records ?? []
+  const inquiryOptions = data?.inquiryOptions ?? []
+  const quoteOptions = data?.quoteOptions ?? []
+  const treatyOptions = data?.treatyOptions ?? []
   const selected = useMemo(
     () => records.find((record) => record.id === selectedId),
     [records, selectedId],
@@ -140,11 +112,13 @@ export function RiCapacityChecksPage() {
     return (
       <RiCapacityCheckDetail
         record={selected}
+        inquiryOptions={inquiryOptions}
+        quoteOptions={quoteOptions}
+        treatyOptions={treatyOptions}
         onBack={() => setSelectedId(null)}
-        onSave={(updatedRecord) => {
-          setRecords((current) =>
-            current.map((record) => (record.id === updatedRecord.id ? updatedRecord : record)),
-          )
+        onSave={async (updatedRecord) => {
+          await updateRiCapacityCheck(updatedRecord.id, toRiCapacityCheckSaveInput(updatedRecord))
+          setRefreshKey((value) => value + 1)
         }}
       />
     )
@@ -159,9 +133,14 @@ export function RiCapacityChecksPage() {
         description="Capacity calculations, retained values, treaty absorption, and placement outcomes."
       />
 
+      {loading ? (
+        <Card className="text-sm text-muted-foreground">Loading ri-capacity checks...</Card>
+      ) : error ? (
+        <Card className="border-danger/20 bg-danger/5 text-sm text-danger">{error}</Card>
+      ) : (
       <Card padding="none" variant="premium" className="overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="min-w-[1500px] border-collapse">
+          <table className="w-full min-w-[1500px] border-collapse">
             <thead className="bg-surface-muted/90">
               <tr>
                 {tableColumns.map((column) => (
@@ -170,7 +149,17 @@ export function RiCapacityChecksPage() {
               </tr>
             </thead>
             <tbody>
-              {records.map((record) => (
+              {records.length === 0 ? (
+                <tr className="bg-surface">
+                  <td colSpan={tableColumns.length} className="px-6 py-12 text-center">
+                    <p className="text-base font-semibold">No ri-capacity checks found</p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      The aur_ri_capacity_checks datasource is connected, but there are no records for this view yet.
+                    </p>
+                  </td>
+                </tr>
+              ) : (
+                records.map((record) => (
                 <tr
                   key={record.id}
                   onClick={() => setSelectedId(record.id)}
@@ -194,9 +183,17 @@ export function RiCapacityChecksPage() {
                         <Badge variant={record.isActive === 'Yes' ? 'approved' : 'neutral'}>
                           {record.isActive}
                         </Badge>
-                      ) : column.key === 'inquiryId' || column.key === 'quoteId' || column.key === 'treatyId' ? (
+                      ) : column.key === 'inquiryId' ? (
                         <span className="font-semibold text-primary">
-                          {column.render ? column.render(record) : String(record[column.key])}
+                          {getLookupDisplayValue(inquiryOptions, record.inquiryLookupId, record.inquiryId)}
+                        </span>
+                      ) : column.key === 'quoteId' ? (
+                        <span className="font-semibold text-primary">
+                          {getLookupDisplayValue(quoteOptions, record.quoteLookupId, record.quoteId)}
+                        </span>
+                      ) : column.key === 'treatyId' ? (
+                        <span className="font-semibold text-primary">
+                          {getLookupDisplayValue(treatyOptions, record.treatyLookupId, record.treatyId)}
                         </span>
                       ) : column.key === 'outcome' ? (
                         <Badge variant={record.outcome === 'Facultative Required' ? 'pending' : 'approved'}>
@@ -210,11 +207,13 @@ export function RiCapacityChecksPage() {
                     </td>
                   ))}
                 </tr>
-              ))}
+                ))
+              )}
             </tbody>
           </table>
         </div>
       </Card>
+      )}
 
     </div>
   )
@@ -336,15 +335,23 @@ function CalendarDateField({
 
 function RiCapacityCheckDetail({
   record,
+  inquiryOptions,
+  quoteOptions,
+  treatyOptions,
   onBack,
   onSave,
 }: {
   record: RiCapacityCheckRecord
+  inquiryOptions: ReinsuranceLookupOption[]
+  quoteOptions: ReinsuranceLookupOption[]
+  treatyOptions: ReinsuranceLookupOption[]
   onBack: () => void
-  onSave: (record: RiCapacityCheckRecord) => void
+  onSave: (record: RiCapacityCheckRecord) => Promise<void>
 }) {
   const [isEditing, setIsEditing] = useState(false)
   const [form, setForm] = useState<RiCapacityCheckCreateFormState>(() => toRiCapacityCheckForm(record))
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   const updateForm = <Key extends keyof RiCapacityCheckCreateFormState>(
     key: Key,
@@ -358,24 +365,36 @@ function RiCapacityCheckDetail({
     setIsEditing(false)
   }
 
-  const saveEdit = () => {
-    onSave({
+  const saveEdit = async () => {
+    const updatedRecord: RiCapacityCheckRecord = {
       ...record,
       name: form.name.trim() || record.name,
       calculatedOn: form.calculatedOn || record.calculatedOn,
       calculatedTime: resolveSelectValue(form.calculatedTime, record.calculatedTime),
       calculationSource: resolveSelectValue(form.calculationSource, record.calculationSource),
       excessToPlace: form.excessToPlace.trim() ? parseMoneyInput(form.excessToPlace) : null,
-      inquiryId: form.inquiryId.trim() || '---',
+      inquiryId: resolveLookupLabel(inquiryOptions, form.inquiryId, record.inquiryId),
+      inquiryLookupId: resolveLookupValue(form.inquiryId) || record.inquiryLookupId,
       isActive: resolveYesNo(form.isActive, record.isActive),
       outcome: resolveSelectValue(form.outcome, record.outcome),
-      quoteId: form.quoteId.trim() || '---',
+      quoteId: resolveLookupLabel(quoteOptions, form.quoteId, record.quoteId),
+      quoteLookupId: resolveLookupValue(form.quoteId) || record.quoteLookupId,
       retainedAmount: parseMoneyInput(form.retainedAmount),
       sumInsured: parseMoneyInput(form.sumInsured),
       treatyAbsorbed: parseMoneyInput(form.treatyAbsorbed),
-      treatyId: form.treatyId.trim() || '---',
-    })
-    setIsEditing(false)
+      treatyId: resolveLookupLabel(treatyOptions, form.treatyId, record.treatyId),
+      treatyLookupId: resolveLookupValue(form.treatyId) || record.treatyLookupId,
+    }
+    setSaving(true)
+    setSaveError(null)
+    try {
+      await onSave(updatedRecord)
+      setIsEditing(false)
+    } catch (cause) {
+      setSaveError(cause instanceof Error ? cause.message : 'Unable to save ri-capacity check.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -394,7 +413,7 @@ function RiCapacityCheckDetail({
           isEditing ? (
             <div className="flex flex-wrap items-center justify-end gap-2">
               <Button variant="secondary" onClick={cancelEdit}>Cancel</Button>
-              <Button onClick={saveEdit}>Save Capacity Check</Button>
+              <Button onClick={saveEdit} disabled={saving}>{saving ? 'Saving...' : 'Save Capacity Check'}</Button>
             </div>
           ) : (
             <Button onClick={() => setIsEditing(true)}>Edit Capacity Check</Button>
@@ -403,6 +422,9 @@ function RiCapacityCheckDetail({
       />
 
       <Card variant="premium" className="space-y-5">
+        {saveError ? (
+          <div className="rounded-xl border border-danger/20 bg-danger/5 px-4 py-3 text-sm text-danger">{saveError}</div>
+        ) : null}
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <p className="text-[12px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
@@ -428,14 +450,14 @@ function RiCapacityCheckDetail({
               <EditableField label="Calculated Time"><Select value={form.calculatedTime} onValueChange={(value) => updateForm('calculatedTime', value)} options={timeOptions} /></EditableField>
               <EditableField label="Calculation Source"><Select value={form.calculationSource} onValueChange={(value) => updateForm('calculationSource', value)} options={calculationSourceOptions} /></EditableField>
               <EditableField label="Excess to Place"><Input value={form.excessToPlace} onChange={(event) => updateForm('excessToPlace', event.target.value)} /></EditableField>
-              <EditableField label="Inquiry Id"><Input value={form.inquiryId} onChange={(event) => updateForm('inquiryId', event.target.value)} /></EditableField>
+              <EditableField label="Inquiry Id"><Select value={form.inquiryId} onValueChange={(value) => updateForm('inquiryId', value)} options={buildLookupOptions(inquiryOptions, 'Look for Inquiry Id')} /></EditableField>
               <EditableField label="Is Active"><Select value={form.isActive} onValueChange={(value) => updateForm('isActive', value)} options={yesNoOptions} /></EditableField>
               <EditableField label="Outcome"><Select value={form.outcome} onValueChange={(value) => updateForm('outcome', value)} options={outcomeOptions} /></EditableField>
-              <EditableField label="Quote Id"><Input value={form.quoteId} onChange={(event) => updateForm('quoteId', event.target.value)} /></EditableField>
+              <EditableField label="Quote Id"><Select value={form.quoteId} onValueChange={(value) => updateForm('quoteId', value)} options={buildLookupOptions(quoteOptions, 'Look for Quote Id')} /></EditableField>
               <EditableField label="Retained Amount"><Input value={form.retainedAmount} onChange={(event) => updateForm('retainedAmount', event.target.value)} /></EditableField>
               <EditableField label="Sum Insured"><Input value={form.sumInsured} onChange={(event) => updateForm('sumInsured', event.target.value)} /></EditableField>
               <EditableField label="Treaty Absorbed"><Input value={form.treatyAbsorbed} onChange={(event) => updateForm('treatyAbsorbed', event.target.value)} /></EditableField>
-              <EditableField label="Treaty Id"><Input value={form.treatyId} onChange={(event) => updateForm('treatyId', event.target.value)} /></EditableField>
+              <EditableField label="Treaty Id"><Select value={form.treatyId} onValueChange={(value) => updateForm('treatyId', value)} options={buildLookupOptions(treatyOptions, 'Look for Treaty Id')} /></EditableField>
             </>
           ) : (
             <>
@@ -444,14 +466,14 @@ function RiCapacityCheckDetail({
               <ReadOnlyField label="Calculated Time" value={record.calculatedTime} />
               <ReadOnlyField label="Calculation Source" value={record.calculationSource} />
               <ReadOnlyField label="Excess to Place" value={formatOptionalMoney(record.excessToPlace)} />
-              <ReadOnlyField label="Inquiry Id" value={record.inquiryId} />
+              <ReadOnlyField label="Inquiry Id" value={getLookupDisplayValue(inquiryOptions, record.inquiryLookupId, record.inquiryId)} />
               <ReadOnlyField label="Is Active" value={record.isActive} />
               <ReadOnlyField label="Outcome" value={record.outcome} />
-              <ReadOnlyField label="Quote Id" value={record.quoteId} />
+              <ReadOnlyField label="Quote Id" value={getLookupDisplayValue(quoteOptions, record.quoteLookupId, record.quoteId)} />
               <ReadOnlyField label="Retained Amount" value={formatMoney(record.retainedAmount)} />
               <ReadOnlyField label="Sum Insured" value={formatMoney(record.sumInsured)} />
               <ReadOnlyField label="Treaty Absorbed" value={formatMoney(record.treatyAbsorbed)} />
-              <ReadOnlyField label="Treaty Id" value={record.treatyId} />
+              <ReadOnlyField label="Treaty Id" value={getLookupDisplayValue(treatyOptions, record.treatyLookupId, record.treatyId)} />
             </>
           )}
         </div>
@@ -511,15 +533,54 @@ function toRiCapacityCheckForm(record: RiCapacityCheckRecord): RiCapacityCheckCr
     calculatedTime: record.calculatedTime,
     calculationSource: record.calculationSource,
     excessToPlace: formatOptionalMoney(record.excessToPlace),
-    inquiryId: record.inquiryId,
+    inquiryId: record.inquiryLookupId || 'Select',
     isActive: record.isActive,
     outcome: record.outcome,
-    quoteId: record.quoteId,
+    quoteId: record.quoteLookupId || 'Select',
     retainedAmount: formatMoney(record.retainedAmount),
     sumInsured: formatMoney(record.sumInsured),
     treatyAbsorbed: formatMoney(record.treatyAbsorbed),
-    treatyId: record.treatyId,
+    treatyId: record.treatyLookupId || 'Select',
   }
+}
+
+function toRiCapacityCheckSaveInput(record: RiCapacityCheckRecord): RiCapacityCheckSaveInput {
+  return {
+    name: record.name,
+    calculatedOn: record.calculatedOn,
+    calculatedTime: record.calculatedTime,
+    calculationSource: record.calculationSource,
+    excessToPlace: record.excessToPlace,
+    inquiryLookupId: record.inquiryLookupId,
+    isActive: record.isActive,
+    outcome: record.outcome,
+    quoteLookupId: record.quoteLookupId,
+    retainedAmount: record.retainedAmount,
+    sumInsured: record.sumInsured,
+    treatyAbsorbed: record.treatyAbsorbed,
+    treatyLookupId: record.treatyLookupId,
+  }
+}
+
+function buildLookupOptions(options: ReinsuranceLookupOption[], placeholder: string) {
+  return [
+    { value: 'Select', label: placeholder },
+    ...options.map((option) => ({ value: option.value, label: option.label })),
+  ]
+}
+
+function resolveLookupValue(value: string) {
+  return value && value !== 'Select' ? value : ''
+}
+
+function resolveLookupLabel(options: ReinsuranceLookupOption[], value: string, fallback: string) {
+  if (!value || value === 'Select') return fallback
+  return options.find((option) => option.value === value)?.label ?? fallback
+}
+
+function getLookupDisplayValue(options: ReinsuranceLookupOption[], lookupId: string, fallback: string) {
+  if (!lookupId) return fallback
+  return options.find((option) => option.value.toLowerCase() === lookupId.toLowerCase())?.label ?? fallback
 }
 
 function formatMoney(value: number) {
@@ -588,9 +649,12 @@ function isSameDay(left: Date, right: Date) {
 }
 
 function formatDate(value: string) {
+  if (!value) return '---'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '---'
   return new Intl.DateTimeFormat('en-US', {
     month: 'numeric',
     day: 'numeric',
     year: 'numeric',
-  }).format(new Date(value))
+  }).format(date)
 }

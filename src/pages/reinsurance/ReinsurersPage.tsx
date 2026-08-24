@@ -6,74 +6,16 @@ import { Card } from '../../components/ui/Card'
 import { Input } from '../../components/ui/Input'
 import { PageHeader } from '../../components/layout/PageHeader'
 import { Select } from '../../components/ui/Select'
-
-interface ReinsurerRecord {
-  id: string
-  name: string
-  accountId: string
-  currentExposure: number
-  lastUpdated: string
-  maxExposureLimit: number
-  isApproved: 'Yes' | 'No'
-  partyType: string
-  ratingAgency: string
-  ratingExpiryDate: string
-  securityRating: string
-  shariahApprovalRef: string
-  shariahCompliant: 'Yes' | 'No'
-  country: string
-}
-
-const reinsurers: ReinsurerRecord[] = [
-  {
-    id: 'reinsurer-arabian-shield',
-    name: 'Arabian Shield Re',
-    accountId: '---',
-    currentExposure: 8388586.95,
-    lastUpdated: '2026-08-20T15:35:00+05:00',
-    maxExposureLimit: 15000000,
-    isApproved: 'Yes',
-    partyType: 'Reinsurer',
-    ratingAgency: 'AM Best',
-    ratingExpiryDate: '2026-11-30',
-    securityRating: '---',
-    shariahApprovalRef: 'SB-2026-041',
-    shariahCompliant: 'No',
-    country: 'Pakistan',
-  },
-  {
-    id: 'reinsurer-gulf-takaful',
-    name: 'Gulf Takaful Re',
-    accountId: 'ACC-RE-1008',
-    currentExposure: 5120000,
-    lastUpdated: '2026-08-18T11:20:00+05:00',
-    maxExposureLimit: 12000000,
-    isApproved: 'Yes',
-    partyType: 'Reinsurer',
-    ratingAgency: 'S&P Global',
-    ratingExpiryDate: '2027-01-15',
-    securityRating: 'A-',
-    shariahApprovalRef: 'SB-2026-018',
-    shariahCompliant: 'Yes',
-    country: 'United Arab Emirates',
-  },
-  {
-    id: 'reinsurer-orient-capital',
-    name: 'Orient Capital Re',
-    accountId: 'ACC-RE-1016',
-    currentExposure: 2745000,
-    lastUpdated: '2026-08-12T09:05:00+05:00',
-    maxExposureLimit: 9000000,
-    isApproved: 'No',
-    partyType: 'Retrocessionaire',
-    ratingAgency: 'Fitch',
-    ratingExpiryDate: '2026-10-10',
-    securityRating: 'BBB+',
-    shariahApprovalRef: 'Pending',
-    shariahCompliant: 'No',
-    country: 'Saudi Arabia',
-  },
-]
+import { useAsyncData } from '../../hooks/useAsyncData'
+import {
+  createReinsurer,
+  listReinsurerAccountOptions,
+  listReinsurers,
+  updateReinsurer,
+  type ReinsuranceLookupOption,
+  type ReinsurerRecord,
+  type ReinsurerSaveInput,
+} from '../../services/reinsuranceService'
 
 const tableColumns: Array<{
   key: keyof ReinsurerRecord
@@ -184,9 +126,18 @@ const emptyCreateForm: ReinsurerCreateFormState = {
 }
 
 export function ReinsurersPage() {
-  const [records, setRecords] = useState(reinsurers)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [isCreateOpen, setIsCreateOpen] = useState(false)
+  const [refreshKey, setRefreshKey] = useState(0)
+  const { data, loading, error } = useAsyncData(async () => {
+    const [records, accountOptions] = await Promise.all([
+      listReinsurers(),
+      listReinsurerAccountOptions(),
+    ])
+    return { records, accountOptions }
+  }, [refreshKey])
+  const records = data?.records ?? []
+  const accountOptions = data?.accountOptions ?? []
   const selected = useMemo(
     () => records.find((record) => record.id === selectedId),
     [records, selectedId],
@@ -196,11 +147,11 @@ export function ReinsurersPage() {
     return (
       <ReinsurerDetail
         record={selected}
+        accountOptions={accountOptions}
         onBack={() => setSelectedId(null)}
-        onSave={(updatedRecord) => {
-          setRecords((current) =>
-            current.map((record) => (record.id === updatedRecord.id ? updatedRecord : record)),
-          )
+        onSave={async (updatedRecord) => {
+          await updateReinsurer(updatedRecord.id, toSaveInput(updatedRecord))
+          setRefreshKey((value) => value + 1)
         }}
       />
     )
@@ -221,18 +172,33 @@ export function ReinsurersPage() {
         }
       />
 
-      <Card padding="none" variant="premium" className="overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="min-w-[1320px] border-collapse">
-            <thead className="bg-surface-muted/90">
-              <tr>
-                {tableColumns.map((column) => (
-                  <TableHeader key={column.key}>{column.label}</TableHeader>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {records.map((record) => (
+      {loading ? (
+        <Card className="text-sm text-muted-foreground">Loading reinsurers...</Card>
+      ) : error ? (
+        <Card className="border-danger/20 bg-danger/5 text-sm text-danger">{error}</Card>
+      ) : (
+        <Card padding="none" variant="premium" className="overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="min-w-[1320px] border-collapse">
+              <thead className="bg-surface-muted/90">
+                <tr>
+                  {tableColumns.map((column) => (
+                    <TableHeader key={column.key}>{column.label}</TableHeader>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {records.length === 0 ? (
+                  <tr className="bg-surface">
+                    <td colSpan={tableColumns.length} className="px-6 py-12 text-center">
+                      <p className="text-base font-semibold">No reinsurers found</p>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        The aur_reinsurers datasource is connected, but there are no records for this view yet.
+                      </p>
+                    </td>
+                  </tr>
+                ) : (
+                  records.map((record) => (
                   <tr
                     key={record.id}
                     onClick={() => setSelectedId(record.id)}
@@ -252,6 +218,10 @@ export function ReinsurersPage() {
                             {record.name}
                             <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
                           </button>
+                        ) : column.key === 'accountId' ? (
+                          <span className="font-semibold text-primary">
+                            {getLookupDisplayValue(accountOptions, record.accountLookupId, record.accountId)}
+                          </span>
                         ) : column.key === 'isApproved' ? (
                           <Badge variant={record.isApproved === 'Yes' ? 'approved' : 'pending'}>
                             {record.isApproved}
@@ -268,22 +238,22 @@ export function ReinsurersPage() {
                       </td>
                     ))}
                   </tr>
-                ))}
-            </tbody>
-          </table>
-        </div>
-      </Card>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
 
       {isCreateOpen ? (
         <CreateReinsurerModal
+          accountOptions={accountOptions}
           onClose={() => setIsCreateOpen(false)}
-          onCreate={(form) => {
-            const created: ReinsurerRecord = {
-              id: `reinsurer-${Date.now()}`,
+          onCreate={async (form) => {
+            await createReinsurer({
               name: form.name.trim() || 'Untitled Reinsurer',
-              accountId: form.accountId.trim() || '---',
-              currentExposure: parseMoneyInput(form.currentExposure),
-              lastUpdated: new Date().toISOString(),
+              accountLookupId: resolveLookupValue(form.accountId),
               maxExposureLimit: parseMoneyInput(form.maxExposureLimit),
               isApproved: resolveYesNo(form.isApproved, 'No'),
               partyType: resolveSelectValue(form.partyType, 'Reinsurer'),
@@ -293,8 +263,8 @@ export function ReinsurersPage() {
               shariahApprovalRef: form.shariahApprovalRef.trim() || '---',
               shariahCompliant: resolveYesNo(form.shariahCompliant, 'No'),
               country: resolveSelectValue(form.country, 'UAE'),
-            }
-            setRecords((current) => [created, ...current])
+            })
+            setRefreshKey((value) => value + 1)
             setIsCreateOpen(false)
           }}
         />
@@ -304,19 +274,35 @@ export function ReinsurersPage() {
 }
 
 function CreateReinsurerModal({
+  accountOptions,
   onClose,
   onCreate,
 }: {
+  accountOptions: ReinsuranceLookupOption[]
   onClose: () => void
-  onCreate: (form: ReinsurerCreateFormState) => void
+  onCreate: (form: ReinsurerCreateFormState) => Promise<void>
 }) {
   const [form, setForm] = useState<ReinsurerCreateFormState>(emptyCreateForm)
+  const [submitting, setSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
 
   const updateForm = <Key extends keyof ReinsurerCreateFormState>(
     key: Key,
     value: ReinsurerCreateFormState[Key],
   ) => {
     setForm((current) => ({ ...current, [key]: value }))
+  }
+
+  const submitForm = async () => {
+    setSubmitting(true)
+    setSubmitError(null)
+    try {
+      await onCreate(form)
+    } catch (cause) {
+      setSubmitError(cause instanceof Error ? cause.message : 'Unable to create reinsurer.')
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   return (
@@ -354,17 +340,19 @@ function CreateReinsurerModal({
               />
             </ModalField>
             <ModalField label="Account Id">
-              <Input
+              <Select
                 value={form.accountId}
-                onChange={(event) => updateForm('accountId', event.target.value)}
-                placeholder="Enter account id"
+                onValueChange={(value) => updateForm('accountId', value)}
+                options={buildLookupOptions(accountOptions, 'Look for Account Id')}
+                placeholder="Look for Account Id"
               />
             </ModalField>
             <ModalField label="Current Exposure">
               <Input
                 value={form.currentExposure}
                 onChange={(event) => updateForm('currentExposure', event.target.value)}
-                placeholder="Enter current exposure"
+                placeholder="Calculated after capacity activity"
+                disabled
               />
             </ModalField>
             <ModalField label="Max Exposure Limit">
@@ -438,13 +426,16 @@ function CreateReinsurerModal({
           </div>
         </div>
 
-        <div className="flex items-center justify-end gap-3 border-t border-border-soft bg-surface px-5 py-4">
+        <div className="flex items-center justify-between gap-3 border-t border-border-soft bg-surface px-5 py-4">
+          {submitError ? <p className="text-sm text-danger">{submitError}</p> : <span />}
+          <div className="flex items-center gap-3">
           <Button type="button" variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="button" onClick={() => onCreate(form)}>
-            Create Record
+          <Button type="button" disabled={submitting} onClick={() => void submitForm()}>
+            {submitting ? 'Creating...' : 'Create Record'}
           </Button>
+          </div>
         </div>
       </div>
     </div>
@@ -584,15 +575,19 @@ function ModalField({
 
 function ReinsurerDetail({
   record,
+  accountOptions,
   onBack,
   onSave,
 }: {
   record: ReinsurerRecord
+  accountOptions: ReinsuranceLookupOption[]
   onBack: () => void
-  onSave: (record: ReinsurerRecord) => void
+  onSave: (record: ReinsurerRecord) => Promise<void>
 }) {
   const [isEditing, setIsEditing] = useState(false)
   const [form, setForm] = useState<ReinsurerEditFormState>(() => toEditForm(record))
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   const updateForm = <Key extends keyof ReinsurerEditFormState>(
     key: Key,
@@ -606,24 +601,31 @@ function ReinsurerDetail({
     setIsEditing(false)
   }
 
-  const saveEdit = () => {
-    onSave({
-      ...record,
-      name: form.name.trim() || record.name,
-      accountId: form.accountId.trim() || '---',
-      currentExposure: parseMoneyInput(form.currentExposure),
-      lastUpdated: new Date().toISOString(),
-      maxExposureLimit: parseMoneyInput(form.maxExposureLimit),
-      isApproved: form.isApproved,
-      partyType: form.partyType,
-      ratingAgency: form.ratingAgency,
-      ratingExpiryDate: form.ratingExpiryDate || record.ratingExpiryDate,
-      securityRating: form.securityRating.trim() || '---',
-      shariahApprovalRef: form.shariahApprovalRef.trim() || '---',
-      shariahCompliant: form.shariahCompliant,
-      country: form.country,
-    })
-    setIsEditing(false)
+  const saveEdit = async () => {
+    setSaving(true)
+    setSaveError(null)
+    try {
+      await onSave({
+        ...record,
+        name: form.name.trim() || record.name,
+        accountId: resolveLookupLabel(accountOptions, form.accountId, record.accountId),
+        accountLookupId: resolveLookupValue(form.accountId),
+        maxExposureLimit: parseMoneyInput(form.maxExposureLimit),
+        isApproved: form.isApproved,
+        partyType: form.partyType,
+        ratingAgency: form.ratingAgency,
+        ratingExpiryDate: form.ratingExpiryDate || record.ratingExpiryDate,
+        securityRating: form.securityRating.trim() || '---',
+        shariahApprovalRef: form.shariahApprovalRef.trim() || '---',
+        shariahCompliant: form.shariahCompliant,
+        country: form.country,
+      })
+      setIsEditing(false)
+    } catch (cause) {
+      setSaveError(cause instanceof Error ? cause.message : 'Unable to save reinsurer.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -645,8 +647,8 @@ function ReinsurerDetail({
                 <Button variant="secondary" onClick={cancelEdit}>
                   Cancel
                 </Button>
-                <Button onClick={saveEdit}>
-                  Save Reinsurer
+                <Button disabled={saving} onClick={() => void saveEdit()}>
+                  {saving ? 'Saving...' : 'Save Reinsurer'}
                 </Button>
               </>
             ) : (
@@ -675,20 +677,29 @@ function ReinsurerDetail({
         </div>
 
         <div className="grid gap-4 lg:grid-cols-2">
+          {saveError ? (
+            <div className="lg:col-span-2 rounded-xl border border-danger/20 bg-danger/5 px-4 py-3 text-sm text-danger">
+              {saveError}
+            </div>
+          ) : null}
           {isEditing ? (
             <>
               <EditableField label="Name">
                 <Input value={form.name} onChange={(event) => updateForm('name', event.target.value)} />
               </EditableField>
               <EditableField label="Account Id">
-                <Input value={form.accountId} onChange={(event) => updateForm('accountId', event.target.value)} />
-              </EditableField>
-              <EditableField label="Current Exposure" helper={`Last updated: ${formatDateTime(record.lastUpdated)}`}>
-                <Input
-                  value={form.currentExposure}
-                  onChange={(event) => updateForm('currentExposure', event.target.value)}
+                <Select
+                  value={form.accountId}
+                  onValueChange={(value) => updateForm('accountId', value)}
+                  options={buildLookupOptions(accountOptions, 'Look for Account Id')}
+                  placeholder="Look for Account Id"
                 />
               </EditableField>
+              <ReadOnlyField
+                label="Current Exposure"
+                value={formatMoney(record.currentExposure)}
+                helper={`Last updated: ${formatDateTime(record.lastUpdated)}`}
+              />
               <EditableField label="Max Exposure Limit">
                 <Input
                   value={form.maxExposureLimit}
@@ -759,7 +770,7 @@ function ReinsurerDetail({
           ) : (
             <>
               <ReadOnlyField label="Name" value={record.name} />
-              <ReadOnlyField label="Account Id" value={record.accountId} />
+              <ReadOnlyField label="Account Id" value={getLookupDisplayValue(accountOptions, record.accountLookupId, record.accountId)} />
               <ReadOnlyField
                 label="Current Exposure"
                 value={formatMoney(record.currentExposure)}
@@ -835,9 +846,25 @@ function EditableField({
 function toEditForm(record: ReinsurerRecord): ReinsurerEditFormState {
   return {
     name: record.name,
-    accountId: record.accountId,
+    accountId: record.accountLookupId || 'Select',
     currentExposure: formatMoney(record.currentExposure),
     maxExposureLimit: formatMoney(record.maxExposureLimit),
+    isApproved: record.isApproved,
+    partyType: record.partyType,
+    ratingAgency: record.ratingAgency,
+    ratingExpiryDate: record.ratingExpiryDate,
+    securityRating: record.securityRating,
+    shariahApprovalRef: record.shariahApprovalRef,
+    shariahCompliant: record.shariahCompliant,
+    country: record.country,
+  }
+}
+
+function toSaveInput(record: ReinsurerRecord): ReinsurerSaveInput {
+  return {
+    name: record.name,
+    accountLookupId: record.accountLookupId,
+    maxExposureLimit: record.maxExposureLimit,
     isApproved: record.isApproved,
     partyType: record.partyType,
     ratingAgency: record.ratingAgency,
@@ -869,6 +896,27 @@ function resolveSelectValue(value: string, fallback: string) {
 
 function resolveYesNo(value: string, fallback: 'Yes' | 'No'): 'Yes' | 'No' {
   return value === 'Yes' || value === 'No' ? value : fallback
+}
+
+function buildLookupOptions(options: ReinsuranceLookupOption[], placeholder: string) {
+  return [
+    { value: 'Select', label: placeholder },
+    ...options.map((option) => ({ value: option.value, label: option.label })),
+  ]
+}
+
+function resolveLookupValue(value: string) {
+  return value && value !== 'Select' ? value : ''
+}
+
+function resolveLookupLabel(options: ReinsuranceLookupOption[], value: string, fallback: string) {
+  if (!value || value === 'Select') return '---'
+  return options.find((option) => option.value === value)?.label ?? fallback
+}
+
+function getLookupDisplayValue(options: ReinsuranceLookupOption[], lookupId: string, fallback: string) {
+  if (!lookupId) return fallback
+  return options.find((option) => option.value.toLowerCase() === lookupId.toLowerCase())?.label ?? fallback
 }
 
 function parseDateValue(value: string) {
@@ -911,19 +959,25 @@ function isSameDay(left: Date, right: Date) {
 }
 
 function formatDate(value: string) {
+  if (!value) return '---'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '---'
   return new Intl.DateTimeFormat('en-US', {
     month: 'numeric',
     day: 'numeric',
     year: 'numeric',
-  }).format(new Date(value))
+  }).format(date)
 }
 
 function formatDateTime(value: string) {
+  if (!value) return '---'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '---'
   return new Intl.DateTimeFormat('en-US', {
     month: 'numeric',
     day: 'numeric',
     year: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
-  }).format(new Date(value))
+  }).format(date)
 }

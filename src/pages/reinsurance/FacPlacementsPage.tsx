@@ -5,23 +5,20 @@ import { Card } from '../../components/ui/Card'
 import { Input } from '../../components/ui/Input'
 import { PageHeader } from '../../components/layout/PageHeader'
 import { Select } from '../../components/ui/Select'
+import { useAsyncData } from '../../hooks/useAsyncData'
+import {
+  createFacPlacement,
+  listCapacityCheckLookupOptions,
+  listFacPlacements,
+  listQuoteLookupOptions,
+  listReinsurerLookupOptions,
+  updateFacPlacement,
+  type FacPlacementRecord,
+  type FacPlacementSaveInput,
+  type ReinsuranceLookupOption,
+} from '../../services/reinsuranceService'
 
-interface FacPlacementRecord {
-  id: string
-  name: string
-  amountToPlace: number
-  brokerId: string
-  brokeragePercentage: number
-  capacityCheckId: string
-  quoteId: string
-  riskDescription: string
-  signedDownFactor: number
-  subscribedPercentage: number
-  subscribedLastUpdated: string
-  targetCloseDate: string
-}
-
-interface FacPlacementCreateFormState {
+interface FacPlacementFormState {
   name: string
   amountToPlace: string
   brokerId: string
@@ -30,53 +27,20 @@ interface FacPlacementCreateFormState {
   quoteId: string
   riskDescription: string
   signedDownFactor: string
-  subscribedPercentage: string
   targetCloseDate: string
 }
 
-const emptyFacPlacementCreateForm: FacPlacementCreateFormState = {
+const emptyFacPlacementForm: FacPlacementFormState = {
   name: '',
   amountToPlace: '',
-  brokerId: '',
+  brokerId: 'Select',
   brokeragePercentage: '',
-  capacityCheckId: '',
-  quoteId: '',
+  capacityCheckId: 'Select',
+  quoteId: 'Select',
   riskDescription: '',
   signedDownFactor: '',
-  subscribedPercentage: '',
   targetCloseDate: '',
 }
-
-const brokerOptions = [
-  { value: 'Select', label: 'Select broker' },
-  { value: 'Emirates Retakaful', label: 'Emirates Retakaful' },
-  { value: 'Gulf Re', label: 'Gulf Re' },
-  { value: 'Arabian Shield Re', label: 'Arabian Shield Re' },
-  { value: 'Meridian Re', label: 'Meridian Re' },
-]
-
-const capacityCheckOptions = [
-  { value: 'Select', label: 'Select capacity check' },
-  { value: 'CC-001', label: 'CC-001' },
-  { value: 'CC-002', label: 'CC-002' },
-]
-
-const facPlacements: FacPlacementRecord[] = [
-  {
-    id: 'fac-placement-pl-001',
-    name: 'PL-001',
-    amountToPlace: 10000000,
-    brokerId: 'Emirates Retakaful',
-    brokeragePercentage: 2.5,
-    capacityCheckId: 'CC-001',
-    quoteId: 'INQ-0117 - Inquiry for Commercial Property Insurance - umar.farooq@datanox.io',
-    riskDescription: 'Al Rashid Trading LLC — warehouse and stock, Jebel Ali. Fire and allied perils, sprinklered, EML 60%.',
-    signedDownFactor: 0.87,
-    subscribedPercentage: 0,
-    subscribedLastUpdated: '2026-08-21T09:39:00+05:00',
-    targetCloseDate: '2026-08-14',
-  },
-]
 
 const tableColumns: Array<{
   key: keyof FacPlacementRecord
@@ -96,9 +60,22 @@ const tableColumns: Array<{
 ]
 
 export function FacPlacementsPage() {
-  const [records, setRecords] = useState(facPlacements)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [isCreateOpen, setIsCreateOpen] = useState(false)
+  const [refreshKey, setRefreshKey] = useState(0)
+  const { data, loading, error } = useAsyncData(async () => {
+    const [records, brokerOptions, capacityCheckOptions, quoteOptions] = await Promise.all([
+      listFacPlacements(),
+      listReinsurerLookupOptions(),
+      listCapacityCheckLookupOptions(),
+      listQuoteLookupOptions(),
+    ])
+    return { records, brokerOptions, capacityCheckOptions, quoteOptions }
+  }, [refreshKey])
+  const records = data?.records ?? []
+  const brokerOptions = data?.brokerOptions ?? []
+  const capacityCheckOptions = data?.capacityCheckOptions ?? []
+  const quoteOptions = data?.quoteOptions ?? []
   const selected = useMemo(
     () => records.find((record) => record.id === selectedId),
     [records, selectedId],
@@ -108,11 +85,13 @@ export function FacPlacementsPage() {
     return (
       <FacPlacementDetail
         record={selected}
+        brokerOptions={brokerOptions}
+        capacityCheckOptions={capacityCheckOptions}
+        quoteOptions={quoteOptions}
         onBack={() => setSelectedId(null)}
-        onSave={(updatedRecord) => {
-          setRecords((current) =>
-            current.map((record) => (record.id === updatedRecord.id ? updatedRecord : record)),
-          )
+        onSave={async (updatedRecord) => {
+          await updateFacPlacement(updatedRecord.id, toFacPlacementSaveInput(updatedRecord))
+          setRefreshKey((value) => value + 1)
         }}
       />
     )
@@ -133,76 +112,91 @@ export function FacPlacementsPage() {
         }
       />
 
-      <Card padding="none" variant="premium" className="overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="min-w-[1500px] border-collapse">
-            <thead className="bg-surface-muted/90">
-              <tr>
-                {tableColumns.map((column) => (
-                  <TableHeader key={column.key}>{column.label}</TableHeader>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {records.map((record) => (
-                <tr
-                  key={record.id}
-                  onClick={() => setSelectedId(record.id)}
-                  className="cursor-pointer border-b border-border-soft/80 bg-surface transition hover:bg-primary/5"
-                >
+      {loading ? (
+        <Card className="text-sm text-muted-foreground">Loading fac placements...</Card>
+      ) : error ? (
+        <Card className="border-danger/20 bg-danger/5 text-sm text-danger">{error}</Card>
+      ) : (
+        <Card padding="none" variant="premium" className="overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[1500px] border-collapse">
+              <thead className="bg-surface-muted/90">
+                <tr>
                   {tableColumns.map((column) => (
-                    <td key={column.key} className="px-4 py-4 align-middle text-[13px]">
-                      {column.key === 'name' ? (
-                        <button
-                          type="button"
-                          className="group inline-flex items-center gap-2 text-left font-semibold text-primary"
-                          onClick={(event) => {
-                            event.stopPropagation()
-                            setSelectedId(record.id)
-                          }}
-                        >
-                          {record.name}
-                          <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
-                        </button>
-                      ) : column.key === 'brokerId' || column.key === 'capacityCheckId' || column.key === 'quoteId' ? (
-                        <span className="font-semibold text-primary">
-                          {column.render ? column.render(record) : String(record[column.key])}
-                        </span>
-                      ) : column.key === 'riskDescription' ? (
-                        <span className="block max-w-[220px] truncate text-foreground">{record.riskDescription}</span>
-                      ) : (
-                        <span className="text-foreground">
-                          {column.render ? column.render(record) : String(record[column.key])}
-                        </span>
-                      )}
-                    </td>
+                    <TableHeader key={column.key}>{column.label}</TableHeader>
                   ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Card>
+              </thead>
+              <tbody>
+                {records.length === 0 ? (
+                  <tr className="bg-surface">
+                    <td colSpan={tableColumns.length} className="px-6 py-12 text-center">
+                      <p className="text-base font-semibold">No fac placements found</p>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        The aur_fac_placements datasource is connected, but there are no records for this view yet.
+                      </p>
+                    </td>
+                  </tr>
+                ) : (
+                  records.map((record) => (
+                    <tr
+                      key={record.id}
+                      onClick={() => setSelectedId(record.id)}
+                      className="cursor-pointer border-b border-border-soft/80 bg-surface transition hover:bg-primary/5"
+                    >
+                      {tableColumns.map((column) => (
+                        <td key={column.key} className="px-4 py-4 align-middle text-[13px]">
+                          {column.key === 'name' ? (
+                            <button
+                              type="button"
+                              className="group inline-flex items-center gap-2 text-left font-semibold text-primary"
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                setSelectedId(record.id)
+                              }}
+                            >
+                              {record.name}
+                              <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
+                            </button>
+                          ) : column.key === 'brokerId' ? (
+                            <span className="font-semibold text-primary">
+                              {getLookupDisplayValue(brokerOptions, record.brokerLookupId, record.brokerId)}
+                            </span>
+                          ) : column.key === 'capacityCheckId' ? (
+                            <span className="font-semibold text-primary">
+                              {getLookupDisplayValue(capacityCheckOptions, record.capacityCheckLookupId, record.capacityCheckId)}
+                            </span>
+                          ) : column.key === 'quoteId' ? (
+                            <span className="font-semibold text-primary">
+                              {getLookupDisplayValue(quoteOptions, record.quoteLookupId, record.quoteId)}
+                            </span>
+                          ) : column.key === 'riskDescription' ? (
+                            <span className="block max-w-[220px] truncate text-foreground">{record.riskDescription}</span>
+                          ) : (
+                            <span className="text-foreground">
+                              {column.render ? column.render(record) : String(record[column.key])}
+                            </span>
+                          )}
+                        </td>
+                      ))}
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
 
       {isCreateOpen ? (
         <CreateFacPlacementModal
+          brokerOptions={brokerOptions}
+          capacityCheckOptions={capacityCheckOptions}
+          quoteOptions={quoteOptions}
           onClose={() => setIsCreateOpen(false)}
-          onCreate={(form) => {
-            const created: FacPlacementRecord = {
-              id: `fac-placement-${Date.now()}`,
-              name: form.name.trim() || 'Untitled Fac Placement',
-              amountToPlace: parseMoneyInput(form.amountToPlace),
-              brokerId: resolveSelectValue(form.brokerId, '---'),
-              brokeragePercentage: parseNumberInput(form.brokeragePercentage),
-              capacityCheckId: resolveSelectValue(form.capacityCheckId, '---'),
-              quoteId: form.quoteId.trim() || '---',
-              riskDescription: form.riskDescription.trim() || '---',
-              signedDownFactor: parseNumberInput(form.signedDownFactor),
-              subscribedPercentage: parseNumberInput(form.subscribedPercentage),
-              subscribedLastUpdated: new Date().toISOString(),
-              targetCloseDate: form.targetCloseDate || new Date().toISOString(),
-            }
-            setRecords((current) => [created, ...current])
+          onCreate={async (form) => {
+            await createFacPlacement(toFacPlacementCreateInput(form))
+            setRefreshKey((value) => value + 1)
             setIsCreateOpen(false)
           }}
         />
@@ -212,19 +206,36 @@ export function FacPlacementsPage() {
 }
 
 function CreateFacPlacementModal({
+  brokerOptions,
+  capacityCheckOptions,
+  quoteOptions,
   onClose,
   onCreate,
 }: {
+  brokerOptions: ReinsuranceLookupOption[]
+  capacityCheckOptions: ReinsuranceLookupOption[]
+  quoteOptions: ReinsuranceLookupOption[]
   onClose: () => void
-  onCreate: (form: FacPlacementCreateFormState) => void
+  onCreate: (form: FacPlacementFormState) => Promise<void>
 }) {
-  const [form, setForm] = useState<FacPlacementCreateFormState>(emptyFacPlacementCreateForm)
+  const [form, setForm] = useState<FacPlacementFormState>(emptyFacPlacementForm)
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  const updateForm = <Key extends keyof FacPlacementCreateFormState>(
-    key: Key,
-    value: FacPlacementCreateFormState[Key],
-  ) => {
+  const updateForm = <Key extends keyof FacPlacementFormState>(key: Key, value: FacPlacementFormState[Key]) => {
     setForm((current) => ({ ...current, [key]: value }))
+  }
+
+  const submit = async () => {
+    setSubmitting(true)
+    setError(null)
+    try {
+      await onCreate(form)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Unable to create fac placement.')
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   return (
@@ -253,77 +264,36 @@ function CreateFacPlacementModal({
         </div>
 
         <div className="scrollbar-sleek flex-1 overflow-y-auto px-5 py-4">
+          {error ? (
+            <div className="mb-4 rounded-xl border border-danger/20 bg-danger/5 px-4 py-3 text-sm text-danger">{error}</div>
+          ) : null}
           <div className="grid gap-4 lg:grid-cols-2">
             <ModalField label="Name">
-              <Input
-                value={form.name}
-                onChange={(event) => updateForm('name', event.target.value)}
-                placeholder="Enter placement name"
-              />
+              <Input value={form.name} onChange={(event) => updateForm('name', event.target.value)} placeholder="Enter placement name" />
             </ModalField>
             <ModalField label="Amount to Place">
-              <Input
-                value={form.amountToPlace}
-                onChange={(event) => updateForm('amountToPlace', event.target.value)}
-                placeholder="Enter amount to place"
-              />
+              <Input value={form.amountToPlace} onChange={(event) => updateForm('amountToPlace', event.target.value)} placeholder="Enter amount to place" />
             </ModalField>
             <ModalField label="Broker Id">
-              <Select
-                value={form.brokerId}
-                onValueChange={(value) => updateForm('brokerId', value)}
-                options={brokerOptions}
-                placeholder="Select"
-              />
+              <Select value={form.brokerId} onValueChange={(value) => updateForm('brokerId', value)} options={buildLookupOptions(brokerOptions, 'Look for Broker Id')} />
             </ModalField>
             <ModalField label="Brokerage Percentage">
-              <Input
-                value={form.brokeragePercentage}
-                onChange={(event) => updateForm('brokeragePercentage', event.target.value)}
-                placeholder="Enter brokerage percentage"
-              />
+              <Input value={form.brokeragePercentage} onChange={(event) => updateForm('brokeragePercentage', event.target.value)} placeholder="Enter brokerage percentage" />
             </ModalField>
             <ModalField label="Capacity Check Id">
-              <Select
-                value={form.capacityCheckId}
-                onValueChange={(value) => updateForm('capacityCheckId', value)}
-                options={capacityCheckOptions}
-                placeholder="Select"
-              />
+              <Select value={form.capacityCheckId} onValueChange={(value) => updateForm('capacityCheckId', value)} options={buildLookupOptions(capacityCheckOptions, 'Look for Capacity Check Id')} />
             </ModalField>
             <ModalField label="Quote Id">
-              <Input
-                value={form.quoteId}
-                onChange={(event) => updateForm('quoteId', event.target.value)}
-                placeholder="Look for Quote Id"
-              />
+              <Select value={form.quoteId} onValueChange={(value) => updateForm('quoteId', value)} options={buildLookupOptions(quoteOptions, 'Look for Quote Id')} />
             </ModalField>
             <ModalField label="Risk Description">
-              <Input
-                value={form.riskDescription}
-                onChange={(event) => updateForm('riskDescription', event.target.value)}
-                placeholder="Enter risk description"
-              />
+              <Input value={form.riskDescription} onChange={(event) => updateForm('riskDescription', event.target.value)} placeholder="Enter risk description" />
             </ModalField>
             <ModalField label="Signed Down Factor">
-              <Input
-                value={form.signedDownFactor}
-                onChange={(event) => updateForm('signedDownFactor', event.target.value)}
-                placeholder="Enter signed down factor"
-              />
-            </ModalField>
-            <ModalField label="Subscribed Percentage">
-              <Input
-                value={form.subscribedPercentage}
-                onChange={(event) => updateForm('subscribedPercentage', event.target.value)}
-                placeholder="Enter subscribed percentage"
-              />
+              <Input value={form.signedDownFactor} onChange={(event) => updateForm('signedDownFactor', event.target.value)} placeholder="Enter signed down factor" />
             </ModalField>
             <ModalField label="Target Close Date">
-              <CalendarDateField
-                value={form.targetCloseDate}
-                onChange={(value) => updateForm('targetCloseDate', value)}
-              />
+              <CalendarDateField value={form.targetCloseDate} onChange={(value) => updateForm('targetCloseDate', value)} />
             </ModalField>
           </div>
         </div>
@@ -332,8 +302,8 @@ function CreateFacPlacementModal({
           <Button type="button" variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="button" onClick={() => onCreate(form)}>
-            Create Record
+          <Button type="button" onClick={submit} disabled={submitting}>
+            {submitting ? 'Creating...' : 'Create Record'}
           </Button>
         </div>
       </div>
@@ -341,13 +311,7 @@ function CreateFacPlacementModal({
   )
 }
 
-function ModalField({
-  label,
-  children,
-}: {
-  label: string
-  children: ReactNode
-}) {
+function ModalField({ label, children }: { label: string; children: ReactNode }) {
   return (
     <label className="block min-w-0">
       <span className="mb-2 block text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
@@ -358,21 +322,12 @@ function ModalField({
   )
 }
 
-function CalendarDateField({
-  value,
-  onChange,
-}: {
-  value: string
-  onChange: (value: string) => void
-}) {
+function CalendarDateField({ value, onChange }: { value: string; onChange: (value: string) => void }) {
   const selectedDate = parseDateValue(value)
   const [open, setOpen] = useState(false)
   const [viewDate, setViewDate] = useState(() => selectedDate ?? new Date())
   const calendarDays = buildCalendarDays(viewDate)
-  const monthLabel = new Intl.DateTimeFormat('en-US', {
-    month: 'long',
-    year: 'numeric',
-  }).format(viewDate)
+  const monthLabel = new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' }).format(viewDate)
 
   const selectDate = (date: Date) => {
     onChange(formatInputDate(date))
@@ -396,29 +351,17 @@ function CalendarDateField({
       {open ? (
         <div className="absolute left-0 top-[calc(100%+0.5rem)] z-[70] w-[292px] rounded-2xl border border-border-soft bg-surface p-3 shadow-[0_18px_50px_rgba(15,23,42,0.18)]">
           <div className="flex items-center justify-between">
-            <button
-              type="button"
-              onClick={() => setViewDate((current) => addMonths(current, -1))}
-              className="flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition hover:bg-primary/10 hover:text-primary"
-              aria-label="Previous month"
-            >
+            <button type="button" onClick={() => setViewDate((current) => addMonths(current, -1))} className="flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition hover:bg-primary/10 hover:text-primary" aria-label="Previous month">
               <ChevronLeft className="h-4 w-4" />
             </button>
             <p className="text-sm font-bold">{monthLabel}</p>
-            <button
-              type="button"
-              onClick={() => setViewDate((current) => addMonths(current, 1))}
-              className="flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition hover:bg-primary/10 hover:text-primary"
-              aria-label="Next month"
-            >
+            <button type="button" onClick={() => setViewDate((current) => addMonths(current, 1))} className="flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition hover:bg-primary/10 hover:text-primary" aria-label="Next month">
               <ChevronRight className="h-4 w-4" />
             </button>
           </div>
 
           <div className="mt-3 grid grid-cols-7 gap-1 text-center text-[11px] font-bold uppercase tracking-[0.08em] text-muted-foreground">
-            {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((day) => (
-              <span key={day}>{day}</span>
-            ))}
+            {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((day) => <span key={day}>{day}</span>)}
           </div>
 
           <div className="mt-2 grid grid-cols-7 gap-1">
@@ -448,21 +391,10 @@ function CalendarDateField({
           </div>
 
           <div className="mt-3 flex items-center justify-between border-t border-border-soft pt-3">
-            <button
-              type="button"
-              onClick={() => {
-                onChange('')
-                setOpen(false)
-              }}
-              className="rounded-full px-3 py-1.5 text-[12px] font-semibold text-muted-foreground transition hover:bg-surface-muted hover:text-foreground"
-            >
+            <button type="button" onClick={() => { onChange(''); setOpen(false) }} className="rounded-full px-3 py-1.5 text-[12px] font-semibold text-muted-foreground transition hover:bg-surface-muted hover:text-foreground">
               Clear
             </button>
-            <button
-              type="button"
-              onClick={() => selectDate(new Date())}
-              className="rounded-full bg-primary px-3 py-1.5 text-[12px] font-semibold text-white shadow-glow transition hover:bg-primary-dark"
-            >
+            <button type="button" onClick={() => selectDate(new Date())} className="rounded-full bg-primary px-3 py-1.5 text-[12px] font-semibold text-white shadow-glow transition hover:bg-primary-dark">
               Today
             </button>
           </div>
@@ -474,41 +406,60 @@ function CalendarDateField({
 
 function FacPlacementDetail({
   record,
+  brokerOptions,
+  capacityCheckOptions,
+  quoteOptions,
   onBack,
   onSave,
 }: {
   record: FacPlacementRecord
+  brokerOptions: ReinsuranceLookupOption[]
+  capacityCheckOptions: ReinsuranceLookupOption[]
+  quoteOptions: ReinsuranceLookupOption[]
   onBack: () => void
-  onSave: (record: FacPlacementRecord) => void
+  onSave: (record: FacPlacementRecord) => Promise<void>
 }) {
   const [isEditing, setIsEditing] = useState(false)
-  const [form, setForm] = useState<FacPlacementCreateFormState>(() => toFacPlacementForm(record))
+  const [form, setForm] = useState<FacPlacementFormState>(() => toFacPlacementForm(record))
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
-  const updateForm = <Key extends keyof FacPlacementCreateFormState>(key: Key, value: FacPlacementCreateFormState[Key]) => {
+  const updateForm = <Key extends keyof FacPlacementFormState>(key: Key, value: FacPlacementFormState[Key]) => {
     setForm((current) => ({ ...current, [key]: value }))
   }
 
   const cancelEdit = () => {
     setForm(toFacPlacementForm(record))
+    setSaveError(null)
     setIsEditing(false)
   }
 
-  const saveEdit = () => {
-    onSave({
+  const saveEdit = async () => {
+    const updatedRecord: FacPlacementRecord = {
       ...record,
       name: form.name.trim() || record.name,
       amountToPlace: parseMoneyInput(form.amountToPlace),
-      brokerId: resolveSelectValue(form.brokerId, record.brokerId),
+      brokerId: resolveLookupLabel(brokerOptions, form.brokerId, record.brokerId),
+      brokerLookupId: resolveLookupValue(form.brokerId) || record.brokerLookupId,
       brokeragePercentage: parseNumberInput(form.brokeragePercentage),
-      capacityCheckId: resolveSelectValue(form.capacityCheckId, record.capacityCheckId),
-      quoteId: form.quoteId.trim() || '---',
+      capacityCheckId: resolveLookupLabel(capacityCheckOptions, form.capacityCheckId, record.capacityCheckId),
+      capacityCheckLookupId: resolveLookupValue(form.capacityCheckId) || record.capacityCheckLookupId,
+      quoteId: resolveLookupLabel(quoteOptions, form.quoteId, record.quoteId),
+      quoteLookupId: resolveLookupValue(form.quoteId) || record.quoteLookupId,
       riskDescription: form.riskDescription.trim() || '---',
       signedDownFactor: parseNumberInput(form.signedDownFactor),
-      subscribedPercentage: parseNumberInput(form.subscribedPercentage),
-      subscribedLastUpdated: new Date().toISOString(),
       targetCloseDate: form.targetCloseDate || record.targetCloseDate,
-    })
-    setIsEditing(false)
+    }
+    setSaving(true)
+    setSaveError(null)
+    try {
+      await onSave(updatedRecord)
+      setIsEditing(false)
+    } catch (cause) {
+      setSaveError(cause instanceof Error ? cause.message : 'Unable to save fac placement.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -527,7 +478,7 @@ function FacPlacementDetail({
           isEditing ? (
             <div className="flex flex-wrap items-center justify-end gap-2">
               <Button variant="secondary" onClick={cancelEdit}>Cancel</Button>
-              <Button onClick={saveEdit}>Save Fac Placement</Button>
+              <Button onClick={saveEdit} disabled={saving}>{saving ? 'Saving...' : 'Save Fac Placement'}</Button>
             </div>
           ) : (
             <Button onClick={() => setIsEditing(true)}>Edit Fac Placement</Button>
@@ -536,10 +487,9 @@ function FacPlacementDetail({
       />
 
       <Card variant="premium" className="space-y-5">
+        {saveError ? <div className="rounded-xl border border-danger/20 bg-danger/5 px-4 py-3 text-sm text-danger">{saveError}</div> : null}
         <div>
-          <p className="text-[12px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
-            Fac Placement Form
-          </p>
+          <p className="text-[12px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Fac Placement Form</p>
           <h2 className="mt-1 text-xl font-bold">{record.name}</h2>
         </div>
 
@@ -548,30 +498,26 @@ function FacPlacementDetail({
             <>
               <EditableField label="Name"><Input value={form.name} onChange={(event) => updateForm('name', event.target.value)} /></EditableField>
               <EditableField label="Amount to Place"><Input value={form.amountToPlace} onChange={(event) => updateForm('amountToPlace', event.target.value)} /></EditableField>
-              <EditableField label="Broker Id"><Select value={form.brokerId} onValueChange={(value) => updateForm('brokerId', value)} options={brokerOptions} /></EditableField>
+              <EditableField label="Broker Id"><Select value={form.brokerId} onValueChange={(value) => updateForm('brokerId', value)} options={buildLookupOptions(brokerOptions, 'Look for Broker Id')} /></EditableField>
               <EditableField label="Brokerage Percentage"><Input value={form.brokeragePercentage} onChange={(event) => updateForm('brokeragePercentage', event.target.value)} /></EditableField>
-              <EditableField label="Capacity Check Id"><Select value={form.capacityCheckId} onValueChange={(value) => updateForm('capacityCheckId', value)} options={capacityCheckOptions} /></EditableField>
-              <EditableField label="Quote Id"><Input value={form.quoteId} onChange={(event) => updateForm('quoteId', event.target.value)} /></EditableField>
+              <EditableField label="Capacity Check Id"><Select value={form.capacityCheckId} onValueChange={(value) => updateForm('capacityCheckId', value)} options={buildLookupOptions(capacityCheckOptions, 'Look for Capacity Check Id')} /></EditableField>
+              <EditableField label="Quote Id"><Select value={form.quoteId} onValueChange={(value) => updateForm('quoteId', value)} options={buildLookupOptions(quoteOptions, 'Look for Quote Id')} /></EditableField>
               <EditableField label="Risk Description"><Input value={form.riskDescription} onChange={(event) => updateForm('riskDescription', event.target.value)} /></EditableField>
               <EditableField label="Signed Down Factor"><Input value={form.signedDownFactor} onChange={(event) => updateForm('signedDownFactor', event.target.value)} /></EditableField>
-              <EditableField label="Subscribed Percentage" helper={`Last updated: ${formatDateTime(record.subscribedLastUpdated)}`}><Input value={form.subscribedPercentage} onChange={(event) => updateForm('subscribedPercentage', event.target.value)} /></EditableField>
+              <ReadOnlyField label="Subscribed Percentage" value={formatDecimal(record.subscribedPercentage)} helper={`Last updated: ${formatDateTime(record.subscribedLastUpdated)}`} />
               <EditableField label="Target Close Date"><CalendarDateField value={form.targetCloseDate} onChange={(value) => updateForm('targetCloseDate', value)} /></EditableField>
             </>
           ) : (
             <>
               <ReadOnlyField label="Name" value={record.name} />
               <ReadOnlyField label="Amount to Place" value={formatMoney(record.amountToPlace)} />
-              <ReadOnlyField label="Broker Id" value={record.brokerId} />
+              <ReadOnlyField label="Broker Id" value={getLookupDisplayValue(brokerOptions, record.brokerLookupId, record.brokerId)} />
               <ReadOnlyField label="Brokerage Percentage" value={formatDecimal(record.brokeragePercentage)} />
-              <ReadOnlyField label="Capacity Check Id" value={record.capacityCheckId} />
-              <ReadOnlyField label="Quote Id" value={record.quoteId} />
+              <ReadOnlyField label="Capacity Check Id" value={getLookupDisplayValue(capacityCheckOptions, record.capacityCheckLookupId, record.capacityCheckId)} />
+              <ReadOnlyField label="Quote Id" value={getLookupDisplayValue(quoteOptions, record.quoteLookupId, record.quoteId)} />
               <ReadOnlyField label="Risk Description" value={record.riskDescription} multiline />
               <ReadOnlyField label="Signed Down Factor" value={formatDecimal(record.signedDownFactor)} />
-              <ReadOnlyField
-                label="Subscribed Percentage"
-                value={formatDecimal(record.subscribedPercentage)}
-                helper={`Last updated: ${formatDateTime(record.subscribedLastUpdated)}`}
-              />
+              <ReadOnlyField label="Subscribed Percentage" value={formatDecimal(record.subscribedPercentage)} helper={`Last updated: ${formatDateTime(record.subscribedLastUpdated)}`} />
               <ReadOnlyField label="Target Close Date" value={formatDate(record.targetCloseDate)} />
             </>
           )}
@@ -582,24 +528,10 @@ function FacPlacementDetail({
 }
 
 function TableHeader({ children }: { children: string }) {
-  return (
-    <th className="px-4 py-4 text-left text-[12px] font-bold uppercase tracking-[0.08em] text-muted-foreground">
-      {children}
-    </th>
-  )
+  return <th className="px-4 py-4 text-left text-[12px] font-bold uppercase tracking-[0.08em] text-muted-foreground">{children}</th>
 }
 
-function ReadOnlyField({
-  label,
-  value,
-  helper,
-  multiline = false,
-}: {
-  label: string
-  value: string
-  helper?: string
-  multiline?: boolean
-}) {
+function ReadOnlyField({ label, value, helper, multiline = false }: { label: string; value: string; helper?: string; multiline?: boolean }) {
   return (
     <div className="min-w-0">
       <div className="mb-2 min-h-[34px]">
@@ -613,48 +545,79 @@ function ReadOnlyField({
   )
 }
 
-function EditableField({
-  label,
-  helper,
-  children,
-}: {
-  label: string
-  helper?: string
-  children: ReactNode
-}) {
+function EditableField({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="min-w-0">
       <div className="mb-2 min-h-[34px]">
         <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
-        {helper ? <p className="mt-1 text-[12px] text-muted-foreground">{helper}</p> : null}
       </div>
       {children}
     </div>
   )
 }
 
-function toFacPlacementForm(record: FacPlacementRecord): FacPlacementCreateFormState {
+function toFacPlacementForm(record: FacPlacementRecord): FacPlacementFormState {
   return {
     name: record.name,
     amountToPlace: formatMoney(record.amountToPlace),
-    brokerId: record.brokerId,
+    brokerId: record.brokerLookupId || 'Select',
     brokeragePercentage: formatDecimal(record.brokeragePercentage),
-    capacityCheckId: record.capacityCheckId,
-    quoteId: record.quoteId,
+    capacityCheckId: record.capacityCheckLookupId || 'Select',
+    quoteId: record.quoteLookupId || 'Select',
     riskDescription: record.riskDescription,
     signedDownFactor: formatDecimal(record.signedDownFactor),
-    subscribedPercentage: formatDecimal(record.subscribedPercentage),
     targetCloseDate: record.targetCloseDate,
   }
 }
 
+function toFacPlacementCreateInput(form: FacPlacementFormState): FacPlacementSaveInput {
+  return {
+    name: form.name.trim() || 'Untitled Fac Placement',
+    amountToPlace: parseMoneyInput(form.amountToPlace),
+    brokerLookupId: resolveLookupValue(form.brokerId),
+    brokeragePercentage: parseNumberInput(form.brokeragePercentage),
+    capacityCheckLookupId: resolveLookupValue(form.capacityCheckId),
+    quoteLookupId: resolveLookupValue(form.quoteId),
+    riskDescription: form.riskDescription.trim() || '---',
+    signedDownFactor: parseNumberInput(form.signedDownFactor),
+    targetCloseDate: form.targetCloseDate,
+  }
+}
+
+function toFacPlacementSaveInput(record: FacPlacementRecord): FacPlacementSaveInput {
+  return {
+    name: record.name,
+    amountToPlace: record.amountToPlace,
+    brokerLookupId: record.brokerLookupId,
+    brokeragePercentage: record.brokeragePercentage,
+    capacityCheckLookupId: record.capacityCheckLookupId,
+    quoteLookupId: record.quoteLookupId,
+    riskDescription: record.riskDescription,
+    signedDownFactor: record.signedDownFactor,
+    targetCloseDate: record.targetCloseDate,
+  }
+}
+
+function buildLookupOptions(options: ReinsuranceLookupOption[], placeholder: string) {
+  return [{ value: 'Select', label: placeholder }, ...options.map((option) => ({ value: option.value, label: option.label }))]
+}
+
+function resolveLookupValue(value: string) {
+  return value && value !== 'Select' ? value : ''
+}
+
+function resolveLookupLabel(options: ReinsuranceLookupOption[], value: string, fallback: string) {
+  if (!value || value === 'Select') return fallback
+  return options.find((option) => option.value === value)?.label ?? fallback
+}
+
+function getLookupDisplayValue(options: ReinsuranceLookupOption[], lookupId: string, fallback: string) {
+  if (!lookupId) return fallback
+  return options.find((option) => option.value.toLowerCase() === lookupId.toLowerCase())?.label ?? fallback
+}
+
 function formatMoney(value: number) {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(value)
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value)
 }
 
 function formatDecimal(value: number) {
@@ -662,21 +625,17 @@ function formatDecimal(value: number) {
 }
 
 function formatDate(value: string) {
-  return new Intl.DateTimeFormat('en-US', {
-    month: 'numeric',
-    day: 'numeric',
-    year: 'numeric',
-  }).format(new Date(value))
+  if (!value) return '---'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '---'
+  return new Intl.DateTimeFormat('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' }).format(date)
 }
 
 function formatDateTime(value: string) {
-  return new Intl.DateTimeFormat('en-US', {
-    month: 'numeric',
-    day: 'numeric',
-    year: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  }).format(new Date(value))
+  if (!value) return '---'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '---'
+  return new Intl.DateTimeFormat('en-US', { month: 'numeric', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }).format(date)
 }
 
 function parseMoneyInput(value: string) {
@@ -689,14 +648,8 @@ function parseNumberInput(value: string) {
   return Number.isFinite(parsed) ? parsed : 0
 }
 
-function resolveSelectValue(value: string, fallback: string) {
-  return value && value !== 'Select' ? value : fallback
-}
-
 function parseDateValue(value: string) {
-  if (!value) {
-    return null
-  }
+  if (!value) return null
   const parsed = new Date(`${value}T00:00:00`)
   return Number.isNaN(parsed.getTime()) ? null : parsed
 }
@@ -717,7 +670,6 @@ function addMonths(date: Date, amount: number) {
 function buildCalendarDays(viewDate: Date) {
   const start = new Date(viewDate.getFullYear(), viewDate.getMonth(), 1)
   start.setDate(start.getDate() - start.getDay())
-
   return Array.from({ length: 42 }, (_, index) => {
     const next = new Date(start)
     next.setDate(start.getDate() + index)
@@ -726,9 +678,5 @@ function buildCalendarDays(viewDate: Date) {
 }
 
 function isSameDay(left: Date, right: Date) {
-  return (
-    left.getFullYear() === right.getFullYear() &&
-    left.getMonth() === right.getMonth() &&
-    left.getDate() === right.getDate()
-  )
+  return left.getFullYear() === right.getFullYear() && left.getMonth() === right.getMonth() && left.getDate() === right.getDate()
 }

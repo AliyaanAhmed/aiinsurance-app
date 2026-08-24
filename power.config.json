@@ -208,6 +208,51 @@
           "entitySetName": "aur_plan_details_extractions",
           "logicalName": "aur_plan_details_extraction",
           "isHidden": false
+        },
+        "reinsurers": {
+          "entitySetName": "aur_reinsurers",
+          "logicalName": "aur_reinsurer",
+          "isHidden": false
+        },
+        "treaties": {
+          "entitySetName": "aur_treaties",
+          "logicalName": "aur_treaty",
+          "isHidden": false
+        },
+        "treatylayers": {
+          "entitySetName": "aur_treaty_layers",
+          "logicalName": "aur_treaty_layer",
+          "isHidden": false
+        },
+        "treatyparticipations": {
+          "entitySetName": "aur_treaty_participations",
+          "logicalName": "aur_treaty_participation",
+          "isHidden": false
+        },
+        "ri_capacitychecks": {
+          "entitySetName": "aur_ri_capacity_checks",
+          "logicalName": "aur_ri_capacity_check",
+          "isHidden": false
+        },
+        "facplacements": {
+          "entitySetName": "aur_fac_placements",
+          "logicalName": "aur_fac_placement",
+          "isHidden": false
+        },
+        "facoffers": {
+          "entitySetName": "aur_fac_offers",
+          "logicalName": "aur_fac_offer",
+          "isHidden": false
+        },
+        "cessions": {
+          "entitySetName": "aur_cessions",
+          "logicalName": "aur_cession",
+          "isHidden": false
+        },
+        "cessionlines": {
+          "entitySetName": "aur_cession_lines",
+          "logicalName": "aur_cession_line",
+          "isHidden": false
         }
       },
       "environmentVariableName": ""
