@@ -485,7 +485,6 @@ export function QuoteWorkbenchPage() {
           </TabsContent>
           <TabsContent value="compare-plans" className="mt-4">
             <ComparePlansWorkspace
-              quoteId={id}
               quoteName={currentDetail.name}
               comparisons={planComparisons ?? []}
               loading={planComparisonsLoading}
@@ -546,7 +545,6 @@ export function QuoteWorkbenchPage() {
 }
 
 function ComparePlansWorkspace({
-  quoteId,
   quoteName,
   comparisons,
   loading,
@@ -560,7 +558,6 @@ function ComparePlansWorkspace({
   onUploadAnother,
   onFileSelected,
 }: {
-  quoteId: string
   quoteName: string
   comparisons: QuotePlanComparison[]
   loading: boolean
@@ -580,8 +577,8 @@ function ComparePlansWorkspace({
   const isBusy = uploadState === 'reading' || uploadState === 'analyzing'
 
   return (
-    <div className="grid gap-5 xl:grid-cols-[minmax(280px,0.36fr)_minmax(0,1fr)]">
-      <Card className="overflow-hidden rounded-[30px] p-0">
+    <div className="grid items-start gap-5 xl:grid-cols-[minmax(280px,0.34fr)_minmax(0,1fr)]">
+      <Card className="overflow-hidden rounded-[30px] p-0 xl:sticky xl:top-24 xl:max-h-[calc(100vh-7rem)]">
         <div className="border-b border-border-soft bg-[linear-gradient(135deg,rgba(40,108,255,0.09),rgba(255,255,255,0.96)_52%,rgba(168,85,247,0.08))] px-5 py-5 dark:bg-[linear-gradient(135deg,rgba(40,108,255,0.18),rgba(15,23,42,0.98)_48%,rgba(88,28,135,0.20))]">
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-start gap-3">
@@ -599,7 +596,7 @@ function ComparePlansWorkspace({
           </div>
         </div>
 
-        <div className="max-h-[650px] overflow-y-auto p-4">
+        <div className="scrollbar-sleek max-h-[420px] overflow-y-auto p-4 pr-3 xl:max-h-[calc(100vh-17rem)]">
           {loading ? (
             <div className="space-y-3">
               {[1, 2, 3].map((item) => (
@@ -654,7 +651,7 @@ function ComparePlansWorkspace({
       </Card>
 
       <Card className="relative overflow-hidden rounded-[34px] border-primary/10 p-0">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_10%,rgba(79,152,255,0.20),transparent_30%),radial-gradient(circle_at_78%_28%,rgba(168,85,247,0.16),transparent_26%),linear-gradient(180deg,rgba(248,251,255,0.96),rgba(255,255,255,0.98))] dark:bg-[radial-gradient(circle_at_50%_10%,rgba(79,152,255,0.20),transparent_30%),radial-gradient(circle_at_78%_28%,rgba(168,85,247,0.18),transparent_28%),linear-gradient(180deg,rgba(15,23,42,0.98),rgba(30,41,59,0.96))]" />
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_0%,rgba(40,108,255,0.08),transparent_30%),radial-gradient(circle_at_88%_8%,rgba(168,85,247,0.07),transparent_28%),linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,251,255,0.84))] dark:bg-[radial-gradient(circle_at_20%_0%,rgba(79,152,255,0.10),transparent_30%),radial-gradient(circle_at_88%_8%,rgba(168,85,247,0.10),transparent_28%),linear-gradient(180deg,rgba(15,23,42,0.96),rgba(30,41,59,0.90))]" />
         <div className="relative space-y-6 p-5 sm:p-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div className="flex items-start gap-3">
@@ -733,7 +730,6 @@ function ComparePlansWorkspace({
             )
           ) : (
             <ComparisonResponsePanel
-              quoteId={quoteId}
               comparison={selectedComparison}
               uploadPayload={showingUploadResult ? uploadPayload : null}
             />
@@ -763,77 +759,209 @@ function ComparePlansWorkspace({
 }
 
 function ComparisonResponsePanel({
-  quoteId,
   comparison,
   uploadPayload,
 }: {
-  quoteId: string
   comparison?: QuotePlanComparison
   uploadPayload: QuotePlanComparisonUploadPayload | null
 }) {
+  const [activeInsightTab, setActiveInsightTab] = useState<'matches' | 'suggested' | 'unmatched'>('matches')
   const response = comparison
     ? comparison.response || buildEmptyComparisonMessage()
     : buildPendingComparisonMessage(uploadPayload)
   const parsedSections = parsePlanComparisonResponse(response)
+  const totalMatches = parsedSections.reduce((sum, section) => sum + section.items.length, 0)
+  const averageConfidence = calculateAverageConfidence(parsedSections)
+  const suggestedItems = parseLoosePlanDetails(comparison?.suggestedPlanDetails ?? '')
+  const unmatchedItems = parseLoosePlanDetails(comparison?.unmatchedPlanDetails ?? '')
 
   return (
-    <div className="rounded-[28px] border border-border-soft bg-white/92 p-5 shadow-[0_18px_45px_rgba(15,23,42,0.08)] dark:bg-surface/90">
+    <div className="overflow-hidden rounded-[30px] border border-primary/10 bg-white/95 shadow-[0_18px_45px_rgba(15,23,42,0.08)] dark:bg-surface/90">
       <div className="flex flex-col gap-3 border-b border-border-soft pb-4 md:flex-row md:items-start md:justify-between">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#A855F7]/10 text-[#A855F7]">
+        <div className="flex items-center gap-3 px-5 pt-5">
+          <div className="flex h-12 w-12 items-center justify-center rounded-[20px] bg-[linear-gradient(135deg,#286CFF,#A855F7)] text-white shadow-[0_16px_32px_rgba(40,108,255,0.22)]">
             <Sparkles className="h-5 w-5" />
           </div>
           <div>
-            <p className="text-[12px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
-              {comparison ? 'Plan Comparison' : 'Latest Upload'}
-            </p>
-            <h4 className="mt-1 text-lg font-bold">{comparison?.name || uploadPayload?.uploadedFile.fileName || 'Plan comparison'}</h4>
-            <p className="mt-1 text-xs text-muted-foreground">Quote ID: {quoteId}</p>
+            <p className="text-[12px] font-bold uppercase tracking-[0.16em] text-primary">Plan Match Intelligence</p>
+            <h4 className="mt-1 text-xl font-bold">{comparison?.name || uploadPayload?.uploadedFile.fileName || 'Plan comparison'}</h4>
+            <p className="mt-1 text-xs text-muted-foreground">AI-reviewed plan comparison output</p>
           </div>
         </div>
-        <Badge variant="info">AI Summary</Badge>
+        <div className="flex flex-wrap gap-2 px-5 pt-5">
+          <span className="rounded-full border border-primary/10 bg-primary/8 px-3 py-1.5 text-xs font-bold text-primary">{totalMatches} matches</span>
+          <span className="rounded-full border border-[#A855F7]/15 bg-[#A855F7]/10 px-3 py-1.5 text-xs font-bold text-[#A855F7]">{averageConfidence}% avg confidence</span>
+        </div>
       </div>
-      <div className="mt-5 space-y-4">
-        {parsedSections.length ? (
-          parsedSections.map((section) => (
-            <div key={section.title} className="overflow-hidden rounded-[24px] border border-primary/10 bg-[linear-gradient(135deg,rgba(248,251,255,0.96),rgba(255,255,255,0.98))] dark:bg-white/5">
-              <div className="flex items-center justify-between gap-3 border-b border-primary/10 px-4 py-3">
-                <div className="flex items-center gap-3">
-                  <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-                    <Layers3 className="h-4 w-4" />
-                  </span>
-                  <div>
-                    <p className="font-bold">{section.title}</p>
-                    <p className="text-xs text-muted-foreground">{section.items.length} item{section.items.length === 1 ? '' : 's'} identified</p>
-                  </div>
-                </div>
-                <Badge variant="info">{section.title}</Badge>
-              </div>
-              <div className="grid gap-3 p-4 md:grid-cols-2">
-                {section.items.map((item, index) => (
-                  <div key={`${section.title}-${item.name}-${index}`} className="rounded-[20px] border border-border-soft bg-white px-4 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.05)] dark:bg-surface">
-                    <div className="flex items-start gap-3">
-                      <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-[#A855F7]/10 text-[11px] font-bold text-[#A855F7]">
-                        {index + 1}
+      <div className="p-5">
+        <div className="mb-5 flex flex-wrap gap-2 rounded-[22px] border border-border-soft bg-surface-soft/55 p-1.5 dark:bg-white/5">
+          {[
+            { id: 'matches', label: 'Matched Details', count: totalMatches },
+            { id: 'suggested', label: 'Suggested', count: suggestedItems.length },
+            { id: 'unmatched', label: 'Unmatched', count: unmatchedItems.length },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              className={`inline-flex items-center gap-2 rounded-[16px] px-4 py-2 text-sm font-semibold transition ${
+                activeInsightTab === tab.id
+                  ? 'bg-white text-primary shadow-[0_10px_24px_rgba(40,108,255,0.10)] dark:bg-surface'
+                  : 'text-muted-foreground hover:bg-white/70 hover:text-foreground dark:hover:bg-white/10'
+              }`}
+              onClick={() => setActiveInsightTab(tab.id as 'matches' | 'suggested' | 'unmatched')}
+            >
+              {tab.label}
+              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-bold text-primary">{tab.count}</span>
+            </button>
+          ))}
+        </div>
+
+        {activeInsightTab === 'matches' ? (
+          <div className="space-y-5">
+            {parsedSections.length ? (
+              parsedSections.map((section) => (
+                <div key={section.title} className="overflow-hidden rounded-[26px] border border-primary/10 bg-[linear-gradient(135deg,rgba(248,251,255,0.98),rgba(255,255,255,0.98))] dark:bg-white/5">
+                  <div className="flex items-center justify-between gap-3 border-b border-primary/10 px-4 py-3">
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                        <Layers3 className="h-4 w-4" />
                       </span>
-                      <div className="min-w-0">
-                        <p className="text-sm font-bold">{item.name}</p>
-                        {item.description ? (
-                          <p className="mt-1 text-sm leading-6 text-muted-foreground">{item.description}</p>
-                        ) : null}
+                      <div>
+                        <p className="font-bold">{section.title}</p>
+                        <p className="text-xs text-muted-foreground">{section.items.length} matched plan detail{section.items.length === 1 ? '' : 's'}</p>
                       </div>
                     </div>
+                    <Badge variant="info">Matched</Badge>
                   </div>
-                ))}
-              </div>
+                  <div className="grid gap-4 p-4">
+                    {section.items.map((item, index) => (
+                      <div key={`${section.title}-${item.systemPlanDetail}-${index}`} className="rounded-[24px] border border-border-soft bg-white p-4 transition hover:border-primary/20 dark:bg-surface">
+                        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-[#A855F7]/10 text-[11px] font-bold text-[#A855F7]">{index + 1}</span>
+                              <p className="text-sm font-bold">{item.systemPlanDetail}</p>
+                            </div>
+                            <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                              <div className="rounded-[18px] border border-primary/10 bg-primary/5 px-4 py-3">
+                                <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-primary">System Plan Detail</p>
+                                <p className="mt-2 text-sm leading-6 text-foreground/90">{item.systemPlanDetail}</p>
+                              </div>
+                              <div className="rounded-[18px] border border-[#A855F7]/10 bg-[#A855F7]/5 px-4 py-3">
+                                <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-[#A855F7]">Uploaded Document Match</p>
+                                <p className="mt-2 text-sm leading-6 text-foreground/90">{item.uploadedDocumentMatch || 'No matching document wording found.'}</p>
+                              </div>
+                            </div>
+                          </div>
+                          <ConfidenceRing score={item.confidenceScore} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))
+            ) : (
+              response.split(/\n{2,}/).map((paragraph) => (
+                <p key={paragraph} className="whitespace-pre-wrap text-sm leading-7 text-foreground/90">
+                  {paragraph}
+                </p>
+              ))
+            )}
+          </div>
+        ) : null}
+
+        {activeInsightTab === 'suggested' ? (
+          <PlanInsightPanel
+            title="AI Suggested Plan Details"
+            tone="suggested"
+            emptyText="No suggested plan details were returned for this comparison."
+            items={suggestedItems}
+          />
+        ) : null}
+
+        {activeInsightTab === 'unmatched' ? (
+          <PlanInsightPanel
+            title="Unmatched Plan Details"
+            tone="unmatched"
+            emptyText="No unmatched plan details were returned for this comparison."
+            items={unmatchedItems}
+          />
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
+function ConfidenceRing({ score }: { score: number }) {
+  const safeScore = Math.max(0, Math.min(100, Math.round(score)))
+  const circumference = 100.53096491487338
+  const offset = circumference - (circumference * safeScore) / 100
+
+  return (
+    <div className="flex shrink-0 flex-col items-center gap-1 rounded-[20px] border border-[#A855F7]/10 bg-[#A855F7]/5 px-3 py-2">
+      <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#A855F7]">Confidence</span>
+      <div className="relative h-12 w-12">
+        <svg className="h-12 w-12 -rotate-90" viewBox="0 0 40 40" aria-hidden="true">
+          <circle cx="20" cy="20" r="16" fill="none" stroke="rgba(148,163,184,0.18)" strokeWidth="4" />
+          <circle
+            cx="20"
+            cy="20"
+            r="16"
+            fill="none"
+            stroke="#A855F7"
+            strokeWidth="4"
+            strokeLinecap="round"
+            strokeDasharray={circumference}
+            strokeDashoffset={offset}
+          />
+        </svg>
+        <div className="absolute inset-0 flex items-center justify-center text-[12px] font-bold text-[#A855F7]">{safeScore}</div>
+      </div>
+    </div>
+  )
+}
+
+function PlanInsightPanel({
+  title,
+  items,
+  emptyText,
+  tone,
+}: {
+  title: string
+  items: Array<{ name: string; description: string }>
+  emptyText: string
+  tone: 'suggested' | 'unmatched'
+}) {
+  const toneClass =
+    tone === 'suggested'
+      ? 'border-emerald-200/70 bg-emerald-50/80 text-emerald-700 dark:border-emerald-400/20 dark:bg-emerald-950/20 dark:text-emerald-200'
+      : 'border-amber-200/80 bg-amber-50/80 text-amber-700 dark:border-amber-400/20 dark:bg-amber-950/20 dark:text-amber-200'
+
+  return (
+    <div className="rounded-[26px] border border-border-soft bg-white p-4 dark:bg-surface">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <span className={`flex h-10 w-10 items-center justify-center rounded-2xl border ${toneClass}`}>
+            {tone === 'suggested' ? <Sparkles className="h-4 w-4" /> : <FileWarning className="h-4 w-4" />}
+          </span>
+          <div>
+            <p className="font-bold">{title}</p>
+            <p className="text-xs text-muted-foreground">{items.length} item{items.length === 1 ? '' : 's'}</p>
+          </div>
+        </div>
+      </div>
+      <div className="mt-4 space-y-3">
+        {items.length ? (
+          items.map((item, index) => (
+            <div key={`${title}-${item.name}-${index}`} className="rounded-[18px] border border-border-soft bg-surface-soft/60 px-4 py-3">
+              <p className="text-sm font-semibold">{item.name}</p>
+              {item.description ? <p className="mt-1 text-sm leading-6 text-muted-foreground">{item.description}</p> : null}
             </div>
           ))
         ) : (
-          response.split(/\n{2,}/).map((paragraph) => (
-            <p key={paragraph} className="whitespace-pre-wrap text-sm leading-7 text-foreground/90">
-              {paragraph}
-            </p>
-          ))
+          <p className="rounded-[18px] border border-dashed border-border-soft bg-surface-soft/50 px-4 py-5 text-sm leading-6 text-muted-foreground">
+            {emptyText}
+          </p>
         )}
       </div>
     </div>
@@ -1036,8 +1164,14 @@ function parsePlanComparisonResponse(value: string) {
     .split('\n')
     .map((line) => line.trim())
     .filter(Boolean)
-  const sections: Array<{ title: string; items: Array<{ name: string; description: string }> }> = []
-  let current: { title: string; items: Array<{ name: string; description: string }> } | null = null
+  const sections: Array<{
+    title: string
+    items: Array<{ systemPlanDetail: string; uploadedDocumentMatch: string; confidenceScore: number }>
+  }> = []
+  let current: {
+    title: string
+    items: Array<{ systemPlanDetail: string; uploadedDocumentMatch: string; confidenceScore: number }>
+  } | null = null
 
   for (const line of lines) {
     if (/^[A-Za-z][A-Za-z\s/&-]+:$/.test(line)) {
@@ -1051,14 +1185,69 @@ function parsePlanComparisonResponse(value: string) {
       sections.push(current)
     }
 
-    const [name, ...descriptionParts] = line.split(/\s+—\s+|\s+-\s+/)
+    const parsed = parseMatchedPlanLine(line)
     current.items.push({
-      name: name?.trim() || 'Plan detail',
-      description: descriptionParts.join(' - ').trim(),
+      systemPlanDetail: parsed.systemPlanDetail,
+      uploadedDocumentMatch: parsed.uploadedDocumentMatch,
+      confidenceScore: parsed.confidenceScore,
     })
   }
 
   return sections.filter((section) => section.items.length)
+}
+
+function parseMatchedPlanLine(line: string) {
+  const parts = line.split('|').map((part) => part.trim())
+  const systemPart = parts.find((part) => /^System Plan Detail:/i.test(part))
+  const uploadedPart = parts.find((part) => /^Uploaded Document Match:/i.test(part))
+  const confidencePart = parts.find((part) => /^Confidence Score:/i.test(part))
+  const fallbackParts = line.split(/\s+—\s+|\s+-\s+/)
+
+  return {
+    systemPlanDetail:
+      stripPlanPrefix(systemPart, 'System Plan Detail') ||
+      fallbackParts[0]?.trim() ||
+      'Plan detail',
+    uploadedDocumentMatch:
+      stripPlanPrefix(uploadedPart, 'Uploaded Document Match') ||
+      fallbackParts.slice(1).join(' - ').trim(),
+    confidenceScore: parseConfidenceScore(stripPlanPrefix(confidencePart, 'Confidence Score')),
+  }
+}
+
+function stripPlanPrefix(value: string | undefined, label: string) {
+  return value?.replace(new RegExp(`^${label}:`, 'i'), '').trim() ?? ''
+}
+
+function parseConfidenceScore(value: string | undefined) {
+  const score = Number(String(value ?? '').match(/\d+(\.\d+)?/)?.[0] ?? 0)
+  return Number.isFinite(score) ? score : 0
+}
+
+function calculateAverageConfidence(
+  sections: Array<{ items: Array<{ confidenceScore: number }> }>,
+) {
+  const scores = sections.flatMap((section) => section.items.map((item) => item.confidenceScore)).filter((score) => score > 0)
+  if (!scores.length) return 0
+  return Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length)
+}
+
+function parseLoosePlanDetails(value: string) {
+  const normalized = value.replace(/\r\n/g, '\n').trim()
+  if (!normalized) return []
+
+  return normalized
+    .split(/\n{2,}|\n(?=[A-Za-z].*?(?:—|-))/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const cleanLine = line.replace(/^[-*•\d.)\s]+/, '').trim()
+      const [name, ...descriptionParts] = cleanLine.split(/\s+—\s+|\s+-\s+/)
+      return {
+        name: name?.replace(/:$/, '').trim() || 'Plan detail',
+        description: descriptionParts.join(' - ').trim(),
+      }
+    })
 }
 
 function buildPendingComparisonMessage(payload: QuotePlanComparisonUploadPayload | null) {

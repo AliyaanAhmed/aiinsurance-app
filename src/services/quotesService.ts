@@ -122,6 +122,8 @@ export async function listQuotePlanComparisons(quoteId: string): Promise<QuotePl
       id: record.aur_plan_details_extractionid,
       name: record.aur_name || 'Plan comparison',
       response: record.aur_open_ai_response ?? '',
+      suggestedPlanDetails: String((record as { aur_ai_suggested_plan_details?: string }).aur_ai_suggested_plan_details ?? ''),
+      unmatchedPlanDetails: String((record as { aur_unmatched_plan_details?: string }).aur_unmatched_plan_details ?? ''),
       quoteId: record._aur_quotes_value,
       quoteName: record.aur_quotesname,
       createdOn: record.createdon,

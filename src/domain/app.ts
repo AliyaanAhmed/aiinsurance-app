@@ -235,6 +235,8 @@ export interface QuotePlanComparison {
   id: string
   name: string
   response: string
+  suggestedPlanDetails: string
+  unmatchedPlanDetails: string
   quoteId?: string
   quoteName?: string
   createdOn?: string
