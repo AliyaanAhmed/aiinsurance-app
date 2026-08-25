@@ -22,6 +22,18 @@
         "workflowDisplayName": "Generate Payment Link",
         "workflowName": "a0bfea57-0bc2-1c1f-1301-4fe487dc37f5"
       }
+    },
+    "c8c01af3-519e-4abf-92c2-56d05237c553": {
+      "id": "/providers/Microsoft.PowerApps/apis/shared_logicflows",
+      "displayName": "Logic flows",
+      "dataSources": [
+        "http_onuploadfileforplandetailscomparison_runaievaluation"
+      ],
+      "workflowDetails": {
+        "workflowEntityId": "7ac9d6d0-0397-f111-b8dc-7ced8da0787f",
+        "workflowDisplayName": "HTTP - On Upload File for Plan Details Comparison - Run AI Evaluation",
+        "workflowName": "1335e5c1-cad7-d5e1-7ace-4a109c5da0ad"
+      }
     }
   },
   "databaseReferences": {
@@ -190,6 +202,56 @@
         "emailqueues": {
           "entitySetName": "aur_email_queueses",
           "logicalName": "aur_email_queues",
+          "isHidden": false
+        },
+        "plandetailsextractions": {
+          "entitySetName": "aur_plan_details_extractions",
+          "logicalName": "aur_plan_details_extraction",
+          "isHidden": false
+        },
+        "reinsurers": {
+          "entitySetName": "aur_reinsurers",
+          "logicalName": "aur_reinsurer",
+          "isHidden": false
+        },
+        "treaties": {
+          "entitySetName": "aur_treaties",
+          "logicalName": "aur_treaty",
+          "isHidden": false
+        },
+        "treatylayers": {
+          "entitySetName": "aur_treaty_layers",
+          "logicalName": "aur_treaty_layer",
+          "isHidden": false
+        },
+        "treatyparticipations": {
+          "entitySetName": "aur_treaty_participations",
+          "logicalName": "aur_treaty_participation",
+          "isHidden": false
+        },
+        "ri_capacitychecks": {
+          "entitySetName": "aur_ri_capacity_checks",
+          "logicalName": "aur_ri_capacity_check",
+          "isHidden": false
+        },
+        "facplacements": {
+          "entitySetName": "aur_fac_placements",
+          "logicalName": "aur_fac_placement",
+          "isHidden": false
+        },
+        "facoffers": {
+          "entitySetName": "aur_fac_offers",
+          "logicalName": "aur_fac_offer",
+          "isHidden": false
+        },
+        "cessions": {
+          "entitySetName": "aur_cessions",
+          "logicalName": "aur_cession",
+          "isHidden": false
+        },
+        "cessionlines": {
+          "entitySetName": "aur_cession_lines",
+          "logicalName": "aur_cession_line",
           "isHidden": false
         }
       },

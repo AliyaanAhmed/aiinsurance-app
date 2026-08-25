@@ -1,16 +1,19 @@
-import { useState, type ReactNode, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type ReactNode, type FormEvent } from 'react'
 import { useParams, Link, useLocation } from 'react-router-dom'
-import { ArrowLeft, BadgeCheck, CheckCircle2, ChevronDown, ChevronUp, Download, FileText, FileWarning, Gem, Layers3, Pencil, Save, ShieldAlert, ShieldCheck, TicketSlash, Trash2, XCircle } from 'lucide-react'
+import { ArrowLeft, BadgeCheck, Bot, BrainCircuit, CheckCircle2, ChevronDown, ChevronUp, Download, FileSearch, FileText, FileWarning, Gem, History, Layers3, Pencil, RefreshCw, Save, ShieldAlert, ShieldCheck, Sparkles, TicketSlash, Trash2, UploadCloud, XCircle } from 'lucide-react'
 import { useAsyncData } from '../../hooks/useAsyncData'
 import {
   deleteQuotePlanLinkedRecord,
   getQuoteDetail,
   getQuoteEditorOptions,
   getQuotePlanLinkedSections,
+  listQuotePlanComparisons,
   renameQuotePlanLinkedRecord,
   saveQuoteDetail,
+  analyzeQuotePlanComparison,
   updateQuoteStatus,
   type QuotePlanLinkedEntityKey,
+  type QuotePlanComparisonUploadPayload,
 } from '../../services/quotesService'
 import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
@@ -20,6 +23,7 @@ import { Input } from '../../components/ui/Input'
 import { formatCurrency } from '../../lib/formatters'
 import { generateQuotePdf } from '../../lib/quotePdf'
 import takafulHeaderSrc from '../../assets/takaful-header.png?inline'
+import type { QuotePlanComparison } from '../../domain/app'
 
 interface QuoteFormState {
   name: string
@@ -65,6 +69,12 @@ export function QuoteWorkbenchPage() {
   const [editingPlanRecordName, setEditingPlanRecordName] = useState('')
   const [planActionBusyKey, setPlanActionBusyKey] = useState<string | null>(null)
   const [planActionError, setPlanActionError] = useState<string | null>(null)
+  const [comparisonRefreshKey, setComparisonRefreshKey] = useState(0)
+  const [selectedComparisonId, setSelectedComparisonId] = useState<string | null>(null)
+  const [comparisonUploadMode, setComparisonUploadMode] = useState(false)
+  const [comparisonUploadState, setComparisonUploadState] = useState<'idle' | 'reading' | 'analyzing' | 'ready'>('idle')
+  const [comparisonUploadError, setComparisonUploadError] = useState<string | null>(null)
+  const [comparisonUploadPayload, setComparisonUploadPayload] = useState<QuotePlanComparisonUploadPayload | null>(null)
   const { data, loading, error } = useAsyncData(async () => {
     const [detail, options] = await Promise.all([getQuoteDetail(id), getQuoteEditorOptions()])
     setForm({
@@ -99,6 +109,19 @@ export function QuoteWorkbenchPage() {
     () => getQuotePlanLinkedSections(form?.planId ?? ''),
     [form?.planId, refreshKey],
   )
+  const {
+    data: planComparisons,
+    loading: planComparisonsLoading,
+    error: planComparisonsError,
+  } = useAsyncData(
+    () => listQuotePlanComparisons(id),
+    [id, comparisonRefreshKey],
+  )
+
+  useEffect(() => {
+    if (comparisonUploadMode || selectedComparisonId || !planComparisons?.length) return
+    setSelectedComparisonId(planComparisons[0].id)
+  }, [comparisonUploadMode, planComparisons, selectedComparisonId])
 
   if (loading) return <Card>Loading quote workbench...</Card>
   if (error || !data || !form) return <Card>{error ?? 'Quote not found.'}</Card>
@@ -257,6 +280,7 @@ export function QuoteWorkbenchPage() {
           <TabsList>
             <TabsTrigger value="quote-details" icon={FileText}>Quote Details</TabsTrigger>
             <TabsTrigger value="plan-details" icon={Layers3}>Plan Details</TabsTrigger>
+            <TabsTrigger value="compare-plans" icon={BrainCircuit}>Compare Plans</TabsTrigger>
           </TabsList>
           <TabsContent value="quote-details" className="mt-4">
             <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
@@ -459,8 +483,445 @@ export function QuoteWorkbenchPage() {
               </Card>
             </div>
           </TabsContent>
+          <TabsContent value="compare-plans" className="mt-4">
+            <ComparePlansWorkspace
+              quoteId={id}
+              quoteName={currentDetail.name}
+              comparisons={planComparisons ?? []}
+              loading={planComparisonsLoading}
+              error={planComparisonsError}
+              selectedComparisonId={selectedComparisonId}
+              uploadState={comparisonUploadState}
+              uploadError={comparisonUploadError}
+              uploadPayload={comparisonUploadPayload}
+              onSelectComparison={(comparisonId) => {
+                setComparisonUploadMode(false)
+                setSelectedComparisonId(comparisonId)
+                setComparisonUploadPayload(null)
+                setComparisonUploadError(null)
+                setComparisonUploadState('idle')
+              }}
+              onRefresh={() => setComparisonRefreshKey((value) => value + 1)}
+              onUploadAnother={() => {
+                setComparisonUploadMode(true)
+                setComparisonUploadPayload(null)
+                setComparisonUploadError(null)
+                setComparisonUploadState('idle')
+                setSelectedComparisonId(null)
+              }}
+              onFileSelected={async (file) => {
+                try {
+                  setComparisonUploadError(null)
+                  setComparisonUploadState('reading')
+                  const fileContent = await readFileAsBase64(file)
+                  const payload: QuotePlanComparisonUploadPayload = {
+                    recordId: id,
+                    uploadedFile: {
+                      fileName: file.name,
+                      fileType: file.type || 'application/octet-stream',
+                      fileContent,
+                    },
+                  }
+                  setComparisonUploadPayload(payload)
+                  setComparisonUploadMode(true)
+                  setSelectedComparisonId(null)
+                  setComparisonUploadState('analyzing')
+                  const result = await analyzeQuotePlanComparison(payload)
+                  await delay(1600)
+                  setSelectedComparisonId(result.comparisonId ?? null)
+                  setComparisonRefreshKey((value) => value + 1)
+                  setComparisonUploadPayload(null)
+                  setComparisonUploadState('ready')
+                } catch (cause) {
+                  setComparisonUploadError(cause instanceof Error ? cause.message : 'Unable to prepare the file for analysis.')
+                  setComparisonUploadState('idle')
+                }
+              }}
+            />
+          </TabsContent>
         </Tabs>
       </form>
+    </div>
+  )
+}
+
+function ComparePlansWorkspace({
+  quoteId,
+  quoteName,
+  comparisons,
+  loading,
+  error,
+  selectedComparisonId,
+  uploadState,
+  uploadError,
+  uploadPayload,
+  onSelectComparison,
+  onRefresh,
+  onUploadAnother,
+  onFileSelected,
+}: {
+  quoteId: string
+  quoteName: string
+  comparisons: QuotePlanComparison[]
+  loading: boolean
+  error: string | null
+  selectedComparisonId: string | null
+  uploadState: 'idle' | 'reading' | 'analyzing' | 'ready'
+  uploadError: string | null
+  uploadPayload: QuotePlanComparisonUploadPayload | null
+  onSelectComparison: (comparisonId: string) => void
+  onRefresh: () => void
+  onUploadAnother: () => void
+  onFileSelected: (file: File) => Promise<void>
+}) {
+  const inputRef = useRef<HTMLInputElement | null>(null)
+  const selectedComparison = comparisons.find((comparison) => comparison.id === selectedComparisonId)
+  const showingUploadResult = uploadPayload && uploadState === 'ready'
+  const isBusy = uploadState === 'reading' || uploadState === 'analyzing'
+
+  return (
+    <div className="grid gap-5 xl:grid-cols-[minmax(280px,0.36fr)_minmax(0,1fr)]">
+      <Card className="overflow-hidden rounded-[30px] p-0">
+        <div className="border-b border-border-soft bg-[linear-gradient(135deg,rgba(40,108,255,0.09),rgba(255,255,255,0.96)_52%,rgba(168,85,247,0.08))] px-5 py-5 dark:bg-[linear-gradient(135deg,rgba(40,108,255,0.18),rgba(15,23,42,0.98)_48%,rgba(88,28,135,0.20))]">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary text-white shadow-glow">
+                <History className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-[12px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Comparison History</p>
+                <h3 className="mt-1 text-lg font-bold">Existing analyses</h3>
+              </div>
+            </div>
+            <Button type="button" variant="ghost" size="icon" className="h-9 w-9 rounded-2xl bg-white/70 dark:bg-white/10" onClick={onRefresh}>
+              <RefreshCw className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+
+        <div className="max-h-[650px] overflow-y-auto p-4">
+          {loading ? (
+            <div className="space-y-3">
+              {[1, 2, 3].map((item) => (
+                <div key={item} className="h-24 animate-pulse rounded-[22px] bg-surface-soft" />
+              ))}
+            </div>
+          ) : error ? (
+            <div className="rounded-[20px] border border-danger/20 bg-danger/5 px-4 py-3 text-sm text-danger">
+              {error}
+            </div>
+          ) : comparisons.length ? (
+            <div className="space-y-3">
+              {comparisons.map((comparison, index) => {
+                const active = selectedComparisonId === comparison.id
+                return (
+                  <button
+                    key={comparison.id}
+                    type="button"
+                    className={`w-full rounded-[22px] border px-4 py-4 text-left transition duration-200 ${
+                      active
+                        ? 'border-primary/25 bg-primary/8'
+                        : 'border-border-soft bg-white hover:-translate-y-0.5 hover:border-primary/20 hover:bg-primary/5 dark:bg-surface'
+                    }`}
+                    onClick={() => onSelectComparison(comparison.id)}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="line-clamp-2 text-sm font-bold">{comparison.name}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">{comparison.createdOn ? `Created ${formatShortDate(comparison.createdOn)}` : 'Analysis record'}</p>
+                      </div>
+                      <span className="rounded-full border border-primary/10 bg-primary/10 px-2.5 py-1 text-[11px] font-bold text-primary">
+                        #{index + 1}
+                      </span>
+                    </div>
+                    <p className="mt-3 line-clamp-3 text-xs leading-5 text-muted-foreground">
+                      {plainTextPreview(comparison.response)}
+                    </p>
+                  </button>
+                )
+              })}
+            </div>
+          ) : (
+            <div className="rounded-[24px] border border-dashed border-border-soft bg-surface-soft/60 px-5 py-10 text-center">
+              <FileSearch className="mx-auto h-8 w-8 text-primary" />
+              <p className="mt-3 font-semibold">No comparisons yet</p>
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                Upload a plan document to start comparing available plan details for this quote.
+              </p>
+            </div>
+          )}
+        </div>
+      </Card>
+
+      <Card className="relative overflow-hidden rounded-[34px] border-primary/10 p-0">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_10%,rgba(79,152,255,0.20),transparent_30%),radial-gradient(circle_at_78%_28%,rgba(168,85,247,0.16),transparent_26%),linear-gradient(180deg,rgba(248,251,255,0.96),rgba(255,255,255,0.98))] dark:bg-[radial-gradient(circle_at_50%_10%,rgba(79,152,255,0.20),transparent_30%),radial-gradient(circle_at_78%_28%,rgba(168,85,247,0.18),transparent_28%),linear-gradient(180deg,rgba(15,23,42,0.98),rgba(30,41,59,0.96))]" />
+        <div className="relative space-y-6 p-5 sm:p-6">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="flex items-start gap-3">
+              <div className="flex h-14 w-14 items-center justify-center rounded-[22px] bg-white text-primary shadow-[0_18px_36px_rgba(40,108,255,0.16)] dark:bg-white/10 dark:text-[#93C5FD]">
+                <BrainCircuit className="h-7 w-7" />
+              </div>
+              <div>
+                <p className="text-[12px] font-bold uppercase tracking-[0.16em] text-primary">AI Plan Comparison</p>
+                <h3 className="mt-1 text-2xl font-bold tracking-[-0.03em]">Compare plans for this quote</h3>
+                <p className="mt-2 max-w-2xl text-sm leading-7 text-muted-foreground">
+                  Upload a plan schedule or coverage document. The analyzer will compare file content against the quote’s plan structure and return a plan-level summary.
+                </p>
+              </div>
+            </div>
+            <div className="flex shrink-0 flex-col items-start gap-3 lg:items-end">
+              <Badge variant="info">{quoteName}</Badge>
+              <Button type="button" variant="secondary" className="bg-white dark:bg-surface" onClick={onUploadAnother}>
+                <UploadCloud className="h-4 w-4" />
+                Upload Another Document
+              </Button>
+            </div>
+          </div>
+
+          {!selectedComparison && !showingUploadResult ? (
+            isBusy ? (
+              <PlanComparisonAnalyzingScreen fileName={uploadPayload?.uploadedFile.fileName} state={uploadState} />
+            ) : (
+            <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_220px]">
+              <button
+                type="button"
+                className="group relative min-h-[360px] overflow-hidden rounded-[32px] border border-primary/15 bg-white/82 px-6 py-8 text-left shadow-[0_24px_70px_rgba(40,108,255,0.14)] transition duration-300 hover:-translate-y-1 hover:border-primary/30 hover:shadow-[0_30px_85px_rgba(40,108,255,0.20)] dark:bg-surface/80"
+                onClick={() => inputRef.current?.click()}
+              >
+                <span className="pointer-events-none absolute inset-0 bg-[linear-gradient(120deg,transparent,rgba(79,152,255,0.10),transparent)] opacity-0 transition duration-500 group-hover:opacity-100" />
+                <span className="pointer-events-none absolute -right-12 -top-12 h-40 w-40 rounded-full bg-primary/12 blur-2xl" />
+                <span className="pointer-events-none absolute -bottom-16 left-1/2 h-44 w-44 -translate-x-1/2 rounded-full bg-[#A855F7]/12 blur-3xl" />
+                <div className="relative flex h-full min-h-[304px] flex-col items-center justify-center text-center">
+                  <div className="flex h-24 w-24 items-center justify-center rounded-[32px] bg-primary text-white shadow-glow transition duration-300 group-hover:scale-105">
+                    <UploadCloud className="h-10 w-10" />
+                  </div>
+                  <h4 className="mt-6 text-2xl font-bold tracking-[-0.03em]">Upload plan document</h4>
+                  <p className="mt-3 max-w-md text-sm leading-7 text-muted-foreground">
+                    Attach a plan schedule, coverage document, or comparison file. We will prepare the document for AI plan matching against this quote.
+                  </p>
+                  <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
+                    {['PDF', 'DOCX', 'XLSX', 'PNG'].map((type) => (
+                      <span key={type} className="rounded-full border border-primary/10 bg-primary/8 px-3 py-1 text-xs font-semibold text-primary">
+                        {type}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </button>
+
+              <div className="grid gap-3">
+                {[
+                  { icon: FileText, label: 'Extract plan content', text: 'Read benefits, coverage, inclusions, and exclusions.' },
+                  { icon: Bot, label: 'Compare with quote', text: 'Match extracted plan content against this quote.' },
+                  { icon: Sparkles, label: 'Generate response', text: 'Show a clean comparison narrative.' },
+                ].map((step, index) => (
+                  <div key={step.label} className="rounded-[24px] border border-border-soft bg-white/78 px-4 py-4 shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:bg-surface/75">
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                        <step.icon className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <span className="text-[11px] font-bold text-muted-foreground">0{index + 1}</span>
+                        <p className="font-semibold">{step.label}</p>
+                        <p className="mt-1 text-xs leading-5 text-muted-foreground">{step.text}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            )
+          ) : (
+            <ComparisonResponsePanel
+              quoteId={quoteId}
+              comparison={selectedComparison}
+              uploadPayload={showingUploadResult ? uploadPayload : null}
+            />
+          )}
+
+          {uploadError ? (
+            <div className="rounded-[20px] border border-danger/20 bg-danger/5 px-4 py-3 text-sm text-danger">
+              {uploadError}
+            </div>
+          ) : null}
+
+          <input
+            ref={inputRef}
+            type="file"
+            className="hidden"
+            accept=".pdf,.doc,.docx,.xlsx,.xls,.png,.jpg,.jpeg"
+            onChange={(event) => {
+              const file = event.target.files?.[0]
+              event.target.value = ''
+              if (file) void onFileSelected(file)
+            }}
+          />
+        </div>
+      </Card>
+    </div>
+  )
+}
+
+function ComparisonResponsePanel({
+  quoteId,
+  comparison,
+  uploadPayload,
+}: {
+  quoteId: string
+  comparison?: QuotePlanComparison
+  uploadPayload: QuotePlanComparisonUploadPayload | null
+}) {
+  const response = comparison
+    ? comparison.response || buildEmptyComparisonMessage()
+    : buildPendingComparisonMessage(uploadPayload)
+  const parsedSections = parsePlanComparisonResponse(response)
+
+  return (
+    <div className="rounded-[28px] border border-border-soft bg-white/92 p-5 shadow-[0_18px_45px_rgba(15,23,42,0.08)] dark:bg-surface/90">
+      <div className="flex flex-col gap-3 border-b border-border-soft pb-4 md:flex-row md:items-start md:justify-between">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#A855F7]/10 text-[#A855F7]">
+            <Sparkles className="h-5 w-5" />
+          </div>
+          <div>
+            <p className="text-[12px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
+              {comparison ? 'Plan Comparison' : 'Latest Upload'}
+            </p>
+            <h4 className="mt-1 text-lg font-bold">{comparison?.name || uploadPayload?.uploadedFile.fileName || 'Plan comparison'}</h4>
+            <p className="mt-1 text-xs text-muted-foreground">Quote ID: {quoteId}</p>
+          </div>
+        </div>
+        <Badge variant="info">AI Summary</Badge>
+      </div>
+      <div className="mt-5 space-y-4">
+        {parsedSections.length ? (
+          parsedSections.map((section) => (
+            <div key={section.title} className="overflow-hidden rounded-[24px] border border-primary/10 bg-[linear-gradient(135deg,rgba(248,251,255,0.96),rgba(255,255,255,0.98))] dark:bg-white/5">
+              <div className="flex items-center justify-between gap-3 border-b border-primary/10 px-4 py-3">
+                <div className="flex items-center gap-3">
+                  <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                    <Layers3 className="h-4 w-4" />
+                  </span>
+                  <div>
+                    <p className="font-bold">{section.title}</p>
+                    <p className="text-xs text-muted-foreground">{section.items.length} item{section.items.length === 1 ? '' : 's'} identified</p>
+                  </div>
+                </div>
+                <Badge variant="info">{section.title}</Badge>
+              </div>
+              <div className="grid gap-3 p-4 md:grid-cols-2">
+                {section.items.map((item, index) => (
+                  <div key={`${section.title}-${item.name}-${index}`} className="rounded-[20px] border border-border-soft bg-white px-4 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.05)] dark:bg-surface">
+                    <div className="flex items-start gap-3">
+                      <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-[#A855F7]/10 text-[11px] font-bold text-[#A855F7]">
+                        {index + 1}
+                      </span>
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold">{item.name}</p>
+                        {item.description ? (
+                          <p className="mt-1 text-sm leading-6 text-muted-foreground">{item.description}</p>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))
+        ) : (
+          response.split(/\n{2,}/).map((paragraph) => (
+            <p key={paragraph} className="whitespace-pre-wrap text-sm leading-7 text-foreground/90">
+              {paragraph}
+            </p>
+          ))
+        )}
+      </div>
+    </div>
+  )
+}
+
+function PlanComparisonAnalyzingScreen({
+  fileName,
+  state,
+}: {
+  fileName?: string
+  state: 'idle' | 'reading' | 'analyzing' | 'ready'
+}) {
+  const isReading = state === 'reading'
+
+  return (
+    <div className="relative min-h-[430px] overflow-hidden rounded-[32px] border border-primary/15 bg-white/86 px-5 py-8 shadow-[0_24px_70px_rgba(40,108,255,0.14)] dark:bg-surface/85">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_42%,rgba(40,108,255,0.18),transparent_24%),radial-gradient(circle_at_34%_30%,rgba(168,85,247,0.16),transparent_24%),radial-gradient(circle_at_70%_72%,rgba(14,165,233,0.14),transparent_22%)]" />
+      <div className="pointer-events-none absolute left-1/2 top-1/2 h-72 w-72 -translate-x-1/2 -translate-y-1/2 rounded-full border border-primary/10 bg-primary/5 blur-2xl" />
+
+      <div className="relative mx-auto flex max-w-4xl flex-col items-center text-center">
+        <div className="relative h-64 w-full max-w-[720px]">
+          <div className="absolute left-1/2 top-1/2 h-52 w-52 -translate-x-1/2 -translate-y-1/2 rounded-full border border-primary/10" />
+          <div className="absolute left-1/2 top-1/2 h-36 w-36 -translate-x-1/2 -translate-y-1/2 rounded-full border border-[#A855F7]/15" />
+          <div className="absolute left-1/2 top-1/2 z-20 flex h-28 w-28 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-[34px] bg-primary text-white shadow-[0_24px_50px_rgba(40,108,255,0.34)]">
+            <span className="absolute inset-0 rounded-[34px] bg-white/20 animate-ping" />
+            <span className="absolute -inset-3 rounded-[42px] border border-primary/30 animate-pulse" />
+            <BrainCircuit className="relative h-12 w-12" />
+          </div>
+
+          {[
+            'left-[8%] top-[23%]',
+            'left-[16%] top-[68%]',
+            'right-[10%] top-[24%]',
+            'right-[16%] top-[69%]',
+          ].map((position, index) => (
+            <div key={position} className={`absolute ${position} z-10 flex h-16 w-16 items-center justify-center rounded-[22px] border border-primary/15 bg-white text-primary shadow-[0_18px_35px_rgba(40,108,255,0.12)] transition duration-500 ${index % 2 === 0 ? 'animate-pulse' : ''} dark:bg-surface`}>
+              {index % 2 === 0 ? <FileText className="h-7 w-7" /> : <Layers3 className="h-7 w-7" />}
+            </div>
+          ))}
+
+          <span className="absolute left-[18%] top-[35%] h-[2px] w-[29%] origin-right rotate-[10deg] overflow-hidden rounded-full bg-primary/10">
+            <span className="absolute inset-y-0 left-0 w-1/2 animate-pulse rounded-full bg-gradient-to-r from-transparent via-primary to-[#A855F7]" />
+          </span>
+          <span className="absolute left-[25%] top-[62%] h-[2px] w-[24%] origin-right -rotate-[15deg] overflow-hidden rounded-full bg-[#A855F7]/10">
+            <span className="absolute inset-y-0 right-0 w-1/2 animate-pulse rounded-full bg-gradient-to-r from-transparent via-[#A855F7] to-primary" />
+          </span>
+          <span className="absolute right-[19%] top-[35%] h-[2px] w-[29%] origin-left -rotate-[10deg] overflow-hidden rounded-full bg-primary/10">
+            <span className="absolute inset-y-0 right-0 w-1/2 animate-pulse rounded-full bg-gradient-to-l from-transparent via-primary to-[#A855F7]" />
+          </span>
+          <span className="absolute right-[25%] top-[62%] h-[2px] w-[24%] origin-left rotate-[15deg] overflow-hidden rounded-full bg-[#A855F7]/10">
+            <span className="absolute inset-y-0 left-0 w-1/2 animate-pulse rounded-full bg-gradient-to-l from-transparent via-[#A855F7] to-primary" />
+          </span>
+
+          <span className="absolute left-[39%] top-[34%] h-3 w-3 animate-ping rounded-full bg-primary/70" />
+          <span className="absolute right-[39%] top-[64%] h-3 w-3 animate-ping rounded-full bg-[#A855F7]/70" />
+          <span className="absolute left-[47%] top-[20%] h-2 w-2 animate-pulse rounded-full bg-sky-400" />
+          <span className="absolute right-[47%] bottom-[17%] h-2 w-2 animate-pulse rounded-full bg-[#A855F7]" />
+        </div>
+
+        <p className="text-[12px] font-bold uppercase tracking-[0.18em] text-primary">
+          {isReading ? 'Preparing Upload' : 'Analyzing Document'}
+        </p>
+        <h4 className="mt-2 text-2xl font-bold tracking-[-0.03em]">
+          {isReading ? 'Reading your file securely' : 'AI is comparing plan details'}
+        </h4>
+        <p className="mt-3 max-w-2xl text-sm leading-7 text-muted-foreground">
+          {fileName ? `${fileName} is being prepared for plan comparison.` : 'Your file is being prepared for plan comparison.'} We are matching the uploaded document against the quote context and existing plan structure.
+        </p>
+
+        <div className="mt-7 grid w-full max-w-3xl gap-3 md:grid-cols-3">
+          {[
+            ['Extracting', 'Reading plan and schedule content'],
+            ['Matching', 'Comparing benefits and coverage'],
+            ['Summarizing', 'Preparing a concise response'],
+          ].map(([title, text], index) => (
+            <div key={title} className="rounded-[22px] border border-primary/10 bg-white/78 px-4 py-4 text-left shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:bg-white/5">
+              <div className="flex items-center gap-3">
+                <span className="flex h-8 w-8 items-center justify-center rounded-2xl bg-primary/10 text-xs font-bold text-primary">
+                  0{index + 1}
+                </span>
+                <p className="font-semibold">{title}</p>
+              </div>
+              <p className="mt-2 text-xs leading-5 text-muted-foreground">{text}</p>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   )
 }
@@ -531,4 +992,90 @@ function normalizeQuoteStatus(value: string) {
   if (normalized === 'quotewon') return 'QuoteWon'
   if (normalized === 'quotelost') return 'QuoteLost'
   return ''
+}
+
+function readFileAsBase64(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onerror = () => reject(new Error('Unable to read the selected file.'))
+    reader.onload = () => {
+      const value = String(reader.result ?? '')
+      resolve(value.includes(',') ? value.split(',').pop() ?? '' : value)
+    }
+    reader.readAsDataURL(file)
+  })
+}
+
+function delay(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms))
+}
+
+function formatShortDate(value?: string) {
+  if (!value) return 'Not available'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return 'Not available'
+  return new Intl.DateTimeFormat('en', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  }).format(date)
+}
+
+function plainTextPreview(value: string) {
+  return value
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim() || 'No comparison response captured yet.'
+}
+
+function parsePlanComparisonResponse(value: string) {
+  const normalized = value.replace(/\r\n/g, '\n').trim()
+  if (!normalized) return []
+
+  const lines = normalized
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+  const sections: Array<{ title: string; items: Array<{ name: string; description: string }> }> = []
+  let current: { title: string; items: Array<{ name: string; description: string }> } | null = null
+
+  for (const line of lines) {
+    if (/^[A-Za-z][A-Za-z\s/&-]+:$/.test(line)) {
+      current = { title: line.replace(/:$/, ''), items: [] }
+      sections.push(current)
+      continue
+    }
+
+    if (!current) {
+      current = { title: 'Comparison Notes', items: [] }
+      sections.push(current)
+    }
+
+    const [name, ...descriptionParts] = line.split(/\s+—\s+|\s+-\s+/)
+    current.items.push({
+      name: name?.trim() || 'Plan detail',
+      description: descriptionParts.join(' - ').trim(),
+    })
+  }
+
+  return sections.filter((section) => section.items.length)
+}
+
+function buildPendingComparisonMessage(payload: QuotePlanComparisonUploadPayload | null) {
+  if (!payload) return 'Upload a plan document or select an existing comparison to view the generated response.'
+
+  return [
+    'Your file has been prepared for plan comparison.',
+    `File: ${payload.uploadedFile.fileName}`,
+    `Type: ${payload.uploadedFile.fileType}`,
+    'The new comparison result will appear here after the analysis service returns the generated record.',
+  ].join('\n\n')
+}
+
+function buildEmptyComparisonMessage() {
+  return [
+    'No comparable plan details were found in this document.',
+    'The uploaded file may not contain recognizable benefits, coverages, inclusions, exclusions, deductibles, or warranties for this quote.',
+    'Please upload a relevant plan schedule or policy document and try the comparison again.',
+  ].join('\n\n')
 }

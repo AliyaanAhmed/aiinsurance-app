@@ -231,6 +231,15 @@ export interface QuoteDetail extends QuoteSummary {
   documentTemplates: DocumentTemplateSummary[]
 }
 
+export interface QuotePlanComparison {
+  id: string
+  name: string
+  response: string
+  quoteId?: string
+  quoteName?: string
+  createdOn?: string
+}
+
 export interface PolicyConversionSummary {
   id: string
   name: string
