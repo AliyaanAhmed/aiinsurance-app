@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import { ArrowLeft, ArrowRight, CalendarDays, ChevronLeft, ChevronRight, ShieldCheck } from 'lucide-react'
+import { ArrowLeft, CalendarDays, ChevronLeft, ChevronRight, ShieldCheck } from 'lucide-react'
 import { Badge } from '../../components/ui/Badge'
 import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
@@ -24,16 +24,12 @@ const tableColumns: Array<{
   render?: (record: RiCapacityCheckRecord) => string
 }> = [
   { key: 'name', label: 'Name' },
-  { key: 'calculatedOn', label: 'Calculated ...', render: (record) => `${formatDate(record.calculatedOn)} ${record.calculatedTime}` },
-  { key: 'calculationSource', label: 'Calculation Sou...' },
-  { key: 'excessToPlace', label: 'Excess to Pla...', render: (record) => formatOptionalMoney(record.excessToPlace) },
+  { key: 'excessToPlace', label: 'Excess to Place', render: (record) => formatOptionalMoney(record.excessToPlace) },
   { key: 'inquiryId', label: 'Inquiry Id' },
   { key: 'isActive', label: 'Is Active' },
   { key: 'outcome', label: 'Outcome' },
   { key: 'quoteId', label: 'Quote Id' },
-  { key: 'retainedAmount', label: 'Retained Amount', render: (record) => formatMoney(record.retainedAmount) },
   { key: 'sumInsured', label: 'Sum Insured', render: (record) => formatMoney(record.sumInsured) },
-  { key: 'treatyAbsorbed', label: 'Treaty Absorbed', render: (record) => formatMoney(record.treatyAbsorbed) },
   { key: 'treatyId', label: 'Treaty Id' },
 ]
 
@@ -139,8 +135,8 @@ export function RiCapacityChecksPage() {
         <Card className="border-danger/20 bg-danger/5 text-sm text-danger">{error}</Card>
       ) : (
       <Card padding="none" variant="premium" className="overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[1500px] border-collapse">
+        <div className="scrollbar-sleek overflow-x-auto">
+          <table className="w-full min-w-[980px] border-collapse">
             <thead className="bg-surface-muted/90">
               <tr>
                 {tableColumns.map((column) => (
@@ -177,7 +173,6 @@ export function RiCapacityChecksPage() {
                           }}
                         >
                           {record.name}
-                          <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
                         </button>
                       ) : column.key === 'isActive' ? (
                         <Badge variant={record.isActive === 'Yes' ? 'approved' : 'neutral'}>

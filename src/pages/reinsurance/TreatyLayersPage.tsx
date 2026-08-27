@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import { ArrowLeft, ArrowRight, Layers3, Plus } from 'lucide-react'
+import { ArrowLeft, Layers3, Plus } from 'lucide-react'
 import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
 import { Input } from '../../components/ui/Input'
@@ -103,7 +103,7 @@ export function TreatyLayersPage() {
         <Card className="border-danger/20 bg-danger/5 text-sm text-danger">{error}</Card>
       ) : (
         <Card padding="none" variant="premium" className="overflow-hidden">
-          <div className="overflow-x-auto">
+          <div className="scrollbar-sleek overflow-x-auto">
             <table className="w-full min-w-full table-fixed border-collapse">
               <thead className="bg-surface-muted/90">
                 <tr>
@@ -141,7 +141,6 @@ export function TreatyLayersPage() {
                           }}
                         >
                           {record.name}
-                          <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
                         </button>
                       ) : column.key === 'treatyId' ? (
                         <span className="font-semibold text-primary">

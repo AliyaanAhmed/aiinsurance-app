@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import { ArrowLeft, ArrowRight, Plus, Rows3 } from 'lucide-react'
+import { ArrowLeft, Plus, Rows3 } from 'lucide-react'
 import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
 import { Input } from '../../components/ui/Input'
@@ -61,15 +61,10 @@ const tableColumns: Array<{
   render?: (record: CessionLineRecord) => string
 }> = [
   { key: 'name', label: 'Name' },
-  { key: 'cededPremium', label: 'Ceded Premi...', render: (record) => formatMoney(record.cededPremium) },
-  { key: 'cededSumInsured', label: 'Ceded Sum Insu...', render: (record) => formatMoney(record.cededSumInsured) },
-  { key: 'cessionBasis', label: 'Cession Ba...' },
-  { key: 'cessionId', label: 'Cession ...' },
-  { key: 'commissionPercentage', label: 'Commission Percen...', render: (record) => formatMoneyLikeDecimal(record.commissionPercentage) },
-  { key: 'facOfferId', label: 'Fac Offer ...' },
+  { key: 'cessionBasis', label: 'Cession Basis' },
+  { key: 'cessionId', label: 'Cession Id' },
   { key: 'netDue', label: 'Net Due', render: (record) => formatMoney(record.netDue) },
-  { key: 'reinsurerId', label: 'Reinsurer...' },
-  { key: 'sharePercentage', label: 'Share Percent...', render: (record) => formatDecimal(record.sharePercentage) },
+  { key: 'reinsurerId', label: 'Reinsurer Id' },
   { key: 'treatyId', label: 'Treaty Id' },
 ]
 
@@ -127,8 +122,8 @@ export function CessionLinesPage() {
         <Card className="border-danger/20 bg-danger/5 text-sm text-danger">{error}</Card>
       ) : (
         <Card padding="none" variant="premium" className="overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[1500px] border-collapse">
+          <div className="scrollbar-sleek overflow-x-auto">
+            <table className="w-full min-w-[820px] border-collapse">
               <thead className="bg-surface-muted/90">
                 <tr>{tableColumns.map((column) => <TableHeader key={column.key}>{column.label}</TableHeader>)}</tr>
               </thead>
@@ -147,7 +142,6 @@ export function CessionLinesPage() {
                         {column.key === 'name' ? (
                           <button type="button" className="group inline-flex items-center gap-2 text-left font-semibold text-primary" onClick={(event) => { event.stopPropagation(); setSelectedId(record.id) }}>
                             {record.name}
-                            <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
                           </button>
                         ) : column.key === 'cessionId' ? (
                           <span className="block max-w-[170px] truncate font-semibold text-primary">{getLookupDisplayValue(cessionOptions, record.cessionLookupId, record.cessionId)}</span>

@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import { ArrowLeft, ArrowRight, CalendarDays, ChevronLeft, ChevronRight, MailCheck, Plus } from 'lucide-react'
+import { ArrowLeft, CalendarDays, ChevronLeft, ChevronRight, MailCheck, Plus } from 'lucide-react'
 import { Badge } from '../../components/ui/Badge'
 import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
@@ -71,14 +71,9 @@ const tableColumns: Array<{
 }> = [
   { key: 'name', label: 'Name' },
   { key: 'isLeader', label: 'Is Leader' },
-  { key: 'offeredSharePercentage', label: 'Offered Share Percen...', render: (record) => formatDecimal(record.offeredSharePercentage) },
   { key: 'placementId', label: 'Placement...' },
-  { key: 'quotedRate', label: 'Quoted R...', render: (record) => formatDecimal(record.quotedRate) },
   { key: 'reinsurerId', label: 'Reinsurer...' },
-  { key: 'responseDate', label: 'Response D...', render: (record) => formatDate(record.responseDate) },
   { key: 'signedLinePercentage', label: 'Signed Line Percent...', render: (record) => formatDecimal(record.signedLinePercentage) },
-  { key: 'termsAndConditions', label: 'Terms and Conditi...' },
-  { key: 'writtenLinePercentage', label: 'Written Line Percent...', render: (record) => formatDecimal(record.writtenLinePercentage) },
   { key: 'statusReason', label: 'Status Rea...' },
 ]
 
@@ -135,8 +130,8 @@ export function FacOffersPage() {
         <Card className="border-danger/20 bg-danger/5 text-sm text-danger">{error}</Card>
       ) : (
         <Card padding="none" variant="premium" className="overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[1500px] border-collapse">
+          <div className="scrollbar-sleek overflow-x-auto">
+            <table className="w-full min-w-[860px] border-collapse">
               <thead className="bg-surface-muted/90">
                 <tr>{tableColumns.map((column) => <TableHeader key={column.key}>{column.label}</TableHeader>)}</tr>
               </thead>
@@ -164,7 +159,6 @@ export function FacOffersPage() {
                             }}
                           >
                             {record.name}
-                            <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
                           </button>
                         ) : column.key === 'isLeader' ? (
                           <Badge variant={record.isLeader === 'Yes' ? 'approved' : 'neutral'}>{record.isLeader}</Badge>

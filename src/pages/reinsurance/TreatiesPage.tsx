@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import { ArrowLeft, ArrowRight, CalendarDays, ChevronLeft, ChevronRight, FileText, Plus } from 'lucide-react'
+import { ArrowLeft, CalendarDays, ChevronLeft, ChevronRight, FileText, Plus } from 'lucide-react'
 import { Badge } from '../../components/ui/Badge'
 import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
@@ -23,19 +23,13 @@ const tableColumns: Array<{
   render?: (record: TreatyRecord) => string
 }> = [
   { key: 'treatyName', label: 'Treaty Name' },
-  { key: 'cessionPercentage', label: 'Cession Percent...', render: (record) => formatDecimal(record.cessionPercentage) },
-  { key: 'commissionPercentage', label: 'Commission Percen...', render: (record) => formatDecimal(record.commissionPercentage) },
-  { key: 'inceptionDate', label: 'Inception D...', render: (record) => formatDate(record.inceptionDate) },
-  { key: 'isCedable', label: 'Is Ceda...' },
-  { key: 'ownRetention', label: 'Own Retenti...', render: (record) => formatOptionalMoney(record.ownRetention) },
-  { key: 'productId', label: 'Product...' },
-  { key: 'profitCommissionPct', label: 'Profit Commissi...', render: (record) => formatDecimal(record.profitCommissionPct) },
+  { key: 'inceptionDate', label: 'Inception Date', render: (record) => formatDate(record.inceptionDate) },
+  { key: 'productId', label: 'Product Id' },
+  { key: 'profitCommissionPct', label: 'Profit Commission PCT', render: (record) => formatDecimal(record.profitCommissionPct) },
   { key: 'shariahBasis', label: 'Shariah Basis' },
-  { key: 'surplusSharingPct', label: 'Surplus Sharing PCT', render: (record) => formatDecimal(record.surplusSharingPct) },
   { key: 'treatyCapacity', label: 'Treaty Capacity', render: (record) => formatMoney(record.treatyCapacity) },
   { key: 'treatyType', label: 'Treaty Type' },
   { key: 'treatyYear', label: 'Treaty Year', render: (record) => formatNumber(record.treatyYear) },
-  { key: 'wakalaFeePercentage', label: 'Wakala Fee Percentage', render: (record) => formatDecimal(record.wakalaFeePercentage) },
 ]
 
 const yesNoOptions = [
@@ -148,8 +142,8 @@ export function TreatiesPage() {
         <Card className="border-danger/20 bg-danger/5 text-sm text-danger">{error}</Card>
       ) : (
         <Card padding="none" variant="premium" className="overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="min-w-[1540px] border-collapse">
+          <div className="scrollbar-sleek overflow-x-auto">
+            <table className="w-full min-w-[1120px] border-collapse">
               <thead className="bg-surface-muted/90">
                 <tr>
                   {tableColumns.map((column) => (
@@ -186,7 +180,6 @@ export function TreatiesPage() {
                           }}
                         >
                           {record.treatyName}
-                          <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
                         </button>
                       ) : column.key === 'isCedable' ? (
                         <Badge variant={record.isCedable === 'Yes' ? 'approved' : 'neutral'}>

@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import { ArrowLeft, ArrowRight, Network, Plus } from 'lucide-react'
+import { ArrowLeft, Network, Plus } from 'lucide-react'
 import { Badge } from '../../components/ui/Badge'
 import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
@@ -115,7 +115,7 @@ export function TreatyParticipationsPage() {
         <Card className="border-danger/20 bg-danger/5 text-sm text-danger">{error}</Card>
       ) : (
       <Card padding="none" variant="premium" className="overflow-hidden">
-        <div className="overflow-x-auto">
+        <div className="scrollbar-sleek overflow-x-auto">
           <table className="w-full min-w-full table-fixed border-collapse">
             <thead className="bg-surface-muted/90">
               <tr>
@@ -153,7 +153,6 @@ export function TreatyParticipationsPage() {
                           }}
                         >
                           {record.name}
-                          <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
                         </button>
                       ) : column.key === 'isLeader' ? (
                         <Badge variant={record.isLeader === 'Yes' ? 'approved' : 'neutral'}>

@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import { ArrowLeft, ArrowRight, CalendarDays, ChevronLeft, ChevronRight, Plus, Send } from 'lucide-react'
+import { ArrowLeft, CalendarDays, ChevronLeft, ChevronRight, Plus, Send } from 'lucide-react'
 import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
 import { Input } from '../../components/ui/Input'
@@ -48,13 +48,9 @@ const tableColumns: Array<{
   render?: (record: FacPlacementRecord) => string
 }> = [
   { key: 'name', label: 'Name' },
-  { key: 'amountToPlace', label: 'Amount to Pl...', render: (record) => formatMoney(record.amountToPlace) },
   { key: 'brokerId', label: 'Broker Id' },
   { key: 'brokeragePercentage', label: 'Brokerage Percent...', render: (record) => formatDecimal(record.brokeragePercentage) },
-  { key: 'capacityCheckId', label: 'Capacity Check...' },
   { key: 'quoteId', label: 'Quote Id' },
-  { key: 'riskDescription', label: 'Risk Descripti...' },
-  { key: 'signedDownFactor', label: 'Signed Down Fa...', render: (record) => formatDecimal(record.signedDownFactor) },
   { key: 'subscribedPercentage', label: 'Subscribed Percentage', render: (record) => formatDecimal(record.subscribedPercentage) },
   { key: 'targetCloseDate', label: 'Target Close Date', render: (record) => formatDate(record.targetCloseDate) },
 ]
@@ -118,8 +114,8 @@ export function FacPlacementsPage() {
         <Card className="border-danger/20 bg-danger/5 text-sm text-danger">{error}</Card>
       ) : (
         <Card padding="none" variant="premium" className="overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[1500px] border-collapse">
+          <div className="scrollbar-sleek overflow-x-auto">
+            <table className="w-full min-w-[920px] border-collapse">
               <thead className="bg-surface-muted/90">
                 <tr>
                   {tableColumns.map((column) => (
@@ -156,7 +152,6 @@ export function FacPlacementsPage() {
                               }}
                             >
                               {record.name}
-                              <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
                             </button>
                           ) : column.key === 'brokerId' ? (
                             <span className="font-semibold text-primary">

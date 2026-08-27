@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import { ArrowLeft, ArrowRight, CalendarDays, ChevronLeft, ChevronRight, FileCheck2, Plus } from 'lucide-react'
+import { ArrowLeft, CalendarDays, ChevronLeft, ChevronRight, FileCheck2, Plus } from 'lucide-react'
 import { Badge } from '../../components/ui/Badge'
 import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
@@ -88,19 +88,14 @@ const tableColumns: Array<{
   render?: (record: CessionRecord) => string
 }> = [
   { key: 'name', label: 'Name' },
-  { key: 'adjuststCessionId', label: 'Adjustst Cessio...' },
-  { key: 'cededSumInsured', label: 'Ceded Sum Insu...', render: (record) => formatMoney(record.cededSumInsured) },
-  { key: 'cessionBasis', label: 'Cession Ba...' },
-  { key: 'commissionAmount', label: 'Commission Amo...', render: (record) => formatMoney(record.commissionAmount) },
-  { key: 'effectiveDate', label: 'Effective D...', render: (record) => formatDate(record.effectiveDate) },
-  { key: 'grossSumInsured', label: 'Gross Sum Insu...', render: (record) => formatMoney(record.grossSumInsured) },
-  { key: 'isAdjustment', label: 'Is Adjustm...' },
-  { key: 'netPayableToReinsurers', label: 'Net Payable to Reins...', render: (record) => formatMoney(record.netPayableToReinsurers) },
-  { key: 'policyConversionId', label: 'Policy Conversio...' },
+  { key: 'cededSumInsured', label: 'Ceded Sum Insured', render: (record) => formatMoney(record.cededSumInsured) },
+  { key: 'commissionAmount', label: 'Commission Amount', render: (record) => formatMoney(record.commissionAmount) },
+  { key: 'isAdjustment', label: 'Is Adjustment' },
+  { key: 'netPayableToReinsurers', label: 'Net Payable to Reinsurers', render: (record) => formatMoney(record.netPayableToReinsurers) },
   { key: 'policyId', label: 'Policy Id' },
-  { key: 'retainedSumInsured', label: 'Retained Sum Ins...', render: (record) => formatMoney(record.retainedSumInsured) },
-  { key: 'transactionType', label: 'Transaction T...' },
-  { key: 'statusReason', label: 'Status Rea...' },
+  { key: 'retainedSumInsured', label: 'Retained Sum Insured', render: (record) => formatMoney(record.retainedSumInsured) },
+  { key: 'transactionType', label: 'Transaction Type' },
+  { key: 'statusReason', label: 'Status Reason' },
 ]
 
 export function CessionsPage() {
@@ -154,8 +149,8 @@ export function CessionsPage() {
         <Card className="border-danger/20 bg-danger/5 text-sm text-danger">{error}</Card>
       ) : (
         <Card padding="none" variant="premium" className="overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[1700px] border-collapse">
+          <div className="scrollbar-sleek overflow-x-auto">
+            <table className="w-full min-w-[1280px] border-collapse">
               <thead className="bg-surface-muted/90">
                 <tr>{tableColumns.map((column) => <TableHeader key={column.key}>{column.label}</TableHeader>)}</tr>
               </thead>
@@ -174,7 +169,6 @@ export function CessionsPage() {
                         {column.key === 'name' ? (
                           <button type="button" className="group inline-flex items-center gap-2 text-left font-semibold text-primary" onClick={(event) => { event.stopPropagation(); setSelectedId(record.id) }}>
                             {record.name}
-                            <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
                           </button>
                         ) : column.key === 'adjuststCessionId' ? (
                           <span className="block max-w-[190px] truncate font-semibold text-primary">{getLookupDisplayValue(cessionOptions, record.adjuststCessionLookupId, record.adjuststCessionId)}</span>

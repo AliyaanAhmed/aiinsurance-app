@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import { ArrowLeft, ArrowRight, CalendarDays, ChevronLeft, ChevronRight, Handshake, Plus } from 'lucide-react'
+import { ArrowLeft, CalendarDays, ChevronLeft, ChevronRight, Handshake, Plus } from 'lucide-react'
 import { Badge } from '../../components/ui/Badge'
 import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
@@ -23,15 +23,11 @@ const tableColumns: Array<{
   render?: (record: ReinsurerRecord) => string
 }> = [
   { key: 'name', label: 'Name' },
-  { key: 'accountId', label: 'Account ID' },
   { key: 'currentExposure', label: 'Current Exposure', render: (record) => formatMoney(record.currentExposure) },
   { key: 'maxExposureLimit', label: 'Max Exposure Limit', render: (record) => formatMoney(record.maxExposureLimit) },
   { key: 'isApproved', label: 'Approved' },
-  { key: 'partyType', label: 'Party Type' },
   { key: 'ratingAgency', label: 'Rating Agency' },
-  { key: 'ratingExpiryDate', label: 'Rating Expiry Date', render: (record) => formatDate(record.ratingExpiryDate) },
   { key: 'securityRating', label: 'Security Rating' },
-  { key: 'shariahApprovalRef', label: 'Shariah Approval Ref' },
   { key: 'shariahCompliant', label: 'Shariah Compliant' },
   { key: 'country', label: 'Country' },
 ]
@@ -178,8 +174,8 @@ export function ReinsurersPage() {
         <Card className="border-danger/20 bg-danger/5 text-sm text-danger">{error}</Card>
       ) : (
         <Card padding="none" variant="premium" className="overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="min-w-[1320px] border-collapse">
+          <div className="scrollbar-sleek overflow-x-auto">
+            <table className="w-full min-w-[1320px] border-collapse">
               <thead className="bg-surface-muted/90">
                 <tr>
                   {tableColumns.map((column) => (
@@ -216,7 +212,6 @@ export function ReinsurersPage() {
                             }}
                           >
                             {record.name}
-                            <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
                           </button>
                         ) : column.key === 'accountId' ? (
                           <span className="font-semibold text-primary">
