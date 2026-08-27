@@ -1,5 +1,6 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import { ArrowLeft, CalendarDays, ChevronLeft, ChevronRight, ShieldCheck } from 'lucide-react'
+import { useLocation, useNavigate } from 'react-router-dom'
+import { ArrowLeft, CalendarDays, ChevronLeft, ChevronRight, FileText, ShieldCheck, type LucideIcon } from 'lucide-react'
 import { Badge } from '../../components/ui/Badge'
 import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
@@ -11,11 +12,13 @@ import {
   listInquiryLookupOptions,
   listQuoteLookupOptions,
   listRiCapacityChecks,
+  listTreaties,
   listTreatyLookupOptions,
   updateRiCapacityCheck,
   type ReinsuranceLookupOption,
   type RiCapacityCheckRecord,
   type RiCapacityCheckSaveInput,
+  type TreatyRecord,
 } from '../../services/reinsuranceService'
 
 const tableColumns: Array<{
@@ -83,22 +86,29 @@ interface RiCapacityCheckCreateFormState {
   treatyId: string
 }
 
+type RiCapacityCheckDetailTab = 'details' | 'treaty'
+
 export function RiCapacityChecksPage() {
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const location = useLocation()
+  const navigate = useNavigate()
+  const routeState = location.state as { selectedId?: string } | null
+  const [selectedId, setSelectedId] = useState<string | null>(routeState?.selectedId ?? null)
   const [refreshKey, setRefreshKey] = useState(0)
   const { data, loading, error } = useAsyncData(async () => {
-    const [records, inquiryOptions, quoteOptions, treatyOptions] = await Promise.all([
+    const [records, inquiryOptions, quoteOptions, treatyOptions, treaties] = await Promise.all([
       listRiCapacityChecks(),
       listInquiryLookupOptions(),
       listQuoteLookupOptions(),
       listTreatyLookupOptions(),
+      listTreaties(),
     ])
-    return { records, inquiryOptions, quoteOptions, treatyOptions }
+    return { records, inquiryOptions, quoteOptions, treatyOptions, treaties }
   }, [refreshKey])
   const records = data?.records ?? []
   const inquiryOptions = data?.inquiryOptions ?? []
   const quoteOptions = data?.quoteOptions ?? []
   const treatyOptions = data?.treatyOptions ?? []
+  const treaties = data?.treaties ?? []
   const selected = useMemo(
     () => records.find((record) => record.id === selectedId),
     [records, selectedId],
@@ -111,7 +121,9 @@ export function RiCapacityChecksPage() {
         inquiryOptions={inquiryOptions}
         quoteOptions={quoteOptions}
         treatyOptions={treatyOptions}
+        treaties={treaties}
         onBack={() => setSelectedId(null)}
+        onOpenRelatedRecord={(path, relatedId) => navigate(path, { state: { selectedId: relatedId } })}
         onSave={async (updatedRecord) => {
           await updateRiCapacityCheck(updatedRecord.id, toRiCapacityCheckSaveInput(updatedRecord))
           setRefreshKey((value) => value + 1)
@@ -333,20 +345,38 @@ function RiCapacityCheckDetail({
   inquiryOptions,
   quoteOptions,
   treatyOptions,
+  treaties,
   onBack,
+  onOpenRelatedRecord,
   onSave,
 }: {
   record: RiCapacityCheckRecord
   inquiryOptions: ReinsuranceLookupOption[]
   quoteOptions: ReinsuranceLookupOption[]
   treatyOptions: ReinsuranceLookupOption[]
+  treaties: TreatyRecord[]
   onBack: () => void
+  onOpenRelatedRecord: (path: string, recordId: string) => void
   onSave: (record: RiCapacityCheckRecord) => Promise<void>
 }) {
   const [isEditing, setIsEditing] = useState(false)
+  const [activeTab, setActiveTab] = useState<RiCapacityCheckDetailTab>('details')
   const [form, setForm] = useState<RiCapacityCheckCreateFormState>(() => toRiCapacityCheckForm(record))
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const relatedTreaty = useMemo(
+    () => treaties.find((item) => isSameLookupId(item.id, record.treatyLookupId)),
+    [record.treatyLookupId, treaties],
+  )
+  const tabs: Array<{
+    id: RiCapacityCheckDetailTab
+    label: string
+    count?: number
+    icon: LucideIcon
+  }> = [
+    { id: 'details', label: 'Ri-Capacity Check Details', icon: ShieldCheck },
+    { id: 'treaty', label: 'Treaty', count: relatedTreaty ? 1 : 0, icon: FileText },
+  ]
 
   const updateForm = <Key extends keyof RiCapacityCheckCreateFormState>(
     key: Key,
@@ -416,6 +446,34 @@ function RiCapacityCheckDetail({
         }
       />
 
+      <div className="grid gap-2 rounded-2xl border border-border-soft bg-surface p-2 shadow-sm lg:grid-cols-2">
+        {tabs.map((tab) => {
+          const Icon = tab.icon
+          const active = activeTab === tab.id
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex min-h-[44px] items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition ${
+                active
+                  ? 'bg-primary text-white shadow-glow'
+                  : 'text-muted-foreground hover:bg-primary/8 hover:text-primary'
+              }`}
+            >
+              <Icon className="h-4 w-4" />
+              <span>{tab.label}</span>
+              {typeof tab.count === 'number' ? (
+                <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${active ? 'bg-white/18 text-white' : 'bg-primary/10 text-primary'}`}>
+                  {tab.count}
+                </span>
+              ) : null}
+            </button>
+          )
+        })}
+      </div>
+
+      {activeTab === 'details' ? (
       <Card variant="premium" className="space-y-5">
         {saveError ? (
           <div className="rounded-xl border border-danger/20 bg-danger/5 px-4 py-3 text-sm text-danger">{saveError}</div>
@@ -473,7 +531,61 @@ function RiCapacityCheckDetail({
           )}
         </div>
       </Card>
+      ) : (
+        <RelatedTreatyGrid
+          record={relatedTreaty}
+          onOpen={(recordId) => onOpenRelatedRecord('/reinsurance/treaties', recordId)}
+        />
+      )}
     </div>
+  )
+}
+
+function RelatedTreatyGrid({
+  record,
+  onOpen,
+}: {
+  record: TreatyRecord | undefined
+  onOpen: (recordId: string) => void
+}) {
+  const columns = ['Treaty Name', 'Inception Date', 'Treaty Capacity', 'Treaty Type', 'Shariah Basis']
+  return (
+    <Card padding="none" variant="premium" className="overflow-hidden">
+      <div className="flex items-center justify-between gap-3 border-b border-border-soft px-5 py-4">
+        <div>
+          <h3 className="text-lg font-bold">Treaty</h3>
+          <p className="mt-1 text-sm text-muted-foreground">Linked parent record for this ri-capacity check.</p>
+        </div>
+        <Badge variant="info">{record ? 1 : 0}</Badge>
+      </div>
+      <div className="scrollbar-sleek overflow-x-auto">
+        <table className="w-full min-w-[760px] border-collapse">
+          <thead className="bg-surface-muted/90">
+            <tr>{columns.map((column) => <TableHeader key={column}>{column}</TableHeader>)}</tr>
+          </thead>
+          <tbody>
+            {record ? (
+              <tr
+                onClick={() => onOpen(record.id)}
+                className="cursor-pointer border-b border-border-soft/80 bg-surface transition hover:bg-primary/5"
+              >
+                <td className="px-4 py-4 align-middle text-[13px] font-semibold text-primary">{record.treatyName}</td>
+                <td className="px-4 py-4 align-middle text-[13px] text-foreground">{formatDate(record.inceptionDate)}</td>
+                <td className="px-4 py-4 align-middle text-[13px] text-foreground">{formatMoney(record.treatyCapacity)}</td>
+                <td className="px-4 py-4 align-middle text-[13px] text-foreground">{record.treatyType}</td>
+                <td className="px-4 py-4 align-middle text-[13px] text-foreground">{record.shariahBasis}</td>
+              </tr>
+            ) : (
+              <tr className="bg-surface">
+                <td colSpan={columns.length} className="px-6 py-12 text-center text-sm text-muted-foreground">
+                  No treaty is linked to this ri-capacity check.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </Card>
   )
 }
 
@@ -576,6 +688,14 @@ function resolveLookupLabel(options: ReinsuranceLookupOption[], value: string, f
 function getLookupDisplayValue(options: ReinsuranceLookupOption[], lookupId: string, fallback: string) {
   if (!lookupId) return fallback
   return options.find((option) => option.value.toLowerCase() === lookupId.toLowerCase())?.label ?? fallback
+}
+
+function isSameLookupId(left: string, right: string) {
+  return normalizeLookupId(left) === normalizeLookupId(right)
+}
+
+function normalizeLookupId(value: string) {
+  return value.replace(/[{}]/g, '').toLowerCase()
 }
 
 function formatMoney(value: number) {

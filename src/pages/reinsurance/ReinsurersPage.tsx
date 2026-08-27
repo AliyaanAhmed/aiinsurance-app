@@ -1,5 +1,6 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import { ArrowLeft, CalendarDays, ChevronLeft, ChevronRight, Handshake, Plus } from 'lucide-react'
+import { useLocation, useNavigate } from 'react-router-dom'
+import { ArrowLeft, CalendarDays, ChevronLeft, ChevronRight, Handshake, MailCheck, Network, Plus, Rows3, type LucideIcon } from 'lucide-react'
 import { Badge } from '../../components/ui/Badge'
 import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
@@ -9,12 +10,22 @@ import { Select } from '../../components/ui/Select'
 import { useAsyncData } from '../../hooks/useAsyncData'
 import {
   createReinsurer,
+  listCessionLines,
+  listCessionLookupOptions,
+  listFacOffers,
+  listFacPlacementLookupOptions,
   listReinsurerAccountOptions,
   listReinsurers,
+  listTreatyLayerLookupOptions,
+  listTreatyLookupOptions,
+  listTreatyParticipations,
   updateReinsurer,
+  type CessionLineRecord,
+  type FacOfferRecord,
   type ReinsuranceLookupOption,
   type ReinsurerRecord,
   type ReinsurerSaveInput,
+  type TreatyParticipationRecord,
 } from '../../services/reinsuranceService'
 
 const tableColumns: Array<{
@@ -76,6 +87,8 @@ const countryOptions = [
   { value: 'USA', label: 'USA' },
 ]
 
+type ReinsurerDetailTab = 'details' | 'treatyParticipations' | 'facOffers' | 'cessionLines'
+
 interface ReinsurerCreateFormState {
   name: string
   accountId: string
@@ -122,18 +135,55 @@ const emptyCreateForm: ReinsurerCreateFormState = {
 }
 
 export function ReinsurersPage() {
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const location = useLocation()
+  const navigate = useNavigate()
+  const routeState = location.state as { selectedId?: string } | null
+  const [selectedId, setSelectedId] = useState<string | null>(routeState?.selectedId ?? null)
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
   const { data, loading, error } = useAsyncData(async () => {
-    const [records, accountOptions] = await Promise.all([
+    const [
+      records,
+      accountOptions,
+      treatyOptions,
+      treatyLayerOptions,
+      placementOptions,
+      cessionOptions,
+      treatyParticipations,
+      facOffers,
+      cessionLines,
+    ] = await Promise.all([
       listReinsurers(),
       listReinsurerAccountOptions(),
+      listTreatyLookupOptions(),
+      listTreatyLayerLookupOptions(),
+      listFacPlacementLookupOptions(),
+      listCessionLookupOptions(),
+      listTreatyParticipations(),
+      listFacOffers(),
+      listCessionLines(),
     ])
-    return { records, accountOptions }
+    return {
+      records,
+      accountOptions,
+      treatyOptions,
+      treatyLayerOptions,
+      placementOptions,
+      cessionOptions,
+      treatyParticipations,
+      facOffers,
+      cessionLines,
+    }
   }, [refreshKey])
   const records = data?.records ?? []
   const accountOptions = data?.accountOptions ?? []
+  const treatyOptions = data?.treatyOptions ?? []
+  const treatyLayerOptions = data?.treatyLayerOptions ?? []
+  const placementOptions = data?.placementOptions ?? []
+  const cessionOptions = data?.cessionOptions ?? []
+  const treatyParticipations = data?.treatyParticipations ?? []
+  const facOffers = data?.facOffers ?? []
+  const cessionLines = data?.cessionLines ?? []
   const selected = useMemo(
     () => records.find((record) => record.id === selectedId),
     [records, selectedId],
@@ -144,7 +194,15 @@ export function ReinsurersPage() {
       <ReinsurerDetail
         record={selected}
         accountOptions={accountOptions}
+        treatyOptions={treatyOptions}
+        treatyLayerOptions={treatyLayerOptions}
+        placementOptions={placementOptions}
+        cessionOptions={cessionOptions}
+        treatyParticipations={treatyParticipations}
+        facOffers={facOffers}
+        cessionLines={cessionLines}
         onBack={() => setSelectedId(null)}
+        onOpenRelatedRecord={(path, relatedId) => navigate(path, { state: { selectedId: relatedId } })}
         onSave={async (updatedRecord) => {
           await updateReinsurer(updatedRecord.id, toSaveInput(updatedRecord))
           setRefreshKey((value) => value + 1)
@@ -571,18 +629,58 @@ function ModalField({
 function ReinsurerDetail({
   record,
   accountOptions,
+  treatyOptions,
+  treatyLayerOptions,
+  placementOptions,
+  cessionOptions,
+  treatyParticipations,
+  facOffers,
+  cessionLines,
   onBack,
+  onOpenRelatedRecord,
   onSave,
 }: {
   record: ReinsurerRecord
   accountOptions: ReinsuranceLookupOption[]
+  treatyOptions: ReinsuranceLookupOption[]
+  treatyLayerOptions: ReinsuranceLookupOption[]
+  placementOptions: ReinsuranceLookupOption[]
+  cessionOptions: ReinsuranceLookupOption[]
+  treatyParticipations: TreatyParticipationRecord[]
+  facOffers: FacOfferRecord[]
+  cessionLines: CessionLineRecord[]
   onBack: () => void
+  onOpenRelatedRecord: (path: string, recordId: string) => void
   onSave: (record: ReinsurerRecord) => Promise<void>
 }) {
   const [isEditing, setIsEditing] = useState(false)
+  const [activeTab, setActiveTab] = useState<ReinsurerDetailTab>('details')
   const [form, setForm] = useState<ReinsurerEditFormState>(() => toEditForm(record))
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const relatedTreatyParticipations = useMemo(
+    () => treatyParticipations.filter((item) => isSameLookupId(item.reinsurerLookupId, record.id)),
+    [record.id, treatyParticipations],
+  )
+  const relatedFacOffers = useMemo(
+    () => facOffers.filter((item) => isSameLookupId(item.reinsurerLookupId, record.id)),
+    [facOffers, record.id],
+  )
+  const relatedCessionLines = useMemo(
+    () => cessionLines.filter((item) => isSameLookupId(item.reinsurerLookupId, record.id)),
+    [cessionLines, record.id],
+  )
+  const tabs: Array<{
+    id: ReinsurerDetailTab
+    label: string
+    count?: number
+    icon: LucideIcon
+  }> = [
+    { id: 'details', label: 'Reinsurer Details', icon: Handshake },
+    { id: 'treatyParticipations', label: 'Treaty Participations', count: relatedTreatyParticipations.length, icon: Network },
+    { id: 'facOffers', label: 'Fac Offers', count: relatedFacOffers.length, icon: MailCheck },
+    { id: 'cessionLines', label: 'Cession Lines', count: relatedCessionLines.length, icon: Rows3 },
+  ]
 
   const updateForm = <Key extends keyof ReinsurerEditFormState>(
     key: Key,
@@ -655,6 +753,34 @@ function ReinsurerDetail({
         }
       />
 
+      <div className="grid gap-2 rounded-2xl border border-border-soft bg-surface p-2 shadow-sm lg:grid-cols-4">
+        {tabs.map((tab) => {
+          const Icon = tab.icon
+          const active = activeTab === tab.id
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex min-h-[44px] items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition ${
+                active
+                  ? 'bg-primary text-white shadow-glow'
+                  : 'text-muted-foreground hover:bg-primary/8 hover:text-primary'
+              }`}
+            >
+              <Icon className="h-4 w-4" />
+              <span>{tab.label}</span>
+              {typeof tab.count === 'number' ? (
+                <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${active ? 'bg-white/18 text-white' : 'bg-primary/10 text-primary'}`}>
+                  {tab.count}
+                </span>
+              ) : null}
+            </button>
+          )
+        })}
+      </div>
+
+      {activeTab === 'details' ? (
       <Card variant="premium" className="space-y-5">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
@@ -784,7 +910,180 @@ function ReinsurerDetail({
           )}
         </div>
       </Card>
+      ) : activeTab === 'treatyParticipations' ? (
+        <RelatedTreatyParticipationsGrid
+          records={relatedTreatyParticipations}
+          treatyOptions={treatyOptions}
+          treatyLayerOptions={treatyLayerOptions}
+          onOpen={(recordId) => onOpenRelatedRecord('/reinsurance/treaty-participations', recordId)}
+        />
+      ) : activeTab === 'facOffers' ? (
+        <RelatedFacOffersGrid
+          records={relatedFacOffers}
+          placementOptions={placementOptions}
+          onOpen={(recordId) => onOpenRelatedRecord('/reinsurance/fac-offers', recordId)}
+        />
+      ) : (
+        <RelatedCessionLinesGrid
+          records={relatedCessionLines}
+          cessionOptions={cessionOptions}
+          treatyOptions={treatyOptions}
+          onOpen={(recordId) => onOpenRelatedRecord('/reinsurance/cession-lines', recordId)}
+        />
+      )}
     </div>
+  )
+}
+
+function RelatedTreatyParticipationsGrid({
+  records,
+  treatyOptions,
+  treatyLayerOptions,
+  onOpen,
+}: {
+  records: TreatyParticipationRecord[]
+  treatyOptions: ReinsuranceLookupOption[]
+  treatyLayerOptions: ReinsuranceLookupOption[]
+  onOpen: (recordId: string) => void
+}) {
+  return (
+    <RelatedGridCard
+      title="Treaty Participations"
+      count={records.length}
+      emptyMessage="No treaty participations are linked to this reinsurer."
+      columns={['Name', 'Is Leader', 'Share Percentage', 'Treaty Id', 'Treaty Layer Id']}
+      rows={records.map((record) => ({
+        id: record.id,
+        cells: [
+          <span className="font-semibold text-primary">{record.name}</span>,
+          <Badge variant={record.isLeader === 'Yes' ? 'approved' : 'neutral'}>{record.isLeader}</Badge>,
+          formatDecimal(record.sharePercentage),
+          <span className="font-semibold text-primary">{getLookupDisplayValue(treatyOptions, record.treatyLookupId, record.treatyId)}</span>,
+          <span className="font-semibold text-primary">{getLookupDisplayValue(treatyLayerOptions, record.treatyLayerLookupId, record.treatyLayerId)}</span>,
+        ],
+      }))}
+      onOpen={onOpen}
+    />
+  )
+}
+
+function RelatedFacOffersGrid({
+  records,
+  placementOptions,
+  onOpen,
+}: {
+  records: FacOfferRecord[]
+  placementOptions: ReinsuranceLookupOption[]
+  onOpen: (recordId: string) => void
+}) {
+  return (
+    <RelatedGridCard
+      title="Fac Offers"
+      count={records.length}
+      emptyMessage="No fac offers are linked to this reinsurer."
+      columns={['Name', 'Is Leader', 'Placement Id', 'Signed Line Percentage', 'Status Reason']}
+      rows={records.map((record) => ({
+        id: record.id,
+        cells: [
+          <span className="font-semibold text-primary">{record.name}</span>,
+          <Badge variant={record.isLeader === 'Yes' ? 'approved' : 'neutral'}>{record.isLeader}</Badge>,
+          <span className="font-semibold text-primary">{getLookupDisplayValue(placementOptions, record.placementLookupId, record.placementId)}</span>,
+          formatDecimal(record.signedLinePercentage),
+          <Badge variant={record.statusReason === 'Accepted' ? 'approved' : record.statusReason === 'Declined' ? 'rejected' : 'pending'}>
+            {record.statusReason}
+          </Badge>,
+        ],
+      }))}
+      onOpen={onOpen}
+    />
+  )
+}
+
+function RelatedCessionLinesGrid({
+  records,
+  cessionOptions,
+  treatyOptions,
+  onOpen,
+}: {
+  records: CessionLineRecord[]
+  cessionOptions: ReinsuranceLookupOption[]
+  treatyOptions: ReinsuranceLookupOption[]
+  onOpen: (recordId: string) => void
+}) {
+  return (
+    <RelatedGridCard
+      title="Cession Lines"
+      count={records.length}
+      emptyMessage="No cession lines are linked to this reinsurer."
+      columns={['Name', 'Cession Basis', 'Cession Id', 'Net Due', 'Treaty Id']}
+      rows={records.map((record) => ({
+        id: record.id,
+        cells: [
+          <span className="font-semibold text-primary">{record.name}</span>,
+          record.cessionBasis,
+          <span className="font-semibold text-primary">{getLookupDisplayValue(cessionOptions, record.cessionLookupId, record.cessionId)}</span>,
+          formatMoney(record.netDue),
+          <span className="font-semibold text-primary">{getLookupDisplayValue(treatyOptions, record.treatyLookupId, record.treatyId)}</span>,
+        ],
+      }))}
+      onOpen={onOpen}
+    />
+  )
+}
+
+function RelatedGridCard({
+  title,
+  count,
+  emptyMessage,
+  columns,
+  rows,
+  onOpen,
+}: {
+  title: string
+  count: number
+  emptyMessage: string
+  columns: string[]
+  rows: Array<{ id: string; cells: ReactNode[] }>
+  onOpen: (recordId: string) => void
+}) {
+  return (
+    <Card padding="none" variant="premium" className="overflow-hidden">
+      <div className="flex items-center justify-between gap-3 border-b border-border-soft px-5 py-4">
+        <div>
+          <h3 className="text-lg font-bold">{title}</h3>
+          <p className="mt-1 text-sm text-muted-foreground">Related records linked to this reinsurer.</p>
+        </div>
+        <Badge variant="info">{count}</Badge>
+      </div>
+      <div className="scrollbar-sleek overflow-x-auto">
+        <table className="w-full min-w-[860px] border-collapse">
+          <thead className="bg-surface-muted/90">
+            <tr>{columns.map((column) => <TableHeader key={column}>{column}</TableHeader>)}</tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 ? (
+              <tr className="bg-surface">
+                <td colSpan={columns.length} className="px-6 py-12 text-center text-sm text-muted-foreground">
+                  {emptyMessage}
+                </td>
+              </tr>
+            ) : rows.map((row) => (
+              <tr
+                key={row.id}
+                onClick={() => onOpen(row.id)}
+                className="cursor-pointer border-b border-border-soft/80 bg-surface transition hover:bg-primary/5"
+              >
+                {row.cells.map((cell, cellIndex) => (
+                  <td key={cellIndex} className="px-4 py-4 align-middle text-[13px] text-foreground">
+                    {cell}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Card>
   )
 }
 
@@ -912,6 +1211,21 @@ function resolveLookupLabel(options: ReinsuranceLookupOption[], value: string, f
 function getLookupDisplayValue(options: ReinsuranceLookupOption[], lookupId: string, fallback: string) {
   if (!lookupId) return fallback
   return options.find((option) => option.value.toLowerCase() === lookupId.toLowerCase())?.label ?? fallback
+}
+
+function isSameLookupId(left: string, right: string) {
+  return normalizeLookupId(left) === normalizeLookupId(right)
+}
+
+function normalizeLookupId(value: string) {
+  return value.replace(/[{}]/g, '').trim().toLowerCase()
+}
+
+function formatDecimal(value: number) {
+  return new Intl.NumberFormat('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value)
 }
 
 function parseDateValue(value: string) {

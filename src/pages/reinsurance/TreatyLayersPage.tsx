@@ -1,5 +1,7 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import { ArrowLeft, Layers3, Plus } from 'lucide-react'
+import { useLocation, useNavigate } from 'react-router-dom'
+import { ArrowLeft, FileText, Layers3, Network, Plus, type LucideIcon } from 'lucide-react'
+import { Badge } from '../../components/ui/Badge'
 import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
 import { Input } from '../../components/ui/Input'
@@ -8,12 +10,16 @@ import { Select } from '../../components/ui/Select'
 import { useAsyncData } from '../../hooks/useAsyncData'
 import {
   createTreatyLayer,
+  listReinsurerLookupOptions,
+  listTreatyLookupOptions,
   listTreatyLayers,
   listTreatyLayerLookupOptions,
+  listTreatyParticipations,
   updateTreatyLayer,
   type ReinsuranceLookupOption,
   type TreatyLayerRecord,
   type TreatyLayerSaveInput,
+  type TreatyParticipationRecord,
 } from '../../services/reinsuranceService'
 
 const tableColumns: Array<{
@@ -50,19 +56,30 @@ const emptyTreatyLayerCreateForm: TreatyLayerCreateFormState = {
   treatyId: 'Select',
 }
 
+type TreatyLayerDetailTab = 'details' | 'treatyParticipations'
+
 export function TreatyLayersPage() {
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const location = useLocation()
+  const navigate = useNavigate()
+  const routeState = location.state as { selectedId?: string } | null
+  const [selectedId, setSelectedId] = useState<string | null>(routeState?.selectedId ?? null)
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
   const { data, loading, error } = useAsyncData(async () => {
-    const [records, treatyOptions] = await Promise.all([
+    const [records, treatyOptions, participationTreatyOptions, reinsurerOptions, treatyParticipations] = await Promise.all([
       listTreatyLayers(),
       listTreatyLayerLookupOptions(),
+      listTreatyLookupOptions(),
+      listReinsurerLookupOptions(),
+      listTreatyParticipations(),
     ])
-    return { records, treatyOptions }
+    return { records, treatyOptions, participationTreatyOptions, reinsurerOptions, treatyParticipations }
   }, [refreshKey])
   const records = data?.records ?? []
   const treatyOptions = data?.treatyOptions ?? []
+  const participationTreatyOptions = data?.participationTreatyOptions ?? []
+  const reinsurerOptions = data?.reinsurerOptions ?? []
+  const treatyParticipations = data?.treatyParticipations ?? []
   const selected = useMemo(
     () => records.find((record) => record.id === selectedId),
     [records, selectedId],
@@ -73,7 +90,11 @@ export function TreatyLayersPage() {
       <TreatyLayerDetail
         record={selected}
         treatyOptions={treatyOptions}
+        participationTreatyOptions={participationTreatyOptions}
+        reinsurerOptions={reinsurerOptions}
+        treatyParticipations={treatyParticipations}
         onBack={() => setSelectedId(null)}
+        onOpenRelatedRecord={(path, relatedId) => navigate(path, { state: { selectedId: relatedId } })}
         onSave={async (input) => {
           await updateTreatyLayer(selected.id, input)
           setRefreshKey((value) => value + 1)
@@ -333,18 +354,40 @@ function ModalField({
 function TreatyLayerDetail({
   record,
   treatyOptions,
+  participationTreatyOptions,
+  reinsurerOptions,
+  treatyParticipations,
   onBack,
+  onOpenRelatedRecord,
   onSave,
 }: {
   record: TreatyLayerRecord
   treatyOptions: ReinsuranceLookupOption[]
+  participationTreatyOptions: ReinsuranceLookupOption[]
+  reinsurerOptions: ReinsuranceLookupOption[]
+  treatyParticipations: TreatyParticipationRecord[]
   onBack: () => void
+  onOpenRelatedRecord: (path: string, recordId: string) => void
   onSave: (input: TreatyLayerSaveInput) => Promise<void>
 }) {
   const [isEditing, setIsEditing] = useState(false)
+  const [activeTab, setActiveTab] = useState<TreatyLayerDetailTab>('details')
   const [form, setForm] = useState<TreatyLayerCreateFormState>(() => toTreatyLayerForm(record))
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const relatedTreatyParticipations = useMemo(
+    () => treatyParticipations.filter((item) => isSameLookupId(item.treatyLayerLookupId, record.id)),
+    [record.id, treatyParticipations],
+  )
+  const tabs: Array<{
+    id: TreatyLayerDetailTab
+    label: string
+    count?: number
+    icon: LucideIcon
+  }> = [
+    { id: 'details', label: 'Treaty Layer Details', icon: FileText },
+    { id: 'treatyParticipations', label: 'Treaty Participations', count: relatedTreatyParticipations.length, icon: Network },
+  ]
 
   const updateForm = <Key extends keyof TreatyLayerCreateFormState>(key: Key, value: TreatyLayerCreateFormState[Key]) => {
     setForm((current) => ({ ...current, [key]: value }))
@@ -402,6 +445,34 @@ function TreatyLayerDetail({
         }
       />
 
+      <div className="grid gap-2 rounded-2xl border border-border-soft bg-surface p-2 shadow-sm lg:grid-cols-2">
+        {tabs.map((tab) => {
+          const Icon = tab.icon
+          const active = activeTab === tab.id
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex min-h-[44px] items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition ${
+                active
+                  ? 'bg-primary text-white shadow-glow'
+                  : 'text-muted-foreground hover:bg-primary/8 hover:text-primary'
+              }`}
+            >
+              <Icon className="h-4 w-4" />
+              <span>{tab.label}</span>
+              {typeof tab.count === 'number' ? (
+                <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${active ? 'bg-white/18 text-white' : 'bg-primary/10 text-primary'}`}>
+                  {tab.count}
+                </span>
+              ) : null}
+            </button>
+          )
+        })}
+      </div>
+
+      {activeTab === 'details' ? (
       <Card variant="premium" className="space-y-5">
         <div>
           <p className="text-[12px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
@@ -446,7 +517,103 @@ function TreatyLayerDetail({
           )}
         </div>
       </Card>
+      ) : (
+        <RelatedTreatyParticipationsGrid
+          records={relatedTreatyParticipations}
+          reinsurerOptions={reinsurerOptions}
+          treatyOptions={participationTreatyOptions}
+          onOpen={(recordId) => onOpenRelatedRecord('/reinsurance/treaty-participations', recordId)}
+        />
+      )}
     </div>
+  )
+}
+
+function RelatedTreatyParticipationsGrid({
+  records,
+  reinsurerOptions,
+  treatyOptions,
+  onOpen,
+}: {
+  records: TreatyParticipationRecord[]
+  reinsurerOptions: ReinsuranceLookupOption[]
+  treatyOptions: ReinsuranceLookupOption[]
+  onOpen: (recordId: string) => void
+}) {
+  return (
+    <RelatedGridCard
+      title="Treaty Participations"
+      count={records.length}
+      emptyMessage="No treaty participations are linked to this treaty layer."
+      columns={['Name', 'Is Leader', 'Reinsurer Id', 'Share Percentage', 'Treaty Id']}
+      rows={records.map((record) => ({
+        id: record.id,
+        cells: [
+          <span className="font-semibold text-primary">{record.name}</span>,
+          <Badge variant={record.isLeader === 'Yes' ? 'approved' : 'neutral'}>{record.isLeader}</Badge>,
+          <span className="font-semibold text-primary">{getLookupDisplayValue(reinsurerOptions, record.reinsurerLookupId, record.reinsurerId)}</span>,
+          formatDecimal(record.sharePercentage),
+          <span className="font-semibold text-primary">{getLookupDisplayValue(treatyOptions, record.treatyLookupId, record.treatyId)}</span>,
+        ],
+      }))}
+      onOpen={onOpen}
+    />
+  )
+}
+
+function RelatedGridCard({
+  title,
+  count,
+  emptyMessage,
+  columns,
+  rows,
+  onOpen,
+}: {
+  title: string
+  count: number
+  emptyMessage: string
+  columns: string[]
+  rows: Array<{ id: string; cells: ReactNode[] }>
+  onOpen: (recordId: string) => void
+}) {
+  return (
+    <Card padding="none" variant="premium" className="overflow-hidden">
+      <div className="flex items-center justify-between gap-3 border-b border-border-soft px-5 py-4">
+        <div>
+          <h3 className="text-lg font-bold">{title}</h3>
+          <p className="mt-1 text-sm text-muted-foreground">Related records linked to this treaty layer.</p>
+        </div>
+        <Badge variant="info">{count}</Badge>
+      </div>
+      <div className="scrollbar-sleek overflow-x-auto">
+        <table className="w-full min-w-[760px] border-collapse">
+          <thead className="bg-surface-muted/90">
+            <tr>{columns.map((column) => <TableHeader key={column}>{column}</TableHeader>)}</tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 ? (
+              <tr className="bg-surface">
+                <td colSpan={columns.length} className="px-6 py-12 text-center text-sm text-muted-foreground">
+                  {emptyMessage}
+                </td>
+              </tr>
+            ) : rows.map((row) => (
+              <tr
+                key={row.id}
+                onClick={() => onOpen(row.id)}
+                className="cursor-pointer border-b border-border-soft/80 bg-surface transition hover:bg-primary/5"
+              >
+                {row.cells.map((cell, cellIndex) => (
+                  <td key={cellIndex} className="px-4 py-4 align-middle text-[13px] text-foreground">
+                    {cell}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Card>
   )
 }
 
@@ -543,6 +710,18 @@ function resolveLookupValue(value: string) {
 function getLookupDisplayValue(options: ReinsuranceLookupOption[], lookupId: string, fallback: string) {
   if (!lookupId) return fallback
   return options.find((option) => option.value.toLowerCase() === lookupId.toLowerCase())?.label ?? fallback
+}
+
+function isSameLookupId(left: string, right: string) {
+  return normalizeLookupId(left) === normalizeLookupId(right)
+}
+
+function normalizeLookupId(value: string) {
+  return value.replace(/[{}]/g, '').toLowerCase()
+}
+
+function formatDecimal(value: number) {
+  return value.toFixed(2)
 }
 
 function formatNumber(value: number) {
