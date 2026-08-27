@@ -11,8 +11,10 @@ import {
   renameQuotePlanLinkedRecord,
   saveQuoteDetail,
   analyzeQuotePlanComparison,
+  updateQuotePlanLinkedDescription,
   updateQuoteStatus,
   type QuotePlanLinkedEntityKey,
+  type QuotePlanLinkedSection,
   type QuotePlanComparisonUploadPayload,
 } from '../../services/quotesService'
 import { Button } from '../../components/ui/Button'
@@ -69,6 +71,8 @@ export function QuoteWorkbenchPage() {
   const [editingPlanRecordName, setEditingPlanRecordName] = useState('')
   const [planActionBusyKey, setPlanActionBusyKey] = useState<string | null>(null)
   const [planActionError, setPlanActionError] = useState<string | null>(null)
+  const [comparisonApplyBusyKey, setComparisonApplyBusyKey] = useState<string | null>(null)
+  const [comparisonAppliedKeys, setComparisonAppliedKeys] = useState<Record<string, boolean>>({})
   const [comparisonRefreshKey, setComparisonRefreshKey] = useState(0)
   const [selectedComparisonId, setSelectedComparisonId] = useState<string | null>(null)
   const [comparisonUploadMode, setComparisonUploadMode] = useState(false)
@@ -493,6 +497,22 @@ export function QuoteWorkbenchPage() {
               uploadState={comparisonUploadState}
               uploadError={comparisonUploadError}
               uploadPayload={comparisonUploadPayload}
+              planSections={planSections ?? []}
+              applyBusyKey={comparisonApplyBusyKey}
+              appliedKeys={comparisonAppliedKeys}
+              onApplyMatch={async (sectionKey, recordId, description, applyKey) => {
+                try {
+                  setPlanActionError(null)
+                  setComparisonApplyBusyKey(applyKey)
+                  await updateQuotePlanLinkedDescription(sectionKey, recordId, description)
+                  setComparisonAppliedKeys((current) => ({ ...current, [applyKey]: true }))
+                  setRefreshKey((value) => value + 1)
+                } catch (cause) {
+                  setPlanActionError(cause instanceof Error ? cause.message : 'Unable to apply matched plan detail.')
+                } finally {
+                  setComparisonApplyBusyKey(null)
+                }
+              }}
               onSelectComparison={(comparisonId) => {
                 setComparisonUploadMode(false)
                 setSelectedComparisonId(comparisonId)
@@ -553,6 +573,10 @@ function ComparePlansWorkspace({
   uploadState,
   uploadError,
   uploadPayload,
+  planSections,
+  applyBusyKey,
+  appliedKeys,
+  onApplyMatch,
   onSelectComparison,
   onRefresh,
   onUploadAnother,
@@ -566,6 +590,10 @@ function ComparePlansWorkspace({
   uploadState: 'idle' | 'reading' | 'analyzing' | 'ready'
   uploadError: string | null
   uploadPayload: QuotePlanComparisonUploadPayload | null
+  planSections: QuotePlanLinkedSection[]
+  applyBusyKey: string | null
+  appliedKeys: Record<string, boolean>
+  onApplyMatch: (sectionKey: QuotePlanLinkedEntityKey, recordId: string, description: string, applyKey: string) => Promise<void>
   onSelectComparison: (comparisonId: string) => void
   onRefresh: () => void
   onUploadAnother: () => void
@@ -732,6 +760,10 @@ function ComparePlansWorkspace({
             <ComparisonResponsePanel
               comparison={selectedComparison}
               uploadPayload={showingUploadResult ? uploadPayload : null}
+              planSections={planSections}
+              applyBusyKey={applyBusyKey}
+              appliedKeys={appliedKeys}
+              onApplyMatch={onApplyMatch}
             />
           )}
 
@@ -761,9 +793,17 @@ function ComparePlansWorkspace({
 function ComparisonResponsePanel({
   comparison,
   uploadPayload,
+  planSections,
+  applyBusyKey,
+  appliedKeys,
+  onApplyMatch,
 }: {
   comparison?: QuotePlanComparison
   uploadPayload: QuotePlanComparisonUploadPayload | null
+  planSections: QuotePlanLinkedSection[]
+  applyBusyKey: string | null
+  appliedKeys: Record<string, boolean>
+  onApplyMatch: (sectionKey: QuotePlanLinkedEntityKey, recordId: string, description: string, applyKey: string) => Promise<void>
 }) {
   const [activeInsightTab, setActiveInsightTab] = useState<'matches' | 'suggested' | 'unmatched'>('matches')
   const response = comparison
@@ -797,8 +837,8 @@ function ComparisonResponsePanel({
         <div className="mb-5 flex flex-wrap gap-2 rounded-[22px] border border-border-soft bg-surface-soft/55 p-1.5 dark:bg-white/5">
           {[
             { id: 'matches', label: 'Matched Details', count: totalMatches },
-            { id: 'suggested', label: 'Suggested', count: suggestedItems.length },
-            { id: 'unmatched', label: 'Unmatched', count: unmatchedItems.length },
+            { id: 'suggested', label: 'AI Suggested Plan Details', count: suggestedItems.length },
+            { id: 'unmatched', label: 'Unmatched Plan Details', count: unmatchedItems.length },
           ].map((tab) => (
             <button
               key={tab.id}
@@ -835,27 +875,16 @@ function ComparisonResponsePanel({
                   </div>
                   <div className="grid gap-4 p-4">
                     {section.items.map((item, index) => (
-                      <div key={`${section.title}-${item.systemPlanDetail}-${index}`} className="rounded-[24px] border border-border-soft bg-white p-4 transition hover:border-primary/20 dark:bg-surface">
-                        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-2">
-                              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-[#A855F7]/10 text-[11px] font-bold text-[#A855F7]">{index + 1}</span>
-                              <p className="text-sm font-bold">{item.systemPlanDetail}</p>
-                            </div>
-                            <div className="mt-4 grid gap-3 lg:grid-cols-2">
-                              <div className="rounded-[18px] border border-primary/10 bg-primary/5 px-4 py-3">
-                                <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-primary">System Plan Detail</p>
-                                <p className="mt-2 text-sm leading-6 text-foreground/90">{item.systemPlanDetail}</p>
-                              </div>
-                              <div className="rounded-[18px] border border-[#A855F7]/10 bg-[#A855F7]/5 px-4 py-3">
-                                <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-[#A855F7]">Uploaded Document Match</p>
-                                <p className="mt-2 text-sm leading-6 text-foreground/90">{item.uploadedDocumentMatch || 'No matching document wording found.'}</p>
-                              </div>
-                            </div>
-                          </div>
-                          <ConfidenceRing score={item.confidenceScore} />
-                        </div>
-                      </div>
+                      <MatchedPlanDetailCard
+                        key={`${section.title}-${item.systemPlanName}-${index}`}
+                        sectionTitle={section.title}
+                        item={item}
+                        index={index}
+                        planSections={planSections}
+                        applyBusyKey={applyBusyKey}
+                        appliedKeys={appliedKeys}
+                        onApplyMatch={onApplyMatch}
+                      />
                     ))}
                   </div>
                 </div>
@@ -892,32 +921,103 @@ function ComparisonResponsePanel({
   )
 }
 
-function ConfidenceRing({ score }: { score: number }) {
-  const safeScore = Math.max(0, Math.min(100, Math.round(score)))
-  const circumference = 100.53096491487338
-  const offset = circumference - (circumference * safeScore) / 100
+function MatchedPlanDetailCard({
+  sectionTitle,
+  item,
+  index,
+  planSections,
+  applyBusyKey,
+  appliedKeys,
+  onApplyMatch,
+}: {
+  sectionTitle: string
+  item: MatchedPlanDetail
+  index: number
+  planSections: QuotePlanLinkedSection[]
+  applyBusyKey: string | null
+  appliedKeys: Record<string, boolean>
+  onApplyMatch: (sectionKey: QuotePlanLinkedEntityKey, recordId: string, description: string, applyKey: string) => Promise<void>
+}) {
+  const sectionKey = planComparisonSectionKey(sectionTitle)
+  const matchedRecord = sectionKey
+    ? planSections
+        .find((section) => section.key === sectionKey)
+        ?.records.find((record) => {
+          const recordName = normalizePlanText(record.name)
+          const extractedName = normalizePlanText(item.systemPlanName)
+          return recordName === extractedName || recordName.includes(extractedName) || extractedName.includes(recordName)
+        })
+    : undefined
+  const applyKey = sectionKey && matchedRecord ? `${sectionKey}:${matchedRecord.id}:${normalizePlanText(item.uploadedDocumentMatch)}` : ''
+  const isApplied =
+    Boolean(applyKey && appliedKeys[applyKey]) ||
+    Boolean(matchedRecord?.description && normalizePlanText(matchedRecord.description) === normalizePlanText(item.uploadedDocumentMatch))
+  const isBusy = applyBusyKey === applyKey
+  const canApply = Boolean(sectionKey && matchedRecord && item.uploadedDocumentMatch)
 
   return (
-    <div className="flex shrink-0 flex-col items-center gap-1 rounded-[20px] border border-[#A855F7]/10 bg-[#A855F7]/5 px-3 py-2">
-      <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#A855F7]">Confidence</span>
-      <div className="relative h-12 w-12">
-        <svg className="h-12 w-12 -rotate-90" viewBox="0 0 40 40" aria-hidden="true">
-          <circle cx="20" cy="20" r="16" fill="none" stroke="rgba(148,163,184,0.18)" strokeWidth="4" />
-          <circle
-            cx="20"
-            cy="20"
-            r="16"
-            fill="none"
-            stroke="#A855F7"
-            strokeWidth="4"
-            strokeLinecap="round"
-            strokeDasharray={circumference}
-            strokeDashoffset={offset}
-          />
-        </svg>
-        <div className="absolute inset-0 flex items-center justify-center text-[12px] font-bold text-[#A855F7]">{safeScore}</div>
+    <div className={`rounded-[24px] border bg-white p-4 transition duration-200 hover:border-primary/20 dark:bg-surface ${isApplied ? 'border-emerald-200/80 bg-emerald-50/30 dark:border-emerald-400/20' : 'border-border-soft'}`}>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <div className="flex items-start gap-2">
+            <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-[#A855F7]/10 text-[11px] font-bold text-[#A855F7]">{index + 1}</span>
+            <div className="min-w-0">
+              <p className="text-sm font-bold leading-5">{item.systemPlanName}</p>
+              {item.systemPlanDescription ? (
+                <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">{item.systemPlanDescription}</p>
+              ) : null}
+            </div>
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <ConfidencePill score={item.confidenceScore} />
+          <Button
+            type="button"
+            size="sm"
+            className={`h-8 rounded-full px-3 text-xs transition ${isApplied ? 'bg-emerald-600 hover:bg-emerald-600' : ''}`}
+            disabled={!canApply || isApplied || isBusy}
+            onClick={() => {
+              if (sectionKey && matchedRecord) void onApplyMatch(sectionKey, matchedRecord.id, item.uploadedDocumentMatch, applyKey)
+            }}
+          >
+            {isBusy ? (
+              <>
+                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                Applying
+              </>
+            ) : isApplied ? (
+              <>
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                Applied
+              </>
+            ) : (
+              <>
+                <Save className="h-3.5 w-3.5" />
+                Apply
+              </>
+            )}
+          </Button>
+        </div>
       </div>
+
+      <div className="mt-4 rounded-[18px] border border-[#A855F7]/10 bg-[#A855F7]/5 px-4 py-3">
+        <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-[#A855F7]">Uploaded Document Match</p>
+        <p className="mt-2 text-sm leading-6 text-foreground/90">{item.uploadedDocumentMatch || 'No matching document wording found.'}</p>
+      </div>
+      {!matchedRecord ? (
+        <p className="mt-2 text-xs text-warning">No matching plan record found for this item.</p>
+      ) : null}
     </div>
+  )
+}
+
+function ConfidencePill({ score }: { score: number }) {
+  const safeScore = Math.max(0, Math.min(100, Math.round(score)))
+  return (
+    <span className="inline-flex h-8 items-center gap-1.5 rounded-full border border-[#A855F7]/15 bg-[#A855F7]/8 px-2.5 text-xs font-bold text-[#A855F7]">
+      <span className="h-1.5 w-1.5 rounded-full bg-[#A855F7]" />
+      {safeScore}% confidence
+    </span>
   )
 }
 
@@ -1156,6 +1256,13 @@ function plainTextPreview(value: string) {
     .trim() || 'No comparison response captured yet.'
 }
 
+interface MatchedPlanDetail {
+  systemPlanName: string
+  systemPlanDescription: string
+  uploadedDocumentMatch: string
+  confidenceScore: number
+}
+
 function parsePlanComparisonResponse(value: string) {
   const normalized = value.replace(/\r\n/g, '\n').trim()
   if (!normalized) return []
@@ -1166,11 +1273,11 @@ function parsePlanComparisonResponse(value: string) {
     .filter(Boolean)
   const sections: Array<{
     title: string
-    items: Array<{ systemPlanDetail: string; uploadedDocumentMatch: string; confidenceScore: number }>
+    items: MatchedPlanDetail[]
   }> = []
   let current: {
     title: string
-    items: Array<{ systemPlanDetail: string; uploadedDocumentMatch: string; confidenceScore: number }>
+    items: MatchedPlanDetail[]
   } | null = null
 
   for (const line of lines) {
@@ -1185,12 +1292,8 @@ function parsePlanComparisonResponse(value: string) {
       sections.push(current)
     }
 
-    const parsed = parseMatchedPlanLine(line)
-    current.items.push({
-      systemPlanDetail: parsed.systemPlanDetail,
-      uploadedDocumentMatch: parsed.uploadedDocumentMatch,
-      confidenceScore: parsed.confidenceScore,
-    })
+    const parsed = parseMatchedPlanLineV2(line)
+    current.items.push(parsed)
   }
 
   return sections.filter((section) => section.items.length)
@@ -1215,6 +1318,33 @@ function parseMatchedPlanLine(line: string) {
   }
 }
 
+function parseMatchedPlanLineV2(line: string): MatchedPlanDetail {
+  const parts = line.split('|').map((part) => part.trim())
+  const systemPart = parts.find((part) => /^System Plan Detail:/i.test(part))
+  const uploadedPart = parts.find((part) => /^Uploaded Document Match:/i.test(part))
+  const confidencePart = parts.find((part) => /^Confidence Score:/i.test(part))
+  const fallbackParts = line.split(/\s+—\s+|\s+-\s+/)
+  const legacyParsed = parseMatchedPlanLine(line)
+  const systemPlanDetail =
+    stripPlanPrefix(systemPart, 'System Plan Detail') ||
+    legacyParsed.systemPlanDetail ||
+    fallbackParts[0]?.trim() ||
+    'Plan detail'
+  const [systemPlanName, ...descriptionParts] = systemPlanDetail.split(/\s+—\s+|\s+-\s+/)
+
+  return {
+    systemPlanName: systemPlanName?.trim() || 'Plan detail',
+    systemPlanDescription: descriptionParts.join(' - ').trim(),
+    uploadedDocumentMatch:
+      stripPlanPrefix(uploadedPart, 'Uploaded Document Match') ||
+      legacyParsed.uploadedDocumentMatch ||
+      fallbackParts.slice(1).join(' - ').trim(),
+    confidenceScore:
+      parseConfidenceScore(stripPlanPrefix(confidencePart, 'Confidence Score')) ||
+      legacyParsed.confidenceScore,
+  }
+}
+
 function stripPlanPrefix(value: string | undefined, label: string) {
   return value?.replace(new RegExp(`^${label}:`, 'i'), '').trim() ?? ''
 }
@@ -1222,6 +1352,26 @@ function stripPlanPrefix(value: string | undefined, label: string) {
 function parseConfidenceScore(value: string | undefined) {
   const score = Number(String(value ?? '').match(/\d+(\.\d+)?/)?.[0] ?? 0)
   return Number.isFinite(score) ? score : 0
+}
+
+function planComparisonSectionKey(sectionTitle: string): QuotePlanLinkedEntityKey | null {
+  const normalized = sectionTitle.trim().toLowerCase()
+  if (normalized.includes('benefit')) return 'benefits'
+  if (normalized.includes('inclusion')) return 'inclusions'
+  if (normalized.includes('exclusion')) return 'exclusions'
+  if (normalized.includes('deductible')) return 'deductibles'
+  if (normalized.includes('warrant')) return 'warranties'
+  if (normalized.includes('coverage') || normalized.includes('coverages')) return 'coverages'
+  return null
+}
+
+function normalizePlanText(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/&/g, 'and')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 function calculateAverageConfidence(

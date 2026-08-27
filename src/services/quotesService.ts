@@ -34,6 +34,7 @@ export type QuotePlanLinkedEntityKey =
 export interface QuotePlanLinkedRecord {
   id: string
   name: string
+  description: string
 }
 
 export interface QuotePlanLinkedSection {
@@ -285,42 +286,42 @@ export async function getQuotePlanLinkedSections(planId: string): Promise<QuoteP
       title: 'Benefits',
       records: (benefitsResult.data ?? [])
         .filter((record) => normalizeDataverseId(record._aur_plan_value) === normalizedPlanId)
-        .map((record) => ({ id: record.aur_benefitsid, name: record.aur_name })),
+        .map((record) => ({ id: record.aur_benefitsid, name: record.aur_name, description: record.aur_description ?? '' })),
     },
     {
       key: 'inclusions',
       title: 'Inclusions',
       records: (inclusionsResult.data ?? [])
         .filter((record) => normalizeDataverseId(record._aur_plan_value) === normalizedPlanId)
-        .map((record) => ({ id: record.aur_inclusionsid, name: record.aur_name })),
+        .map((record) => ({ id: record.aur_inclusionsid, name: record.aur_name, description: record.aur_description ?? '' })),
     },
     {
       key: 'exclusions',
       title: 'Exclusions',
       records: (exclusionsResult.data ?? [])
         .filter((record) => normalizeDataverseId(record._aur_plan_value) === normalizedPlanId)
-        .map((record) => ({ id: record.aur_exclusionsid, name: record.aur_name })),
+        .map((record) => ({ id: record.aur_exclusionsid, name: record.aur_name, description: record.aur_description ?? '' })),
     },
     {
       key: 'deductibles',
       title: 'Deductibles',
       records: (deductiblesResult.data ?? [])
         .filter((record) => normalizeDataverseId(record._aur_plan_value) === normalizedPlanId)
-        .map((record) => ({ id: record.aur_deductiblesid, name: record.aur_name })),
+        .map((record) => ({ id: record.aur_deductiblesid, name: record.aur_name, description: record.aur_description ?? '' })),
     },
     {
       key: 'warranties',
       title: 'Warranties',
       records: (warrantiesResult.data ?? [])
         .filter((record) => normalizeDataverseId(record._aur_plan_value) === normalizedPlanId)
-        .map((record) => ({ id: record.aur_warrantiesid, name: record.aur_name })),
+        .map((record) => ({ id: record.aur_warrantiesid, name: record.aur_name, description: record.aur_description ?? '' })),
     },
     {
       key: 'coverages',
       title: 'Coverage',
       records: (coveragesResult.data ?? [])
         .filter((record) => normalizeDataverseId(record._aur_plan_value) === normalizedPlanId)
-        .map((record) => ({ id: record.aur_coveragesid, name: record.aur_name })),
+        .map((record) => ({ id: record.aur_coveragesid, name: record.aur_name, description: record.aur_description ?? '' })),
     },
   ]
 }
@@ -331,6 +332,20 @@ export async function renameQuotePlanLinkedRecord(
   name: string,
 ) {
   const payload = { aur_name: name }
+  if (entity === 'benefits') return Aur_benefitsesService.update(id, payload)
+  if (entity === 'inclusions') return Aur_inclusionsesService.update(id, payload)
+  if (entity === 'exclusions') return Aur_exclusionsesService.update(id, payload)
+  if (entity === 'deductibles') return Aur_deductiblesesService.update(id, payload)
+  if (entity === 'warranties') return Aur_warrantiesesService.update(id, payload)
+  return Aur_coveragesesService.update(id, payload)
+}
+
+export async function updateQuotePlanLinkedDescription(
+  entity: QuotePlanLinkedEntityKey,
+  id: string,
+  description: string,
+) {
+  const payload = { aur_description: description }
   if (entity === 'benefits') return Aur_benefitsesService.update(id, payload)
   if (entity === 'inclusions') return Aur_inclusionsesService.update(id, payload)
   if (entity === 'exclusions') return Aur_exclusionsesService.update(id, payload)
