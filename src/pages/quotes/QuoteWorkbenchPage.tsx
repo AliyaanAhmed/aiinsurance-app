@@ -8,10 +8,10 @@ import {
   getQuoteEditorOptions,
   getQuotePlanLinkedSections,
   listQuotePlanComparisons,
-  renameQuotePlanLinkedRecord,
   saveQuoteDetail,
   analyzeQuotePlanComparison,
   updateQuotePlanLinkedDescription,
+  updateQuotePlanLinkedRecordDetails,
   updateQuoteStatus,
   type QuotePlanLinkedEntityKey,
   type QuotePlanLinkedSection,
@@ -69,10 +69,13 @@ export function QuoteWorkbenchPage() {
   })
   const [editingPlanRecordKey, setEditingPlanRecordKey] = useState<string | null>(null)
   const [editingPlanRecordName, setEditingPlanRecordName] = useState('')
+  const [editingPlanRecordDescription, setEditingPlanRecordDescription] = useState('')
   const [planActionBusyKey, setPlanActionBusyKey] = useState<string | null>(null)
   const [planActionError, setPlanActionError] = useState<string | null>(null)
   const [comparisonApplyBusyKey, setComparisonApplyBusyKey] = useState<string | null>(null)
   const [comparisonAppliedKeys, setComparisonAppliedKeys] = useState<Record<string, boolean>>({})
+  const [planSectionsLocal, setPlanSectionsLocal] = useState<QuotePlanLinkedSection[] | null>(null)
+  const [planSectionsRefreshKey, setPlanSectionsRefreshKey] = useState(0)
   const [comparisonRefreshKey, setComparisonRefreshKey] = useState(0)
   const [selectedComparisonId, setSelectedComparisonId] = useState<string | null>(null)
   const [comparisonUploadMode, setComparisonUploadMode] = useState(false)
@@ -111,7 +114,7 @@ export function QuoteWorkbenchPage() {
     loading: planSectionsLoading,
   } = useAsyncData(
     () => getQuotePlanLinkedSections(form?.planId ?? ''),
-    [form?.planId, refreshKey],
+    [form?.planId, planSectionsRefreshKey],
   )
   const {
     data: planComparisons,
@@ -127,10 +130,15 @@ export function QuoteWorkbenchPage() {
     setSelectedComparisonId(planComparisons[0].id)
   }, [comparisonUploadMode, planComparisons, selectedComparisonId])
 
+  useEffect(() => {
+    setPlanSectionsLocal(planSections ?? null)
+  }, [planSections])
+
   if (loading) return <Card>Loading quote workbench...</Card>
   if (error || !data || !form) return <Card>{error ?? 'Quote not found.'}</Card>
   const currentForm = form
   const currentDetail = data.detail
+  const visiblePlanSections = planSectionsLocal ?? planSections ?? []
 
   async function handleSave(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -171,12 +179,16 @@ export function QuoteWorkbenchPage() {
     try {
       setPlanActionBusyKey(busyKey)
       setPlanActionError(null)
-      await renameQuotePlanLinkedRecord(entity, recordId, editingPlanRecordName.trim())
+      await updateQuotePlanLinkedRecordDetails(entity, recordId, {
+        name: editingPlanRecordName.trim(),
+        description: editingPlanRecordDescription.trim(),
+      })
       setEditingPlanRecordKey(null)
       setEditingPlanRecordName('')
-      setRefreshKey((value) => value + 1)
+      setEditingPlanRecordDescription('')
+      setPlanSectionsRefreshKey((value) => value + 1)
     } catch (cause) {
-      setPlanActionError(cause instanceof Error ? cause.message : 'Unable to update the record name.')
+      setPlanActionError(cause instanceof Error ? cause.message : 'Unable to update the record details.')
     } finally {
       setPlanActionBusyKey(null)
     }
@@ -202,7 +214,7 @@ export function QuoteWorkbenchPage() {
       setPlanActionBusyKey(busyKey)
       setPlanActionError(null)
       await deleteQuotePlanLinkedRecord(entity, recordId)
-      setRefreshKey((value) => value + 1)
+      setPlanSectionsRefreshKey((value) => value + 1)
     } catch (cause) {
       setPlanActionError(cause instanceof Error ? cause.message : 'Unable to delete the record.')
     } finally {
@@ -217,7 +229,7 @@ export function QuoteWorkbenchPage() {
       await generateQuotePdf({
         detail: currentDetail,
         form: currentForm,
-        planSections: planSections ?? [],
+        planSections: visiblePlanSections,
         headerImageSrc: takafulHeaderSrc,
       })
     } catch (cause) {
@@ -368,7 +380,7 @@ export function QuoteWorkbenchPage() {
                   <p className="text-sm text-muted-foreground">Loading plan-linked records...</p>
                 ) : (
                   <div className="space-y-3">
-                    {(planSections ?? []).map((section) => {
+                    {visiblePlanSections.map((section) => {
                       const isExpanded = expandedPlanSections[section.key] ?? false
                       const SectionIcon = planSectionIcon(section.key)
                       return (
@@ -413,9 +425,22 @@ export function QuoteWorkbenchPage() {
                                         <div className="flex items-start justify-between gap-3">
                                           <div className="min-w-0 flex-1">
                                             {isEditing ? (
-                                              <Input value={editingPlanRecordName} onChange={(event) => setEditingPlanRecordName(event.target.value)} />
+                                              <div className="space-y-3">
+                                                <Input value={editingPlanRecordName} onChange={(event) => setEditingPlanRecordName(event.target.value)} />
+                                                <textarea
+                                                  className="form-field-surface min-h-[88px] w-full resize-y rounded-[16px] border border-border px-3 py-2.5 text-sm leading-6 outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10"
+                                                  value={editingPlanRecordDescription}
+                                                  placeholder="Description"
+                                                  onChange={(event) => setEditingPlanRecordDescription(event.target.value)}
+                                                />
+                                              </div>
                                             ) : (
-                                              <h4 className="truncate text-sm font-semibold leading-6">{record.name}</h4>
+                                              <div className="space-y-1.5">
+                                                <h4 className="truncate text-sm font-semibold leading-6">{record.name}</h4>
+                                                <p className="line-clamp-3 text-xs leading-5 text-muted-foreground">
+                                                  {record.description || 'No description captured yet.'}
+                                                </p>
+                                              </div>
                                             )}
                                           </div>
                                           {!isEditing ? (
@@ -428,6 +453,7 @@ export function QuoteWorkbenchPage() {
                                                 onClick={() => {
                                                   setEditingPlanRecordKey(recordKey)
                                                   setEditingPlanRecordName(record.name)
+                                                  setEditingPlanRecordDescription(record.description)
                                                 }}
                                               >
                                                 <Pencil className="h-4 w-4" />
@@ -456,6 +482,7 @@ export function QuoteWorkbenchPage() {
                                                 onClick={() => {
                                                   setEditingPlanRecordKey(null)
                                                   setEditingPlanRecordName('')
+                                                  setEditingPlanRecordDescription('')
                                                 }}
                                               >
                                                 Cancel
@@ -497,7 +524,7 @@ export function QuoteWorkbenchPage() {
               uploadState={comparisonUploadState}
               uploadError={comparisonUploadError}
               uploadPayload={comparisonUploadPayload}
-              planSections={planSections ?? []}
+              planSections={visiblePlanSections}
               applyBusyKey={comparisonApplyBusyKey}
               appliedKeys={comparisonAppliedKeys}
               onApplyMatch={async (sectionKey, recordId, description, applyKey) => {
@@ -505,8 +532,19 @@ export function QuoteWorkbenchPage() {
                   setPlanActionError(null)
                   setComparisonApplyBusyKey(applyKey)
                   await updateQuotePlanLinkedDescription(sectionKey, recordId, description)
+                  setPlanSectionsLocal((current) =>
+                    (current ?? visiblePlanSections).map((section) =>
+                      section.key === sectionKey
+                        ? {
+                            ...section,
+                            records: section.records.map((record) =>
+                              record.id === recordId ? { ...record, description } : record,
+                            ),
+                          }
+                        : section,
+                    ),
+                  )
                   setComparisonAppliedKeys((current) => ({ ...current, [applyKey]: true }))
-                  setRefreshKey((value) => value + 1)
                 } catch (cause) {
                   setPlanActionError(cause instanceof Error ? cause.message : 'Unable to apply matched plan detail.')
                 } finally {
@@ -963,9 +1001,6 @@ function MatchedPlanDetailCard({
             <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-[#A855F7]/10 text-[11px] font-bold text-[#A855F7]">{index + 1}</span>
             <div className="min-w-0">
               <p className="text-sm font-bold leading-5">{item.systemPlanName}</p>
-              {item.systemPlanDescription ? (
-                <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">{item.systemPlanDescription}</p>
-              ) : null}
             </div>
           </div>
         </div>
@@ -1000,9 +1035,17 @@ function MatchedPlanDetailCard({
         </div>
       </div>
 
-      <div className="mt-4 rounded-[18px] border border-[#A855F7]/10 bg-[#A855F7]/5 px-4 py-3">
-        <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-[#A855F7]">Uploaded Document Match</p>
-        <p className="mt-2 text-sm leading-6 text-foreground/90">{item.uploadedDocumentMatch || 'No matching document wording found.'}</p>
+      <div className="mt-4 grid gap-3 lg:grid-cols-2">
+        <div className="rounded-[18px] border border-primary/10 bg-primary/5 px-4 py-3">
+          <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-primary">Current Plan Detail</p>
+          <p className="mt-2 text-sm leading-6 text-foreground/90">
+            {matchedRecord?.description || item.systemPlanDescription || 'No current plan description captured yet.'}
+          </p>
+        </div>
+        <div className="rounded-[18px] border border-[#A855F7]/10 bg-[#A855F7]/5 px-4 py-3">
+          <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-[#A855F7]">Uploaded Document Match</p>
+          <p className="mt-2 text-sm leading-6 text-foreground/90">{item.uploadedDocumentMatch || 'No matching document wording found.'}</p>
+        </div>
       </div>
       {!matchedRecord ? (
         <p className="mt-2 text-xs text-warning">No matching plan record found for this item.</p>

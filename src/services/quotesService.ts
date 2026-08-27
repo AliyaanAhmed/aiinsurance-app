@@ -340,6 +340,23 @@ export async function renameQuotePlanLinkedRecord(
   return Aur_coveragesesService.update(id, payload)
 }
 
+export async function updateQuotePlanLinkedRecordDetails(
+  entity: QuotePlanLinkedEntityKey,
+  id: string,
+  details: { name: string; description: string },
+) {
+  const payload = {
+    aur_name: details.name,
+    aur_description: details.description,
+  }
+  if (entity === 'benefits') return Aur_benefitsesService.update(id, payload)
+  if (entity === 'inclusions') return Aur_inclusionsesService.update(id, payload)
+  if (entity === 'exclusions') return Aur_exclusionsesService.update(id, payload)
+  if (entity === 'deductibles') return Aur_deductiblesesService.update(id, payload)
+  if (entity === 'warranties') return Aur_warrantiesesService.update(id, payload)
+  return Aur_coveragesesService.update(id, payload)
+}
+
 export async function updateQuotePlanLinkedDescription(
   entity: QuotePlanLinkedEntityKey,
   id: string,
