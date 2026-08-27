@@ -12,17 +12,17 @@ export const dataSourcesInfo = {
     "dataSourceType": "Dataverse",
     "apis": {}
   },
-  "activitymimeattachments": {
-    "tableId": "",
-    "version": "",
-    "primaryKey": "activitymimeattachmentid",
-    "dataSourceType": "Dataverse",
-    "apis": {}
-  },
   "aur_aml_screenings": {
     "tableId": "",
     "version": "",
     "primaryKey": "aur_aml_screeningid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "activitymimeattachments": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "activitymimeattachmentid",
     "dataSourceType": "Dataverse",
     "apis": {}
   },
@@ -47,6 +47,13 @@ export const dataSourcesInfo = {
     "dataSourceType": "Dataverse",
     "apis": {}
   },
+  "businessunits": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "businessunitid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
   "aur_cession_lines": {
     "tableId": "",
     "version": "",
@@ -61,13 +68,6 @@ export const dataSourcesInfo = {
     "dataSourceType": "Dataverse",
     "apis": {}
   },
-  "aur_consequences_results": {
-    "tableId": "",
-    "version": "",
-    "primaryKey": "aur_consequences_resultid",
-    "dataSourceType": "Dataverse",
-    "apis": {}
-  },
   "aur_consequenceses": {
     "tableId": "",
     "version": "",
@@ -75,10 +75,31 @@ export const dataSourcesInfo = {
     "dataSourceType": "Dataverse",
     "apis": {}
   },
+  "aur_consequences_results": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "aur_consequences_resultid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "contacts": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "contactid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
   "aur_coverageses": {
     "tableId": "",
     "version": "",
     "primaryKey": "aur_coveragesid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "transactioncurrencies": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "transactioncurrencyid",
     "dataSourceType": "Dataverse",
     "apis": {}
   },
@@ -103,6 +124,13 @@ export const dataSourcesInfo = {
     "dataSourceType": "Dataverse",
     "apis": {}
   },
+  "emails": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "activityid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
   "aur_email_queueses": {
     "tableId": "",
     "version": "",
@@ -114,6 +142,13 @@ export const dataSourcesInfo = {
     "tableId": "",
     "version": "",
     "primaryKey": "aur_email_recordid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "cr058_emailtemplates": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "cr058_emailtemplateid",
     "dataSourceType": "Dataverse",
     "apis": {}
   },
@@ -145,6 +180,13 @@ export const dataSourcesInfo = {
     "dataSourceType": "Dataverse",
     "apis": {}
   },
+  "aur_quoteses": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "aur_quotesid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
   "aur_plan_details_extractions": {
     "tableId": "",
     "version": "",
@@ -166,6 +208,13 @@ export const dataSourcesInfo = {
     "dataSourceType": "Dataverse",
     "apis": {}
   },
+  "cr058_policies": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "cr058_policyid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
   "aur_policy_bookings": {
     "tableId": "",
     "version": "",
@@ -177,6 +226,13 @@ export const dataSourcesInfo = {
     "tableId": "",
     "version": "",
     "primaryKey": "aur_policy_conversionid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "cr058_productrulelink1s": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "cr058_productrulelink1id",
     "dataSourceType": "Dataverse",
     "apis": {}
   },
@@ -198,13 +254,6 @@ export const dataSourcesInfo = {
     "tableId": "",
     "version": "",
     "primaryKey": "aur_quotes_detailsid",
-    "dataSourceType": "Dataverse",
-    "apis": {}
-  },
-  "aur_quoteses": {
-    "tableId": "",
-    "version": "",
-    "primaryKey": "aur_quotesid",
     "dataSourceType": "Dataverse",
     "apis": {}
   },
@@ -243,52 +292,17 @@ export const dataSourcesInfo = {
     "dataSourceType": "Dataverse",
     "apis": {}
   },
+  "systemusers": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "systemuserid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
   "aur_warrantieses": {
     "tableId": "",
     "version": "",
     "primaryKey": "aur_warrantiesid",
-    "dataSourceType": "Dataverse",
-    "apis": {}
-  },
-  "businessunits": {
-    "tableId": "",
-    "version": "",
-    "primaryKey": "businessunitid",
-    "dataSourceType": "Dataverse",
-    "apis": {}
-  },
-  "contacts": {
-    "tableId": "",
-    "version": "",
-    "primaryKey": "contactid",
-    "dataSourceType": "Dataverse",
-    "apis": {}
-  },
-  "cr058_emailtemplates": {
-    "tableId": "",
-    "version": "",
-    "primaryKey": "cr058_emailtemplateid",
-    "dataSourceType": "Dataverse",
-    "apis": {}
-  },
-  "cr058_policies": {
-    "tableId": "",
-    "version": "",
-    "primaryKey": "cr058_policyid",
-    "dataSourceType": "Dataverse",
-    "apis": {}
-  },
-  "cr058_productrulelink1s": {
-    "tableId": "",
-    "version": "",
-    "primaryKey": "cr058_productrulelink1id",
-    "dataSourceType": "Dataverse",
-    "apis": {}
-  },
-  "emails": {
-    "tableId": "",
-    "version": "",
-    "primaryKey": "activityid",
     "dataSourceType": "Dataverse",
     "apis": {}
   },
@@ -372,18 +386,41 @@ export const dataSourcesInfo = {
       }
     }
   },
-  "systemusers": {
+  "ondemand_recalculationofri_capacitychecks": {
     "tableId": "",
     "version": "",
-    "primaryKey": "systemuserid",
-    "dataSourceType": "Dataverse",
-    "apis": {}
-  },
-  "transactioncurrencies": {
-    "tableId": "",
-    "version": "",
-    "primaryKey": "transactioncurrencyid",
-    "dataSourceType": "Dataverse",
-    "apis": {}
+    "primaryKey": "",
+    "dataSourceType": "Connector",
+    "apis": {
+      "Run": {
+        "path": "/{connectionId}/triggers/manual/run",
+        "method": "POST",
+        "parameters": [
+          {
+            "name": "connectionId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "input",
+            "in": "body",
+            "required": true,
+            "type": "object"
+          },
+          {
+            "name": "api-version",
+            "in": "query",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responseInfo": {
+          "202": {
+            "type": "void"
+          }
+        }
+      }
+    }
   }
 };

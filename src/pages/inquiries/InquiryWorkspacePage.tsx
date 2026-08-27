@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { createPortal } from 'react-dom'
-import { Archive, ArrowLeft, BellRing, Bold, CheckCircle2, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, CopyPlus, FileImage, FileSpreadsheet, FileStack, FileText, FolderOpen, GitBranch, History, Italic, LayoutGrid, List, LoaderCircle, Mail, MailCheck, MailPlus, Paperclip, Rows3, Save, SendHorizontal, ShieldAlert, Sparkles, Underline, X } from 'lucide-react'
-import type { InquiryDetail } from '../../domain/app'
+import { Archive, ArrowLeft, BellRing, Bold, Calculator, CheckCircle2, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, CopyPlus, FileImage, FileSpreadsheet, FileStack, FileText, FolderOpen, GitBranch, History, Italic, LayoutGrid, List, LoaderCircle, Mail, MailCheck, MailPlus, Paperclip, Rows3, Save, SendHorizontal, ShieldAlert, Sparkles, Underline, X } from 'lucide-react'
+import type { InquiryDetail, RiCapacityCheckSummary } from '../../domain/app'
 import { useAsyncData } from '../../hooks/useAsyncData'
 import { useRole } from '../../hooks/useRole'
 import {
@@ -16,6 +16,7 @@ import {
   getInquiryDetailSupplementary,
   getInquiryEditorOptions,
   listWonQuotesForProduct,
+  recalculateRiCapacityChecks,
   saveInquiryDetail,
   updateInquiryQuoteDetailResponse,
 } from '../../services/inquiriesService'
@@ -112,6 +113,8 @@ export function InquiryWorkspacePage() {
   const [templatePreview, setTemplatePreview] = useState<ConsequenceTemplatePreview | null>(null)
   const [templatePreviewBusy, setTemplatePreviewBusy] = useState(false)
   const [templatePreviewError, setTemplatePreviewError] = useState<string | null>(null)
+  const [riCapacityBusy, setRiCapacityBusy] = useState(false)
+  const [riCapacityMessage, setRiCapacityMessage] = useState<string | null>(null)
   const [composer, setComposer] = useState<EmailComposerState>({
     sender: 'underwriting@insureai.com',
     toRecipients: '',
@@ -576,6 +579,39 @@ export function InquiryWorkspacePage() {
       setSaveError(cause instanceof Error ? cause.message : 'Unable to save inquiry details.')
     } finally {
       setSaveBusy(false)
+    }
+  }
+
+  async function handleRiCapacityCheck() {
+    if (!form) return
+    const productId = form.productId || inquiry.productId || ''
+    const totalSumInsured = Number(form.totalSumInsured) || 0
+
+    if (!productId) {
+      setSaveError('Select a product before checking RI Capacity.')
+      return
+    }
+    if (!totalSumInsured || totalSumInsured <= 0) {
+      setSaveError('Enter Total Sum Insured before checking RI Capacity.')
+      return
+    }
+
+    try {
+      setRiCapacityBusy(true)
+      setSaveError(null)
+      setRiCapacityMessage(null)
+      await recalculateRiCapacityChecks({
+        inquiryId: inquiryRecordId,
+        productId,
+        totalSumInsured,
+      })
+      setRiCapacityMessage('RI Capacity check requested successfully.')
+      setSupplementaryRefreshKey((value) => value + 1)
+      window.setTimeout(() => setRiCapacityMessage(null), 3500)
+    } catch (cause) {
+      setSaveError(cause instanceof Error ? cause.message : 'Unable to run RI Capacity check.')
+    } finally {
+      setRiCapacityBusy(false)
     }
   }
 
@@ -1191,6 +1227,7 @@ export function InquiryWorkspacePage() {
           <TabsTrigger value="details" icon={LayoutGrid}>Details</TabsTrigger>
           <TabsTrigger value="actions" icon={ShieldAlert}>Actions</TabsTrigger>
           <TabsTrigger value="quotes" icon={FileText}>Quotes</TabsTrigger>
+          <TabsTrigger value="ri-capacity" icon={Calculator}>RI Capacity Checks</TabsTrigger>
           <TabsTrigger value="documents" icon={FolderOpen}>Documents</TabsTrigger>
           <TabsTrigger value="history" icon={History}>History</TabsTrigger>
         </TabsList>
@@ -1281,13 +1318,33 @@ export function InquiryWorkspacePage() {
                           <ReadOnlyValue value={form.riskScore} />
                         )}
                       </Field>
-                      <Field label="Total Sum Insured">
-                        {isEditing ? (
-                          <Input type="number" value={form.totalSumInsured} onChange={(event) => setForm({ ...form, totalSumInsured: event.target.value })} />
-                        ) : (
-                          <ReadOnlyValue value={form.totalSumInsured} />
-                        )}
-                      </Field>
+                      <div className="md:col-span-2">
+                        <Field label="Total Sum Insured">
+                          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+                            {isEditing ? (
+                              <Input type="number" value={form.totalSumInsured} onChange={(event) => setForm({ ...form, totalSumInsured: event.target.value })} />
+                            ) : (
+                              <ReadOnlyValue value={form.totalSumInsured} />
+                            )}
+                            <Button
+                              type="button"
+                              className="h-[46px] shrink-0 rounded-[16px] bg-[linear-gradient(135deg,#286CFF,#4F98FF)] px-5 shadow-[0_16px_30px_rgba(40,108,255,0.22)] transition hover:-translate-y-0.5"
+                              disabled={riCapacityBusy}
+                              onClick={() => void handleRiCapacityCheck()}
+                            >
+                              {riCapacityBusy ? (
+                                <LoaderCircle className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Calculator className="h-4 w-4" />
+                              )}
+                              {riCapacityBusy ? 'Checking RI Capacity...' : 'Check RI - Capacity'}
+                            </Button>
+                          </div>
+                          {riCapacityMessage ? (
+                            <p className="mt-2 text-xs font-semibold text-primary">{riCapacityMessage}</p>
+                          ) : null}
+                        </Field>
+                      </div>
                       <Field label="Territorial Scope">
                         {isEditing ? (
                           <Input value={form.territorialScope} onChange={(event) => setForm({ ...form, territorialScope: event.target.value })} />
@@ -2433,6 +2490,14 @@ export function InquiryWorkspacePage() {
             )}
           </Card>
         </TabsContent>
+        <TabsContent value="ri-capacity" className="mt-4">
+          <RiCapacityChecksPanel
+            checks={inquiry.riCapacityChecks ?? []}
+            loading={isHydratingSupplementary || riCapacityBusy}
+            onRecalculate={() => void handleRiCapacityCheck()}
+            recalculating={riCapacityBusy}
+          />
+        </TabsContent>
         <TabsContent value="documents" className="mt-4">
           <div className="grid gap-6 xl:grid-cols-[1fr_1fr]">
             <Card className="space-y-4">
@@ -2850,6 +2915,109 @@ function MetricCard({ label, value }: { label: string; value: string }) {
       <p className="mt-2 text-base font-semibold">{value}</p>
     </div>
   )
+}
+
+function RiCapacityChecksPanel({
+  checks,
+  loading,
+  recalculating,
+  onRecalculate,
+}: {
+  checks: RiCapacityCheckSummary[]
+  loading: boolean
+  recalculating: boolean
+  onRecalculate: () => void
+}) {
+  return (
+    <Card className="space-y-5 overflow-hidden">
+      <div className="flex flex-col gap-4 border-b border-border-soft pb-5 md:flex-row md:items-start md:justify-between">
+        <div className="flex items-start gap-3">
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+            <Calculator className="h-5 w-5" />
+          </div>
+          <div>
+            <h3 className="text-xl font-semibold">RI Capacity Checks</h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Review reinsurance capacity outcomes calculated against this inquiry.
+            </p>
+          </div>
+        </div>
+        <Button type="button" disabled={recalculating} onClick={onRecalculate}>
+          {recalculating ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Calculator className="h-4 w-4" />}
+          {recalculating ? 'Checking...' : 'Run RI Capacity Check'}
+        </Button>
+      </div>
+
+      {loading ? (
+        <InlineSectionLoading
+          title="Loading RI capacity checks"
+          description="Capacity outcomes and treaty absorption details are refreshing."
+        />
+      ) : checks.length ? (
+        <div className="overflow-hidden rounded-[24px] border border-border-soft">
+          <div className="overflow-x-auto">
+            <table className="min-w-full border-collapse">
+              <thead className="bg-surface-muted/80">
+                <tr>
+                  <th className="px-4 py-4 text-left text-[12px] font-bold uppercase tracking-[0.08em] text-muted-foreground">Check</th>
+                  <th className="px-4 py-4 text-left text-[12px] font-bold uppercase tracking-[0.08em] text-muted-foreground">Outcome</th>
+                  <th className="px-4 py-4 text-left text-[12px] font-bold uppercase tracking-[0.08em] text-muted-foreground">Sum Insured</th>
+                  <th className="px-4 py-4 text-left text-[12px] font-bold uppercase tracking-[0.08em] text-muted-foreground">Retained</th>
+                  <th className="px-4 py-4 text-left text-[12px] font-bold uppercase tracking-[0.08em] text-muted-foreground">Treaty Absorbed</th>
+                  <th className="px-4 py-4 text-left text-[12px] font-bold uppercase tracking-[0.08em] text-muted-foreground">Excess to Place</th>
+                  <th className="px-4 py-4 text-left text-[12px] font-bold uppercase tracking-[0.08em] text-muted-foreground">Treaty</th>
+                  <th className="px-4 py-4 text-left text-[12px] font-bold uppercase tracking-[0.08em] text-muted-foreground">Calculated</th>
+                </tr>
+              </thead>
+              <tbody>
+                {checks.map((check) => (
+                  <tr key={check.id} className="border-b border-border-soft/80 bg-surface transition duration-150 hover:bg-primary/5">
+                    <td className="px-4 py-4">
+                      <Link
+                        to={`/reinsurance/ri-capacity-checks/${check.id}`}
+                        className="inline-flex max-w-[260px] text-sm font-semibold text-primary transition hover:text-primary-dark hover:underline"
+                      >
+                        {check.name}
+                      </Link>
+                      <p className="mt-1 text-xs text-muted-foreground">{check.calculationSource}</p>
+                    </td>
+                    <td className="px-4 py-4">
+                      <Badge variant={riCapacityOutcomeTone(check.outcome)}>{check.outcome}</Badge>
+                    </td>
+                    <td className="px-4 py-4 text-sm font-semibold">{formatCurrency(check.sumInsured)}</td>
+                    <td className="px-4 py-4 text-sm text-muted-foreground">{formatCurrency(check.retainedAmount)}</td>
+                    <td className="px-4 py-4 text-sm text-muted-foreground">{formatCurrency(check.treatyAbsorbed)}</td>
+                    <td className="px-4 py-4 text-sm font-semibold text-primary">{formatCurrency(check.excessToPlace)}</td>
+                    <td className="px-4 py-4 text-sm text-muted-foreground">{check.treatyName}</td>
+                    <td className="px-4 py-4 text-sm text-muted-foreground">{formatDate(check.calculatedOn ?? check.createdOn ?? '')}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : (
+        <Card className="border-dashed border-border bg-surface-soft/70 text-center">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+            <Calculator className="h-6 w-6" />
+          </div>
+          <h4 className="mt-4 text-lg font-semibold">No RI capacity checks yet</h4>
+          <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-muted-foreground">
+            Run a capacity check from Total Sum Insured or from this tab to generate the latest treaty and facultative placement outcome.
+          </p>
+        </Card>
+      )}
+    </Card>
+  )
+}
+
+function riCapacityOutcomeTone(outcome: string): 'approved' | 'pending' | 'rejected' | 'info' | 'neutral' {
+  const normalized = outcome.toLowerCase()
+  if (normalized.includes('retention') || normalized.includes('treaty')) return 'approved'
+  if (normalized.includes('facultative') || normalized.includes('refer')) return 'pending'
+  if (normalized.includes('no treaty')) return 'rejected'
+  if (normalized.includes('evaluated')) return 'neutral'
+  return 'info'
 }
 
 function InquiryWorkspaceSkeleton() {

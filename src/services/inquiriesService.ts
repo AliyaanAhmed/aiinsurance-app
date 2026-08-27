@@ -9,9 +9,11 @@ import { Aur_productsesService } from '../generated/services/Aur_productsesServi
 import { Aur_quotes_detailsesService } from '../generated/services/Aur_quotes_detailsesService'
 import { Aur_quotesService } from '../generated/services/Aur_quotesService'
 import { Aur_quotesesService } from '../generated/services/Aur_quotesesService'
+import { Aur_ri_capacity_checksService } from '../generated/services/Aur_ri_capacity_checksService'
 import { ContactsService } from '../generated/services/ContactsService'
 import { Cr058_emailtemplatesService } from '../generated/services/Cr058_emailtemplatesService'
 import { EmailsService } from '../generated/services/EmailsService'
+import { OnDemand_RecalculationofRI_CapacityChecksService } from '../generated/services/OnDemand_RecalculationofRI_CapacityChecksService'
 import { Aur_business_rulesesaur_categories } from '../generated/models/Aur_business_rulesesModel'
 import type {
   ConsequenceDefinition,
@@ -21,6 +23,7 @@ import type {
   InquiryRuleGroup,
   InquirySummary,
   QuoteResponse,
+  RiCapacityCheckSummary,
 } from '../domain/app'
 import {
   buildWorkflow,
@@ -207,6 +210,7 @@ export async function getInquiryDetailSupplementary(id: string): Promise<Partial
       orderBy: ['createdon desc'],
     }),
   ])
+  const riCapacityChecks = await listRiCapacityChecksForInquiry(inquiryId)
 
   const quotes = (quotesResult.data ?? [])
     .filter((quote) => normalizeDataverseId(quote._aur_quotes_value) === inquiryId)
@@ -386,7 +390,54 @@ export async function getInquiryDetailSupplementary(id: string): Promise<Partial
         }
       : undefined,
     emailTimeline,
+    riCapacityChecks,
   }
+}
+
+export async function recalculateRiCapacityChecks(payload: {
+  inquiryId: string
+  productId: string
+  totalSumInsured: number
+}) {
+  await OnDemand_RecalculationofRI_CapacityChecksService.Run({
+    text: payload.inquiryId,
+    text_1: payload.productId,
+    number: payload.totalSumInsured,
+  })
+}
+
+export async function listRiCapacityChecksForInquiry(inquiryId: string): Promise<RiCapacityCheckSummary[]> {
+  const normalizedInquiryId = normalizeDataverseId(inquiryId)
+  if (!normalizedInquiryId) return []
+
+  const result = await Aur_ri_capacity_checksService.getAll({
+    filter: `_aur_inquiry_id_value eq ${normalizedInquiryId}`,
+    orderBy: ['createdon desc'],
+  })
+
+  return (result.data ?? [])
+    .filter((record) => normalizeDataverseId(record._aur_inquiry_id_value) === normalizedInquiryId)
+    .sort(
+      (left, right) =>
+        new Date(right.createdon ?? right.aur_calculated_on ?? '').getTime() -
+        new Date(left.createdon ?? left.aur_calculated_on ?? '').getTime(),
+    )
+    .map((record) => ({
+      id: record.aur_ri_capacity_checkid,
+      name: record.aur_name ?? 'RI Capacity Check',
+      outcome: record.aur_outcomename ?? riCapacityOutcomeLabel(record.aur_outcome) ?? 'Not evaluated',
+      calculationSource:
+        record.aur_calculation_sourcename ??
+        riCapacityCalculationSourceLabel(record.aur_calculation_source) ??
+        'Not specified',
+      sumInsured: record.aur_sum_insured ?? 0,
+      retainedAmount: record.aur_retained_amount ?? 0,
+      treatyAbsorbed: record.aur_treaty_absorbed ?? 0,
+      excessToPlace: record.aur_excess_to_place ?? 0,
+      treatyName: record.aur_treaty_idname ?? 'No treaty linked',
+      calculatedOn: record.aur_calculated_on,
+      createdOn: record.createdon,
+    }))
 }
 
 export async function getInquiryEditorOptions() {
@@ -1333,4 +1384,22 @@ function formatAttachmentSize(size?: number) {
   if (size >= 1024 * 1024) return `${(size / (1024 * 1024)).toFixed(1)} MB`
   if (size >= 1024) return `${Math.round(size / 1024)} KB`
   return `${size} B`
+}
+
+function riCapacityOutcomeLabel(value?: string | number | null) {
+  const normalized = Number(value)
+  if (normalized === 1) return 'Within Retention'
+  if (normalized === 2) return 'Within Treaty'
+  if (normalized === 3) return 'Facultative Required'
+  if (normalized === 4) return 'Refer to RI Manager'
+  if (normalized === 5) return 'No Treaty Found'
+  return undefined
+}
+
+function riCapacityCalculationSourceLabel(value?: string | number | null) {
+  const normalized = Number(value)
+  if (normalized === 1) return 'AI Extraction'
+  if (normalized === 2) return 'Manual Entry'
+  if (normalized === 3) return 'Recalculation'
+  return undefined
 }

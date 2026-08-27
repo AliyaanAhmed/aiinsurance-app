@@ -48,6 +48,7 @@ export * as Cr058_productrulelink1sModel from './models/Cr058_productrulelink1sM
 export * as EmailsModel from './models/EmailsModel';
 export * as GeneratePaymentLinkModel from './models/GeneratePaymentLinkModel';
 export * as HTTP_OnUploadFileforPlanDetailsComparison_RunAIEvaluationModel from './models/HTTP_OnUploadFileforPlanDetailsComparison_RunAIEvaluationModel';
+export * as OnDemand_RecalculationofRI_CapacityChecksModel from './models/OnDemand_RecalculationofRI_CapacityChecksModel';
 export * as SystemusersModel from './models/SystemusersModel';
 export * as TransactioncurrenciesModel from './models/TransactioncurrenciesModel';
 
@@ -95,5 +96,6 @@ export * from './services/Cr058_productrulelink1sService';
 export * from './services/EmailsService';
 export * from './services/GeneratePaymentLinkService';
 export * from './services/HTTP_OnUploadFileforPlanDetailsComparison_RunAIEvaluationService';
+export * from './services/OnDemand_RecalculationofRI_CapacityChecksService';
 export * from './services/SystemusersService';
 export * from './services/TransactioncurrenciesService';

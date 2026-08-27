@@ -1,4 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, CalendarDays, ChevronLeft, ChevronRight, ShieldCheck } from 'lucide-react'
 import { Badge } from '../../components/ui/Badge'
 import { Button } from '../../components/ui/Button'
@@ -84,7 +85,9 @@ interface RiCapacityCheckCreateFormState {
 }
 
 export function RiCapacityChecksPage() {
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const navigate = useNavigate()
+  const { id: routeId } = useParams()
+  const [selectedId, setSelectedId] = useState<string | null>(routeId ?? null)
   const [refreshKey, setRefreshKey] = useState(0)
   const { data, loading, error } = useAsyncData(async () => {
     const [records, inquiryOptions, quoteOptions, treatyOptions] = await Promise.all([
@@ -111,7 +114,10 @@ export function RiCapacityChecksPage() {
         inquiryOptions={inquiryOptions}
         quoteOptions={quoteOptions}
         treatyOptions={treatyOptions}
-        onBack={() => setSelectedId(null)}
+        onBack={() => {
+          setSelectedId(null)
+          navigate('/reinsurance/ri-capacity-checks')
+        }}
         onSave={async (updatedRecord) => {
           await updateRiCapacityCheck(updatedRecord.id, toRiCapacityCheckSaveInput(updatedRecord))
           setRefreshKey((value) => value + 1)
@@ -158,7 +164,10 @@ export function RiCapacityChecksPage() {
                 records.map((record) => (
                 <tr
                   key={record.id}
-                  onClick={() => setSelectedId(record.id)}
+                  onClick={() => {
+                    setSelectedId(record.id)
+                    navigate(`/reinsurance/ri-capacity-checks/${record.id}`)
+                  }}
                   className="cursor-pointer border-b border-border-soft/80 bg-surface transition hover:bg-primary/5"
                 >
                   {tableColumns.map((column) => (
@@ -170,6 +179,7 @@ export function RiCapacityChecksPage() {
                           onClick={(event) => {
                             event.stopPropagation()
                             setSelectedId(record.id)
+                            navigate(`/reinsurance/ri-capacity-checks/${record.id}`)
                           }}
                         >
                           {record.name}

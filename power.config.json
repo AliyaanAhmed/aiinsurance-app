@@ -34,6 +34,18 @@
         "workflowDisplayName": "HTTP - On Upload File for Plan Details Comparison - Run AI Evaluation",
         "workflowName": "1335e5c1-cad7-d5e1-7ace-4a109c5da0ad"
       }
+    },
+    "d5a9b7aa-48df-472e-9161-0d53618dc2dc": {
+      "id": "/providers/Microsoft.PowerApps/apis/shared_logicflows",
+      "displayName": "Logic flows",
+      "dataSources": [
+        "ondemand_recalculationofri_capacitychecks"
+      ],
+      "workflowDetails": {
+        "workflowEntityId": "98129a7a-fda1-f111-aaad-7ced8da0787f",
+        "workflowDisplayName": "On Demand - Recalculation of RI-Capacity Checks",
+        "workflowName": "26c37063-8d9a-0590-7384-fccead2ac947"
+      }
     }
   },
   "databaseReferences": {

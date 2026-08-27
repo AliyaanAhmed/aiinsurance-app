@@ -168,6 +168,21 @@ export interface InquiryDetail extends InquirySummary {
   }
   productRuleLinkNotice?: string
   emailTimeline: InquiryEmailSummary[]
+  riCapacityChecks: RiCapacityCheckSummary[]
+}
+
+export interface RiCapacityCheckSummary {
+  id: string
+  name: string
+  outcome: string
+  calculationSource: string
+  sumInsured: number
+  retainedAmount: number
+  treatyAbsorbed: number
+  excessToPlace: number
+  treatyName: string
+  calculatedOn?: string
+  createdOn?: string
 }
 
 export interface InquiryRuleGroup {

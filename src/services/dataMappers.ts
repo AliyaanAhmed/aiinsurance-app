@@ -142,6 +142,7 @@ export function mapInquiryDetail(
     consequenceResults: [],
     aiRuleGroups: [],
     emailTimeline: [],
+    riCapacityChecks: [],
   }
 }
 

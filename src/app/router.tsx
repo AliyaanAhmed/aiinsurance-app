@@ -400,6 +400,14 @@ export const router = createBrowserRouter([
         ),
       },
       {
+        path: 'reinsurance/ri-capacity-checks/:id',
+        element: (
+          <GuardedRoute bucket="admin">
+            <RiCapacityChecksPage />
+          </GuardedRoute>
+        ),
+      },
+      {
         path: 'reinsurance/fac-placements',
         element: (
           <GuardedRoute bucket="admin">
