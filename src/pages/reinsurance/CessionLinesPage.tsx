@@ -1,5 +1,7 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import { ArrowLeft, Plus, Rows3 } from 'lucide-react'
+import { useLocation, useNavigate } from 'react-router-dom'
+import { ArrowLeft, FileText, Plus, Rows3, ShieldCheck, type LucideIcon } from 'lucide-react'
+import { Badge } from '../../components/ui/Badge'
 import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
 import { Input } from '../../components/ui/Input'
@@ -11,12 +13,16 @@ import {
   listCessionLines,
   listCessionLookupOptions,
   listFacOfferLookupOptions,
+  listReinsurers,
   listReinsurerLookupOptions,
+  listTreaties,
   listTreatyLookupOptions,
   updateCessionLine,
   type CessionLineRecord,
   type CessionLineSaveInput,
+  type ReinsurerRecord,
   type ReinsuranceLookupOption,
+  type TreatyRecord,
 } from '../../services/reinsuranceService'
 
 interface CessionLineFormState {
@@ -68,25 +74,34 @@ const tableColumns: Array<{
   { key: 'treatyId', label: 'Treaty Id' },
 ]
 
+type CessionLineDetailTab = 'details' | 'reinsurer' | 'treaty'
+
 export function CessionLinesPage() {
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const location = useLocation()
+  const navigate = useNavigate()
+  const routeState = location.state as { selectedId?: string } | null
+  const [selectedId, setSelectedId] = useState<string | null>(routeState?.selectedId ?? null)
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
   const { data, loading, error } = useAsyncData(async () => {
-    const [records, cessionOptions, facOfferOptions, reinsurerOptions, treatyOptions] = await Promise.all([
+    const [records, cessionOptions, facOfferOptions, reinsurerOptions, treatyOptions, reinsurers, treaties] = await Promise.all([
       listCessionLines(),
       listCessionLookupOptions(),
       listFacOfferLookupOptions(),
       listReinsurerLookupOptions(),
       listTreatyLookupOptions(),
+      listReinsurers(),
+      listTreaties(),
     ])
-    return { records, cessionOptions, facOfferOptions, reinsurerOptions, treatyOptions }
+    return { records, cessionOptions, facOfferOptions, reinsurerOptions, treatyOptions, reinsurers, treaties }
   }, [refreshKey])
   const records = data?.records ?? []
   const cessionOptions = data?.cessionOptions ?? []
   const facOfferOptions = data?.facOfferOptions ?? []
   const reinsurerOptions = data?.reinsurerOptions ?? []
   const treatyOptions = data?.treatyOptions ?? []
+  const reinsurers = data?.reinsurers ?? []
+  const treaties = data?.treaties ?? []
   const selected = useMemo(() => records.find((record) => record.id === selectedId), [records, selectedId])
 
   if (selected) {
@@ -97,7 +112,10 @@ export function CessionLinesPage() {
         facOfferOptions={facOfferOptions}
         reinsurerOptions={reinsurerOptions}
         treatyOptions={treatyOptions}
+        reinsurers={reinsurers}
+        treaties={treaties}
         onBack={() => setSelectedId(null)}
+        onOpenRelatedRecord={(path, relatedId) => navigate(path, { state: { selectedId: relatedId } })}
         onSave={async (updatedRecord) => {
           await updateCessionLine(updatedRecord.id, toCessionLineSaveInput(updatedRecord))
           setRefreshKey((value) => value + 1)
@@ -257,7 +275,10 @@ function CessionLineDetail({
   facOfferOptions,
   reinsurerOptions,
   treatyOptions,
+  reinsurers,
+  treaties,
   onBack,
+  onOpenRelatedRecord,
   onSave,
 }: {
   record: CessionLineRecord
@@ -265,13 +286,35 @@ function CessionLineDetail({
   facOfferOptions: ReinsuranceLookupOption[]
   reinsurerOptions: ReinsuranceLookupOption[]
   treatyOptions: ReinsuranceLookupOption[]
+  reinsurers: ReinsurerRecord[]
+  treaties: TreatyRecord[]
   onBack: () => void
+  onOpenRelatedRecord: (path: string, recordId: string) => void
   onSave: (record: CessionLineRecord) => Promise<void>
 }) {
   const [isEditing, setIsEditing] = useState(false)
+  const [activeTab, setActiveTab] = useState<CessionLineDetailTab>('details')
   const [form, setForm] = useState<CessionLineFormState>(() => toCessionLineForm(record))
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const relatedReinsurer = useMemo(
+    () => reinsurers.find((item) => isSameLookupId(item.id, record.reinsurerLookupId)),
+    [record.reinsurerLookupId, reinsurers],
+  )
+  const relatedTreaty = useMemo(
+    () => treaties.find((item) => isSameLookupId(item.id, record.treatyLookupId)),
+    [record.treatyLookupId, treaties],
+  )
+  const tabs: Array<{
+    id: CessionLineDetailTab
+    label: string
+    count?: number
+    icon: LucideIcon
+  }> = [
+    { id: 'details', label: 'Cession Line Details', icon: Rows3 },
+    { id: 'reinsurer', label: 'Reinsurer', count: relatedReinsurer ? 1 : 0, icon: ShieldCheck },
+    { id: 'treaty', label: 'Treaty', count: relatedTreaty ? 1 : 0, icon: FileText },
+  ]
   const updateForm = <Key extends keyof CessionLineFormState>(key: Key, value: CessionLineFormState[Key]) => setForm((current) => ({ ...current, [key]: value }))
   const cancelEdit = () => {
     setForm(toCessionLineForm(record))
@@ -319,6 +362,35 @@ function CessionLineDetail({
         description="Cession line ceded premium, reinsurer share, net due, treaty, and facultative offer details."
         actions={isEditing ? <div className="flex flex-wrap items-center justify-end gap-2"><Button variant="secondary" onClick={cancelEdit}>Cancel</Button><Button onClick={saveEdit} disabled={saving}>{saving ? 'Saving...' : 'Save Cession Line'}</Button></div> : <Button onClick={() => setIsEditing(true)}>Edit Cession Line</Button>}
       />
+
+      <div className="grid gap-2 rounded-2xl border border-border-soft bg-surface p-2 shadow-sm lg:grid-cols-3">
+        {tabs.map((tab) => {
+          const Icon = tab.icon
+          const active = activeTab === tab.id
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex min-h-[44px] items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition ${
+                active
+                  ? 'bg-primary text-white shadow-glow'
+                  : 'text-muted-foreground hover:bg-primary/8 hover:text-primary'
+              }`}
+            >
+              <Icon className="h-4 w-4" />
+              <span>{tab.label}</span>
+              {typeof tab.count === 'number' ? (
+                <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${active ? 'bg-white/18 text-white' : 'bg-primary/10 text-primary'}`}>
+                  {tab.count}
+                </span>
+              ) : null}
+            </button>
+          )
+        })}
+      </div>
+
+      {activeTab === 'details' ? (
       <Card variant="premium" className="space-y-5">
         {saveError ? <div className="rounded-xl border border-danger/20 bg-danger/5 px-4 py-3 text-sm text-danger">{saveError}</div> : null}
         <div><p className="text-[12px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Cession Line Form</p><h2 className="mt-1 text-xl font-bold">{record.name}</h2></div>
@@ -354,7 +426,127 @@ function CessionLineDetail({
           )}
         </div>
       </Card>
+      ) : activeTab === 'reinsurer' ? (
+        <RelatedReinsurerGrid
+          record={relatedReinsurer}
+          onOpen={(recordId) => onOpenRelatedRecord('/reinsurance/reinsurers', recordId)}
+        />
+      ) : (
+        <RelatedTreatyGrid
+          record={relatedTreaty}
+          onOpen={(recordId) => onOpenRelatedRecord('/reinsurance/treaties', recordId)}
+        />
+      )}
     </div>
+  )
+}
+
+function RelatedReinsurerGrid({
+  record,
+  onOpen,
+}: {
+  record: ReinsurerRecord | undefined
+  onOpen: (recordId: string) => void
+}) {
+  const columns = ['Name', 'Approved', 'Current Exposure', 'Max Exposure Limit', 'Rating Agency']
+  return (
+    <RelatedParentGrid
+      title="Reinsurer"
+      emptyMessage="No reinsurer is linked to this cession line."
+      columns={columns}
+      row={record ? {
+        id: record.id,
+        cells: [
+          <span className="font-semibold text-primary">{record.name}</span>,
+          <Badge variant={record.isApproved === 'Yes' ? 'approved' : 'neutral'}>{record.isApproved}</Badge>,
+          formatMoney(record.currentExposure),
+          formatMoney(record.maxExposureLimit),
+          record.ratingAgency,
+        ],
+      } : null}
+      onOpen={onOpen}
+    />
+  )
+}
+
+function RelatedTreatyGrid({
+  record,
+  onOpen,
+}: {
+  record: TreatyRecord | undefined
+  onOpen: (recordId: string) => void
+}) {
+  const columns = ['Treaty Name', 'Inception Date', 'Treaty Capacity', 'Treaty Type', 'Shariah Basis']
+  return (
+    <RelatedParentGrid
+      title="Treaty"
+      emptyMessage="No treaty is linked to this cession line."
+      columns={columns}
+      row={record ? {
+        id: record.id,
+        cells: [
+          <span className="font-semibold text-primary">{record.treatyName}</span>,
+          formatDate(record.inceptionDate),
+          formatMoney(record.treatyCapacity),
+          record.treatyType,
+          record.shariahBasis,
+        ],
+      } : null}
+      onOpen={onOpen}
+    />
+  )
+}
+
+function RelatedParentGrid({
+  title,
+  emptyMessage,
+  columns,
+  row,
+  onOpen,
+}: {
+  title: string
+  emptyMessage: string
+  columns: string[]
+  row: { id: string; cells: ReactNode[] } | null
+  onOpen: (recordId: string) => void
+}) {
+  return (
+    <Card padding="none" variant="premium" className="overflow-hidden">
+      <div className="flex items-center justify-between gap-3 border-b border-border-soft px-5 py-4">
+        <div>
+          <h3 className="text-lg font-bold">{title}</h3>
+          <p className="mt-1 text-sm text-muted-foreground">Linked parent record for this cession line.</p>
+        </div>
+        <Badge variant="info">{row ? 1 : 0}</Badge>
+      </div>
+      <div className="scrollbar-sleek overflow-x-auto">
+        <table className="w-full min-w-[760px] border-collapse">
+          <thead className="bg-surface-muted/90">
+            <tr>{columns.map((column) => <TableHeader key={column}>{column}</TableHeader>)}</tr>
+          </thead>
+          <tbody>
+            {row ? (
+              <tr
+                onClick={() => onOpen(row.id)}
+                className="cursor-pointer border-b border-border-soft/80 bg-surface transition hover:bg-primary/5"
+              >
+                {row.cells.map((cell, cellIndex) => (
+                  <td key={cellIndex} className="px-4 py-4 align-middle text-[13px] text-foreground">
+                    {cell}
+                  </td>
+                ))}
+              </tr>
+            ) : (
+              <tr className="bg-surface">
+                <td colSpan={columns.length} className="px-6 py-12 text-center text-sm text-muted-foreground">
+                  {emptyMessage}
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </Card>
   )
 }
 
@@ -440,6 +632,14 @@ function getLookupDisplayValue(options: ReinsuranceLookupOption[], lookupId: str
   return options.find((option) => option.value.toLowerCase() === lookupId.toLowerCase())?.label ?? fallback
 }
 
+function isSameLookupId(left: string, right: string) {
+  return normalizeLookupId(left) === normalizeLookupId(right)
+}
+
+function normalizeLookupId(value: string) {
+  return value.replace(/[{}]/g, '').toLowerCase()
+}
+
 function formatMoney(value: number) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value)
 }
@@ -450,6 +650,13 @@ function formatMoneyLikeDecimal(value: number) {
 
 function formatDecimal(value: number) {
   return value.toFixed(2)
+}
+
+function formatDate(value: string) {
+  if (!value) return '---'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '---'
+  return new Intl.DateTimeFormat('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' }).format(date)
 }
 
 function parseMoneyInput(value: string) {
