@@ -12,6 +12,15 @@ export const Aur_business_rulesesaur_categories = {
   7: 'ContractualTerms_Clauses'
 } as const;
 export type Aur_business_rulesesaur_categories = keyof typeof Aur_business_rulesesaur_categories;
+export const Aur_business_rulesesaur_inquiry_type = {
+  1: 'New',
+  2: 'Renewal',
+  3: 'Endorsement',
+  4: 'Claims',
+  5: 'CompanyVehicle',
+  6: 'PersonalVehicle'
+} as const;
+export type Aur_business_rulesesaur_inquiry_type = keyof typeof Aur_business_rulesesaur_inquiry_type;
 export const Aur_business_rulesesstatecode = {
   0: 'Active',
   1: 'Inactive'
@@ -27,6 +36,7 @@ export interface Aur_business_rulesesBase {
   aur_business_rulesid: string;
   aur_categories?: Aur_business_rulesesaur_categories;
   "aur_category@odata.bind"?: string;
+  aur_inquiry_type?: Aur_business_rulesesaur_inquiry_type;
   aur_name: string;
   importsequencenumber?: number;
   overriddencreatedon?: string;
@@ -41,6 +51,7 @@ export interface Aur_business_rulesesBase {
 export interface Aur_business_ruleses extends Aur_business_rulesesBase {
   aur_categoriesname?: string;
   aur_categoryname?: string;
+  aur_inquiry_typename?: string;
   createdbyname?: string;
   createdbyyominame: string;
   createdon?: string;

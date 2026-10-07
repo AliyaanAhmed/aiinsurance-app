@@ -35,12 +35,50 @@
           "x-ms-read-only": true,
           "maxLength": 160
         },
+        "aur_action_applied": {
+          "type": "string",
+          "title": "Action Applied",
+          "x-ms-dataverse-attribute": "aur_action_applied",
+          "x-ms-dataverse-type": "BooleanType",
+          "x-ms-schema-name": "aur_action_applied",
+          "enum": [
+            "No",
+            "Yes"
+          ],
+          "x-ms-enum-values": [
+            0,
+            1
+          ],
+          "Color": [
+            null,
+            null
+          ],
+          "x-ms-optionsetmetadataid": "9c813cc5-95c0-f111-aaad-002248e3ba3f",
+          "x-ms-isGlobal": false,
+          "x-ms-optionsetdisplayname": "Action Applied",
+          "x-ms-optionSetType": "Boolean"
+        },
+        "aur_action_appliedname": {
+          "type": "string",
+          "title": "aur_action_appliedname",
+          "x-ms-dataverse-attribute": "aur_action_appliedname",
+          "x-ms-dataverse-type": "VirtualType",
+          "x-ms-schema-name": "aur_action_appliedName",
+          "x-ms-read-only": true
+        },
         "aur_additional_premium_percentage": {
           "type": "string",
           "title": "Additional Premium Percentage",
           "x-ms-dataverse-attribute": "aur_additional_premium_percentage",
           "x-ms-dataverse-type": "IntegerType",
           "x-ms-schema-name": "aur_additional_premium_percentage"
+        },
+        "aur_base_premium": {
+          "type": "string",
+          "title": "Base Premium",
+          "x-ms-dataverse-attribute": "aur_base_premium",
+          "x-ms-dataverse-type": "IntegerType",
+          "x-ms-schema-name": "aur_base_premium"
         },
         "aur_broker": {
           "type": "string",
@@ -117,7 +155,7 @@
             null,
             null
           ],
-          "x-ms-optionsetmetadataid": "863e5096-746d-f111-ab0e-7ced8da0787f",
+          "x-ms-optionsetmetadataid": "3eedb73b-2338-4b6f-b665-17987ad11247",
           "x-ms-isGlobal": true,
           "x-ms-optionsetdisplayname": "Cover Type",
           "x-ms-optionSetType": "Picklist"
@@ -143,6 +181,14 @@
           "x-ms-dataverse-attribute": "aur_declared_value",
           "x-ms-dataverse-type": "IntegerType",
           "x-ms-schema-name": "aur_declared_value"
+        },
+        "aur_email_data": {
+          "type": "string",
+          "title": "Email Data",
+          "x-ms-dataverse-attribute": "aur_email_data",
+          "x-ms-dataverse-type": "MemoType",
+          "x-ms-schema-name": "aur_email_data",
+          "maxLength": 1048576
         },
         "aur_fee": {
           "type": "string",
@@ -198,7 +244,7 @@
             null,
             null
           ],
-          "x-ms-optionsetmetadataid": "7be5e589-be6e-f111-ab0e-7ced8da0787f",
+          "x-ms-optionsetmetadataid": "073891b7-6935-4128-af92-d476e9c41e26",
           "x-ms-isGlobal": true,
           "x-ms-optionsetdisplayname": "Inquiry Status",
           "x-ms-optionSetType": "Picklist"
@@ -221,21 +267,27 @@
             "New",
             "Renewal",
             "Endorsement",
-            "Claims"
+            "Claims",
+            "Company Vehicle",
+            "Personal Vehicle"
           ],
           "x-ms-enum-values": [
             1,
             2,
             3,
-            4
+            4,
+            5,
+            6
           ],
           "Color": [
             null,
             null,
             null,
+            null,
+            null,
             null
           ],
-          "x-ms-optionsetmetadataid": "29ee1e39-2c54-f111-a824-7c1e5262a352",
+          "x-ms-optionsetmetadataid": "a503de35-5803-4862-855f-ebd5d6f6fe4c",
           "x-ms-isGlobal": true,
           "x-ms-optionsetdisplayname": "Inquiry Type",
           "x-ms-optionSetType": "Picklist"
@@ -287,7 +339,7 @@
             null,
             null
           ],
-          "x-ms-optionsetmetadataid": "5fa38278-756d-f111-ab0e-7ced8da0787f",
+          "x-ms-optionsetmetadataid": "e2d4f3be-9a63-4b76-80d0-b2ec1d93a7f6",
           "x-ms-isGlobal": true,
           "x-ms-optionsetdisplayname": "Payment Term",
           "x-ms-optionSetType": "Picklist"
@@ -306,6 +358,14 @@
           "x-ms-dataverse-attribute": "aur_plan",
           "x-ms-dataverse-type": "LookupType",
           "x-ms-schema-name": "aur_plan"
+        },
+        "aur_plan_details": {
+          "type": "string",
+          "title": "Plan Details",
+          "x-ms-dataverse-attribute": "aur_plan_details",
+          "x-ms-dataverse-type": "MemoType",
+          "x-ms-schema-name": "aur_plan_details",
+          "maxLength": 4000
         },
         "aur_planname": {
           "type": "string",
@@ -683,7 +743,7 @@
             null,
             null
           ],
-          "x-ms-optionsetmetadataid": "648e36ad-80d2-ef11-a730-00224811888f",
+          "x-ms-optionsetmetadataid": "23813cc5-95c0-f111-aaad-002248e3ba3f",
           "x-ms-isGlobal": false,
           "x-ms-optionsetdisplayname": "Status",
           "x-ms-optionSetType": "State"
@@ -704,12 +764,21 @@
           "x-ms-schema-name": "statuscode",
           "enum": [
             "Draft",
-            "AI Evaluation in Process",
+            "AI Processing",
             "Inactive",
             "Ready to Generate Quote",
             "Generating Quote",
             "Quote Generated Successfully",
-            "Further Clarification Required"
+            "Further Clarification Required",
+            "Inquiry Created",
+            "Product Match",
+            "Determined Inquiry",
+            "Awaiting Review",
+            "Refer to Underwriter",
+            "Decline",
+            "Quote Provided",
+            "Escalate to Head of Aviation",
+            "Property or Reinsurance Team"
           ],
           "x-ms-enum-values": [
             1,
@@ -718,7 +787,16 @@
             751820002,
             751820004,
             751820003,
-            751820005
+            751820005,
+            751820006,
+            751820007,
+            751820008,
+            751820009,
+            751820010,
+            751820011,
+            751820012,
+            751820013,
+            751820014
           ],
           "Color": [
             null,
@@ -727,9 +805,18 @@
             null,
             null,
             null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
             null
           ],
-          "x-ms-optionsetmetadataid": "6e8e36ad-80d2-ef11-a730-00224811888f",
+          "x-ms-optionsetmetadataid": "2d813cc5-95c0-f111-aaad-002248e3ba3f",
           "x-ms-isGlobal": false,
           "x-ms-optionsetdisplayname": "Status Reason",
           "x-ms-optionSetType": "Status"

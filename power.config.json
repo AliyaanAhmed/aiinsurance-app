@@ -1,10 +1,10 @@
 {
   "version": "1.0",
-  "appId": "e5302b13-a5de-4b24-8e55-59ee074af302",
+  "appId": "ac6d8d9d-391d-47dc-b330-16d955c8ee6f",
   "appDisplayName": "Insurance Quotes",
   "region": "prod",
   "appType": "CodeApp",
-  "environmentId": "75dd5fe2-be00-e8ef-b643-353c3cdd9ac7",
+  "environmentId": "e5c3bee2-afc4-e36f-950c-724ca9893bc9",
   "description": "Insurance Quotes Power Apps code app",
   "buildPath": "dist",
   "buildEntryPoint": "index.html",
@@ -264,6 +264,11 @@
         "cessionlines": {
           "entitySetName": "aur_cession_lines",
           "logicalName": "aur_cession_line",
+          "isHidden": false
+        },
+        "environment_39a902ba": {
+          "entitySetName": "Environment",
+          "logicalName": "environment_39a902ba",
           "isHidden": false
         }
       },

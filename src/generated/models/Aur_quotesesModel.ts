@@ -21,7 +21,9 @@ export const Aur_quotesesaur_inquiry_type = {
   1: 'New',
   2: 'Renewal',
   3: 'Endorsement',
-  4: 'Claims'
+  4: 'Claims',
+  5: 'CompanyVehicle',
+  6: 'PersonalVehicle'
 } as const;
 export type Aur_quotesesaur_inquiry_type = keyof typeof Aur_quotesesaur_inquiry_type;
 export const Aur_quotesesaur_payment_term = {
@@ -37,24 +39,36 @@ export const Aur_quotesesstatecode = {
 export type Aur_quotesesstatecode = keyof typeof Aur_quotesesstatecode;
 export const Aur_quotesesstatuscode = {
   1: 'Draft',
-  751820001: 'AIEvaluationinProcess',
+  751820001: 'AIProcessing',
   2: 'Inactive',
   751820002: 'ReadytoGenerateQuote',
   751820004: 'GeneratingQuote',
   751820003: 'QuoteGeneratedSuccessfully',
-  751820005: 'FurtherClarificationRequired'
+  751820005: 'FurtherClarificationRequired',
+  751820006: 'InquiryCreated',
+  751820007: 'ProductMatch',
+  751820008: 'DeterminedInquiry',
+  751820009: 'AwaitingReview',
+  751820010: 'RefertoUnderwriter',
+  751820011: 'Decline',
+  751820012: 'QuoteProvided',
+  751820013: 'EscalatetoHeadofAviation',
+  751820014: 'PropertyorReinsuranceTeam'
 } as const;
 export type Aur_quotesesstatuscode = keyof typeof Aur_quotesesstatuscode;
 
 export interface Aur_quotesesBase {
   "aur_account@odata.bind"?: string;
+  aur_action_applied?: boolean;
   aur_additional_premium_percentage?: number;
+  aur_base_premium?: number;
   "aur_broker@odata.bind"?: string;
   aur_brokerage_pct?: number;
   "aur_contact@odata.bind"?: string;
   aur_cover_type?: Aur_quotesesaur_cover_type;
   aur_created_on?: string;
   aur_declared_value?: number;
+  aur_email_data?: string;
   aur_fee?: number;
   aur_gross_premium?: number;
   aur_inquiry_status?: Aur_quotesesaur_inquiry_status;
@@ -63,6 +77,7 @@ export interface Aur_quotesesBase {
   aur_no_of_items?: string;
   aur_payment_term?: Aur_quotesesaur_payment_term;
   "aur_plan@odata.bind"?: string;
+  aur_plan_details?: string;
   "aur_product@odata.bind"?: string;
   aur_quote_number?: string;
   aur_quotesid: string;
@@ -93,6 +108,7 @@ export interface Aur_quotesesBase {
 export interface Aur_quoteses extends Aur_quotesesBase {
   aur_accountname?: string;
   aur_accountyominame?: string;
+  aur_action_appliedname?: string;
   aur_brokername?: string;
   aur_contactname?: string;
   aur_contactyominame?: string;

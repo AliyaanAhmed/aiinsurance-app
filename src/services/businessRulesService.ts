@@ -6,6 +6,7 @@ import {
 } from '../generated'
 import { Aur_business_rulesesaur_categories } from '../generated/models/Aur_business_rulesesModel'
 import type { Aur_consequenceses } from '../generated/models/Aur_consequencesesModel'
+import { INQUIRY_TYPE_OPTIONS } from './inquiryTypeOptions'
 
 export interface BusinessRuleListItem {
   id: string
@@ -123,12 +124,10 @@ export const BUSINESS_RULE_CATEGORY_OPTIONS = [
   { value: '7', label: 'Contractual Terms & Clauses' },
 ] as const
 
-export const BUSINESS_RULE_INQUIRY_TYPE_OPTIONS = [
-  { value: '1', label: 'New' },
-  { value: '2', label: 'Renewal' },
-  { value: '3', label: 'Endorsement' },
-  { value: '4', label: 'Claims' },
-] as const
+export const BUSINESS_RULE_INQUIRY_TYPE_OPTIONS = INQUIRY_TYPE_OPTIONS.map((option) => ({
+  value: String(option.value),
+  label: option.label,
+}))
 
 export const CONSEQUENCE_TYPE_OPTIONS = [
   { value: '1', label: 'Case Control' },

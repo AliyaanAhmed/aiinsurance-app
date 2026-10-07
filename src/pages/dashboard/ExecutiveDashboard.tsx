@@ -15,14 +15,12 @@ import {
 } from 'recharts'
 import {
   ArrowRightLeft,
-  CircleDollarSign,
   Mail,
   PieChart as PieChartIcon,
-  ShieldCheck,
-  TrendingUp,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useAsyncData } from '../../hooks/useAsyncData'
+import { useRole } from '../../hooks/useRole'
 import { getDashboardMetrics } from '../../services/dashboardService'
 import { Card } from '../../components/ui/Card'
 import { Badge } from '../../components/ui/Badge'
@@ -30,6 +28,7 @@ import { formatCompactNumber, formatCurrency } from '../../lib/formatters'
 import { Skeleton } from '../../components/ui/Skeleton'
 
 export function DashboardPage() {
+  const { user } = useRole()
   const { data, loading, error } = useAsyncData(getDashboardMetrics, [])
 
   if (loading) {
@@ -63,23 +62,6 @@ export function DashboardPage() {
         variant="glass"
         className="relative overflow-hidden border-border-soft bg-[linear-gradient(135deg,rgba(255,255,255,0.96)_0%,rgba(240,247,255,0.95)_52%,rgba(231,241,255,0.96)_100%)] px-6 py-6 dark:bg-[linear-gradient(135deg,rgba(15,23,42,0.92)_0%,rgba(15,23,42,0.84)_52%,rgba(30,41,59,0.92)_100%)]"
       >
-        <div className="pointer-events-none absolute inset-0">
-          {[
-            { Icon: Mail, className: 'left-[8%] top-[18%]', delay: 0 },
-            { Icon: TrendingUp, className: 'right-[10%] top-[22%]', delay: 0.6 },
-            { Icon: ShieldCheck, className: 'right-[18%] bottom-[18%]', delay: 0.3 },
-            { Icon: CircleDollarSign, className: 'left-[16%] bottom-[16%]', delay: 0.9 },
-          ].map(({ Icon, className, delay }, index) => (
-            <motion.div
-              key={index}
-              className={`absolute ${className} text-primary/10 dark:text-primary/12`}
-              animate={{ y: [0, -12, 0], rotate: [0, 3, 0] }}
-              transition={{ duration: 6, repeat: Number.POSITIVE_INFINITY, ease: 'easeInOut', delay }}
-            >
-              <Icon className="h-20 w-20" />
-            </motion.div>
-          ))}
-        </div>
         <div className="relative grid gap-8 xl:grid-cols-[1.35fr_0.65fr]">
           <div className="space-y-5">
             <div className="flex flex-wrap items-center gap-2">
@@ -88,7 +70,7 @@ export function DashboardPage() {
             </div>
             <div className="space-y-3">
               <p className="text-[12px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Insurance platform</p>
-              <h1 className="max-w-4xl text-[34px] font-bold leading-tight tracking-[-0.03em]">{data.greeting}</h1>
+              <h1 className="max-w-4xl text-[34px] font-bold leading-tight tracking-[-0.03em]">{data.greeting}, {user.name}</h1>
               <p className="max-w-3xl text-base leading-8 text-muted-foreground">{data.heroDescription}</p>
             </div>
             <div className="grid gap-4 md:grid-cols-3">
@@ -113,10 +95,10 @@ export function DashboardPage() {
               >
                 <Card className="rounded-[24px] bg-white/78 dark:bg-white/[0.04]">
                   <div className="flex items-start gap-4">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                    <div aria-hidden="true" className="flex h-12 w-12 flex-none items-center justify-center rounded-2xl bg-primary/10 text-primary">
                       {index === 0 ? <Mail className="h-5 w-5" /> : index === 1 ? <ArrowRightLeft className="h-5 w-5" /> : <PieChartIcon className="h-5 w-5" />}
                     </div>
-                    <div className="space-y-1">
+                    <div className="min-w-0 space-y-1">
                       <h3 className="text-base font-semibold">{insight.title}</h3>
                       <p className="text-sm leading-7 text-muted-foreground">{insight.text}</p>
                     </div>

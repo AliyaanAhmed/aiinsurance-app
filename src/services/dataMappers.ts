@@ -1,7 +1,5 @@
-import type {
-  Aur_quoteses,
-  Aur_quotesesaur_inquiry_type,
-} from '../generated/models/Aur_quotesesModel'
+import type { Aur_quoteses } from '../generated/models/Aur_quotesesModel'
+import { inquiryTypeLabel } from './inquiryTypeOptions'
 import type { Aur_quotes } from '../generated/models/Aur_quotesModel'
 import type { Aur_productses } from '../generated/models/Aur_productsesModel'
 import type { Aur_quotes_detailses } from '../generated/models/Aur_quotes_detailsesModel'
@@ -308,14 +306,6 @@ export function countByType(records: Aur_quoteses[]): Array<{ label: string; val
     counts.set(key, (counts.get(key) ?? 0) + 1)
   }
   return Array.from(counts.entries()).map(([label, value]) => ({ label, value }))
-}
-
-function inquiryTypeLabel(value?: Aur_quotesesaur_inquiry_type) {
-  if (value === 1) return 'New'
-  if (value === 2) return 'Renewal'
-  if (value === 3) return 'Endorsement'
-  if (value === 4) return 'Claims'
-  return undefined
 }
 
 function inquiryLifecycleStatusLabel(formatted?: string, raw?: number | string) {

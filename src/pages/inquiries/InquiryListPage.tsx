@@ -5,6 +5,7 @@ import { ClipboardList, Filter, Plus, RotateCcw, X } from 'lucide-react'
 import { createPortal } from 'react-dom'
 import { useAsyncData } from '../../hooks/useAsyncData'
 import { createInquiry, getInquiryEditorOptions, listInquiries } from '../../services/inquiriesService'
+import { INQUIRY_TYPE_OPTIONS } from '../../services/inquiryTypeOptions'
 import type { InquirySummary } from '../../domain/app'
 import { PageHeader } from '../../components/layout/PageHeader'
 import { FilterBar } from '../../components/ui/FilterBar'
@@ -50,7 +51,7 @@ export function InquiriesPage() {
   const [createError, setCreateError] = useState<string | null>(null)
   const [createForm, setCreateForm] = useState({
     name: '',
-    inquiryType: '1',
+    inquiryType: String(INQUIRY_TYPE_OPTIONS[0]?.value ?? ''),
     statusCode: '751820006',
     productId: '',
     planId: '',
@@ -128,12 +129,15 @@ export function InquiriesPage() {
 
   const counts = useMemo(() => {
     const records = data ?? []
-    return {
-      all: records.length,
-      new: records.filter((record) => record.inquiryType === 'New').length,
-      renewal: records.filter((record) => record.inquiryType === 'Renewal').length,
-      endorsement: records.filter((record) => record.inquiryType === 'Endorsement').length,
-    }
+    return new Map(
+      INQUIRY_TYPE_OPTIONS.map((option) => [
+        option.value,
+        records.filter((record) =>
+          record.inquiryTypeValue === option.value ||
+          record.inquiryType.toLowerCase() === option.label.toLowerCase(),
+        ).length,
+      ]),
+    )
   }, [data])
 
   const premiumTotal = filtered.reduce((sum, item) => sum + item.grossPremium, 0)
@@ -387,7 +391,7 @@ export function InquiriesPage() {
       setCreateOpen(false)
       setCreateForm({
         name: '',
-        inquiryType: '1',
+        inquiryType: String(INQUIRY_TYPE_OPTIONS[0]?.value ?? ''),
         statusCode: '751820006',
         productId: '',
         planId: '',
@@ -434,10 +438,16 @@ export function InquiriesPage() {
         </Button>
       </FilterBar>
       <div className="flex flex-wrap items-center gap-2">
-        <ScopeChip label="All Inquiries" count={counts.all} active={!scope} to="/inquiries" />
-        <ScopeChip label="New Business" count={counts.new} active={scope === 'New'} to="/inquiries?type=New" />
-        <ScopeChip label="Renewals" count={counts.renewal} active={scope === 'Renewal'} to="/inquiries?type=Renewal" />
-        <ScopeChip label="Endorsements" count={counts.endorsement} active={scope === 'Endorsement'} to="/inquiries?type=Endorsement" />
+        <ScopeChip label="All Inquiries" count={(data ?? []).length} active={!scope} to="/inquiries" />
+        {INQUIRY_TYPE_OPTIONS.map((option) => (
+          <ScopeChip
+            key={option.value}
+            label={option.label}
+            count={counts.get(option.value) ?? 0}
+            active={scope?.toLowerCase() === option.label.toLowerCase()}
+            to={`/inquiries?type=${encodeURIComponent(option.label)}`}
+          />
+        ))}
       </div>
       <div className="grid gap-4 md:grid-cols-3">
         <MiniMetric label="Visible Records" value={String(filtered.length)} helper="Current queue after scope and search." />

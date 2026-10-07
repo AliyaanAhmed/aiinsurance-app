@@ -169,7 +169,7 @@ export async function getDashboardMetrics(): Promise<DashboardMetrics> {
 
   return {
     previewMode: isPreviewMode(),
-    greeting: 'Welcome back, Anees Ur Rehman',
+    greeting: 'Welcome back',
     heroDescription:
       'Monitor broker-driven intake, inquiry conversion, won premium performance, and live underwriting momentum from a calmer executive command center.',
     heroMetrics: [

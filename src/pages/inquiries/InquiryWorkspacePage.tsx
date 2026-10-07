@@ -22,6 +22,7 @@ import {
 } from '../../services/inquiriesService'
 import type { ConsequenceTemplatePreview } from '../../services/inquiriesService'
 import type { PlanPricingOrderItem } from '../../services/adminCatalogService'
+import { getSharePointSiteUrl } from '../../services/sharePointSiteService'
 import { Card } from '../../components/ui/Card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/Tabs'
 import { Badge } from '../../components/ui/Badge'
@@ -123,6 +124,7 @@ export function InquiryWorkspacePage() {
   })
   const coreLoad = useAsyncData(async () => getInquiryDetailCore(id), [id])
   const optionsLoad = useAsyncData(async () => getInquiryEditorOptions(), [])
+  const sharePointSiteLoad = useAsyncData(getSharePointSiteUrl, [])
   const supplementaryLoad = useAsyncData(async () => getInquiryDetailSupplementary(id), [id, supplementaryRefreshKey])
   const copySourceProductId = form?.productId || inquiryState?.productId || coreLoad.data?.productId || ''
   const productWonQuotesLoad = useAsyncData(
@@ -395,6 +397,9 @@ export function InquiryWorkspacePage() {
   if (coreLoad.loading || !detailSource || !form) return <InquiryWorkspaceSkeleton />
 
   const inquiry = detailSource
+  const sharePointFolderUrl = inquiry.sharepointUrl && sharePointSiteLoad.data
+    ? `${sharePointSiteLoad.data}/${inquiry.sharepointUrl.trim().replace(/^\/+/, '')}`
+    : null
   const inquiryRecordId = inquiry.id || id
   const notifications = inquiry.notificationNotice?.messages.map((message, index) => ({
     serial: index + 1,
@@ -2510,9 +2515,9 @@ export function InquiryWorkspacePage() {
               </p>
               <div className="rounded-2xl border border-border-soft bg-surface-soft p-4">
                 <p className="text-[12px] font-bold uppercase tracking-[0.16em] text-muted-foreground">SharePoint URL</p>
-                {inquiry.sharepointUrl ? (
+                {sharePointFolderUrl ? (
                   <a
-                    href={`https://adotdynamicscomau.sharepoint.com/sites/Datanox-DevelopmentTeam/${inquiry.sharepointUrl}`}
+                    href={sharePointFolderUrl}
                     target="_blank"
                     rel="noreferrer"
                     className="mt-4 flex items-center gap-3 rounded-2xl border border-border-soft bg-white px-4 py-3 text-primary shadow-soft transition hover:border-primary/30 hover:bg-primary/5 dark:bg-slate-950/65"
@@ -2530,6 +2535,10 @@ export function InquiryWorkspacePage() {
                       </span>
                     </span>
                   </a>
+                ) : sharePointSiteLoad.loading && inquiry.sharepointUrl ? (
+                  <p className="mt-3 text-sm text-muted-foreground">Loading SharePoint location...</p>
+                ) : sharePointSiteLoad.error && inquiry.sharepointUrl ? (
+                  <p className="mt-3 text-sm text-danger">{sharePointSiteLoad.error}</p>
                 ) : (
                   <p className="mt-3 text-sm text-muted-foreground">No SharePoint location available.</p>
                 )}

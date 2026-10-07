@@ -33,6 +33,7 @@ import {
   mapQuoteSummary,
   mapRelatedParty,
 } from './dataMappers'
+import { INQUIRY_TYPE_OPTIONS } from './inquiryTypeOptions'
 
 type InquiryReferenceData = {
   products: Awaited<ReturnType<typeof Aur_productsesService.getAll>>['data']
@@ -577,12 +578,7 @@ async function getInquiryEditorOptionsUncached() {
       productId: record._aur_product_value ?? '',
     })),
     brokers: brokerAccounts.map((record) => ({ id: record.accountid, name: record.name ?? 'Unnamed broker' })),
-    inquiryTypes: [
-      { value: 1, label: 'New' },
-      { value: 2, label: 'Renewal' },
-      { value: 3, label: 'Endorsement' },
-      { value: 4, label: 'Claims' },
-    ],
+    inquiryTypes: INQUIRY_TYPE_OPTIONS,
     inquiryStatuses: [
       { value: 1, label: 'Draft' },
       { value: 751820001, label: 'AI Processing' },

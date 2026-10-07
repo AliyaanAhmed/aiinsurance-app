@@ -264,6 +264,31 @@ export const dataSourcesInfo = {
     "dataSourceType": "Dataverse",
     "apis": {}
   },
+  "retrieveenvironmentvariablevalue": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "",
+    "dataSourceType": "Dataverse",
+    "apis": {
+      "RetrieveEnvironmentVariableValue": {
+        "path": "/api/data/v9.2/RetrieveEnvironmentVariableValue",
+        "method": "GET",
+        "parameters": [
+          {
+            "name": "DefinitionSchemaName",
+            "in": "query",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responseInfo": {
+          "200": {
+            "type": "object"
+          }
+        }
+      }
+    }
+  },
   "aur_ri_capacity_checks": {
     "tableId": "",
     "version": "",
