@@ -29,6 +29,7 @@ import { Badge } from '../../components/ui/Badge'
 import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
 import { Select } from '../../components/ui/Select'
+import { getUnderwriterSubActions, underwriterActions, vehicleValueAverage } from '../../lib/inquiryUnderwriting'
 import { formatCurrency, formatDate, formatPercent } from '../../lib/formatters'
 
 interface InquiryFormState {
@@ -47,6 +48,8 @@ interface InquiryFormState {
   territorialScope: string
   noOfItems: string
   basePremium: string
+  underwriterActionStatus: string
+  underwriterSubAction: string
   premiumToBeCharged: string
   brokerage: string
   grossPremium: string
@@ -540,6 +543,8 @@ export function InquiryWorkspacePage() {
         territorialScope: form.territorialScope,
         noOfItems: form.noOfItems,
         basePremium: Number(form.basePremium) || 0,
+        underwriterActionStatus: form.underwriterActionStatus ? Number(form.underwriterActionStatus) : null,
+        underwriterSubAction: form.underwriterSubAction ? Number(form.underwriterSubAction) : null,
         premiumToBeCharged: Number(form.premiumToBeCharged) || 0,
         brokerage: Number(form.brokerage) || 0,
         grossPremium: Number(form.grossPremium) || 0,
@@ -572,6 +577,8 @@ export function InquiryWorkspacePage() {
               totalInsured: Number(form.totalSumInsured) || 0,
               territorialScope: form.territorialScope,
               basePremium: Number(form.basePremium) || 0,
+              underwriterActionStatus: form.underwriterActionStatus ? Number(form.underwriterActionStatus) : null,
+              underwriterSubAction: form.underwriterSubAction ? Number(form.underwriterSubAction) : null,
               totalCharge: Number(form.premiumToBeCharged) || 0,
               grossPremium: Number(form.grossPremium) || 0,
               paymentTerm: findOptionLabel(options.paymentTerms, form.paymentTerm, current.paymentTerm),
@@ -1383,6 +1390,24 @@ export function InquiryWorkspacePage() {
                   <Card className="space-y-5">
                     <SectionHeader title="Premium" description="Commercial premium and deduction controls for the inquiry." />
                     <div className="grid gap-4 md:grid-cols-2">
+                      <Field label="Vehicle Value">
+                        <ReadOnlyValue value={vehicleValueAverage(inquiry.vehicleValue) || 'Not available'} />
+                      </Field>
+                      <Field label="Underwriter Action Status">
+                        {isEditing ? (
+                          <SelectField value={form.underwriterActionStatus} options={underwriterActions} onChange={(value) => setForm({ ...form, underwriterActionStatus: value, underwriterSubAction: '' })} />
+                        ) : (
+                          <ReadOnlyValue value={findOptionLabel(underwriterActions, form.underwriterActionStatus, 'Not selected')} />
+                        )}
+                      </Field>
+                      <Field label="Underwriter Sub Action">
+                        {isEditing ? (
+                          <SelectField value={form.underwriterSubAction} options={getUnderwriterSubActions(form.underwriterActionStatus)} disabled={!form.underwriterActionStatus} onChange={(value) => setForm({ ...form, underwriterSubAction: value })} />
+                        ) : (
+                          <ReadOnlyValue value={findOptionLabel(getUnderwriterSubActions(form.underwriterActionStatus), form.underwriterSubAction, 'Not selected')} />
+                        )}
+                      </Field>
+                      <div className="hidden md:block" aria-hidden="true" />
                       <Field label="Base Premium">
                         {isEditing ? (
                           <Input type="number" value={form.basePremium} onChange={(event) => setForm({ ...form, basePremium: event.target.value })} />
@@ -3806,6 +3831,8 @@ function buildFormState(
     territorialScope: string
     totalCharge?: number
     basePremium?: number
+    underwriterActionStatus?: number | null
+    underwriterSubAction?: number | null
     grossPremium?: number
     paymentTerm: string
     fee?: number
@@ -3842,6 +3869,8 @@ function buildFormState(
     territorialScope: inquiry.territorialScope,
     noOfItems: '',
     basePremium: String(inquiry.basePremium ?? 0),
+    underwriterActionStatus: inquiry.underwriterActionStatus == null ? '' : String(inquiry.underwriterActionStatus),
+    underwriterSubAction: inquiry.underwriterSubAction == null ? '' : String(inquiry.underwriterSubAction),
     premiumToBeCharged: String(inquiry.totalCharge ?? 0),
     brokerage: '0',
     grossPremium: String(inquiry.grossPremium ?? 0),

@@ -43,14 +43,15 @@ export async function generateQuotePdf({
   }
 
   const headerImage = await loadImageData(headerImageSrc)
-  const headerWidth = pageWidth - margins.left - margins.right
-  const headerHeight = (headerWidth * headerImage.height) / headerImage.width
+  const availableHeaderWidth = pageWidth - margins.left - margins.right
+  const headerHeight = Math.min(40, (availableHeaderWidth * headerImage.height) / headerImage.width)
+  const headerWidth = headerHeight * headerImage.width / headerImage.height
 
   const drawHeader = () => {
     doc.addImage(
       headerImage.dataUrl,
       'PNG',
-      margins.left,
+      (pageWidth - headerWidth) / 2,
       8,
       headerWidth,
       headerHeight,
@@ -228,12 +229,42 @@ async function loadImageData(src: string) {
         })
         .then(blobToDataUrl)
 
-  const dimensions = await getImageDimensions(dataUrl)
-  return {
-    dataUrl,
-    width: dimensions.width,
-    height: dimensions.height,
+  return cropLogoWhitespace(dataUrl)
+}
+
+// The supplied logo includes large blank margins; crop those before sizing the PDF header.
+async function cropLogoWhitespace(dataUrl: string) {
+  const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const element = new Image()
+    element.onload = () => resolve(element)
+    element.onerror = () => reject(new Error('Unable to load the quotation logo.'))
+    element.src = dataUrl
+  })
+  const canvas = document.createElement('canvas')
+  canvas.width = image.width
+  canvas.height = image.height
+  const context = canvas.getContext('2d')
+  if (!context) return { dataUrl, width: image.width, height: image.height }
+  context.drawImage(image, 0, 0)
+  const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data
+  let left = image.width, top = image.height, right = -1, bottom = -1
+  for (let y = 0; y < image.height; y++) {
+    for (let x = 0; x < image.width; x++) {
+      const offset = (y * image.width + x) * 4
+      if (pixels[offset + 3] > 20 && Math.min(pixels[offset], pixels[offset + 1], pixels[offset + 2]) < 240) {
+        left = Math.min(left, x)
+        right = Math.max(right, x)
+        top = Math.min(top, y)
+        bottom = Math.max(bottom, y)
+      }
+    }
   }
+  if (right < left) return { dataUrl, width: image.width, height: image.height }
+  const cropped = document.createElement('canvas')
+  cropped.width = right - left + 1
+  cropped.height = bottom - top + 1
+  cropped.getContext('2d')!.drawImage(image, left, top, cropped.width, cropped.height, 0, 0, cropped.width, cropped.height)
+  return { dataUrl: cropped.toDataURL('image/png'), width: cropped.width, height: cropped.height }
 }
 
 function blobToDataUrl(blob: Blob) {
@@ -245,14 +276,6 @@ function blobToDataUrl(blob: Blob) {
   })
 }
 
-function getImageDimensions(dataUrl: string) {
-  return new Promise<{ width: number; height: number }>((resolve, reject) => {
-    const image = new Image()
-    image.onload = () => resolve({ width: image.width, height: image.height })
-    image.onerror = () => reject(new Error('Unable to size the quotation header image.'))
-    image.src = dataUrl
-  })
-}
 
 function safeText(value: string) {
   return value.replace(/\s+/g, ' ').trim()

@@ -80,6 +80,9 @@ export function mapInquiryDetail(
 ): InquiryDetail {
   const inquiryRecord = record as Aur_quoteses & {
     aur_base_premium?: number | null
+    aur_vehicle_value?: string | null
+    aur_underwriter_action_status?: number | null
+    aur_underwriter_sub_action?: number | null
     aur_action_applied?: boolean | null
     aur_plan_details?: string | null
   }
@@ -126,6 +129,9 @@ export function mapInquiryDetail(
     fee: record.aur_fee ?? 0,
     declaredValue: record.aur_declared_value ?? 0,
     basePremium: inquiryRecord.aur_base_premium ?? 0,
+    vehicleValue: inquiryRecord.aur_vehicle_value ?? '',
+    underwriterActionStatus: inquiryRecord.aur_underwriter_action_status,
+    underwriterSubAction: inquiryRecord.aur_underwriter_sub_action,
     totalCharge: record.aur_total_amount_charge ?? 0,
     actionApplied: Boolean(inquiryRecord.aur_action_applied),
     aiSummary: record.aur_risksummary ?? record.aur_summary ?? 'AI summary is not available yet.',

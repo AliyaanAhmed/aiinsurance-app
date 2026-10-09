@@ -149,6 +149,9 @@ export interface InquiryDetail extends InquirySummary {
   fee: number
   declaredValue: number
   basePremium: number
+  vehicleValue?: string
+  underwriterActionStatus?: number | null
+  underwriterSubAction?: number | null
   totalCharge: number
   actionApplied?: boolean
   aiSummary: string

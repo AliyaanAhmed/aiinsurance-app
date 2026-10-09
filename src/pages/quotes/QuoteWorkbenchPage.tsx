@@ -24,7 +24,7 @@ import { Badge } from '../../components/ui/Badge'
 import { Input } from '../../components/ui/Input'
 import { formatCurrency } from '../../lib/formatters'
 import { generateQuotePdf } from '../../lib/quotePdf'
-import takafulHeaderSrc from '../../assets/takaful-header.png?inline'
+import takafulHeaderSrc from '../../assets/al-buhaira-logo.png?inline'
 import type { QuotePlanComparison } from '../../domain/app'
 
 interface QuoteFormState {

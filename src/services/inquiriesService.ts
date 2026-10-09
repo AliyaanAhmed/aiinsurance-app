@@ -629,6 +629,8 @@ export async function saveInquiryDetail(
     territorialScope: string
     noOfItems: string
     basePremium: number
+    underwriterActionStatus?: number | null
+    underwriterSubAction?: number | null
     premiumToBeCharged: number
     brokerage: number
     grossPremium: number
@@ -655,6 +657,8 @@ export async function saveInquiryDetail(
     aur_territorial_scope: payload.territorialScope,
     aur_no_of_items: payload.noOfItems,
     aur_base_premium: payload.basePremium,
+    ...(payload.underwriterActionStatus !== undefined ? { aur_underwriter_action_status: payload.underwriterActionStatus } : {}),
+    ...(payload.underwriterSubAction !== undefined ? { aur_underwriter_sub_action: payload.underwriterSubAction } : {}),
     aur_total_amount_charge: payload.premiumToBeCharged,
     aur_brokerage_pct: payload.brokerage,
     aur_gross_premium: payload.grossPremium,
