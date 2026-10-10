@@ -1,3 +1,11 @@
+export function formatAmount(value: string | number | null | undefined) {
+  if (value == null || String(value).trim() === '') return ''
+  const number = Number(String(value).replace(/,/g, ''))
+  return Number.isFinite(number)
+    ? new Intl.NumberFormat('en-AE', { maximumFractionDigits: 20 }).format(number)
+    : String(value)
+}
+
 export function formatCurrency(value?: number | null) {
   const amount = Number.isFinite(value ?? NaN) ? Number(value) : 0
   return new Intl.NumberFormat('en-AE', {

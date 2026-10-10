@@ -198,10 +198,7 @@ export async function getInquiryDetailSupplementary(id: string): Promise<Partial
   const inquiryId = normalizeDataverseId(inquiry.aur_quotesid) || normalizedRouteId
 
   const [quotesResult, rawQuoteDetails, consequenceResultsResult, emailsResult] = await Promise.all([
-    Aur_quotesService.getAll({
-      filter: `_aur_quotes_value eq ${inquiryId}`,
-      orderBy: ['createdon desc'],
-    }),
+    listQuotesForInquiry(inquiryId),
     listQuoteDetailsForInquiry(inquiryId),
     Aur_consequences_resultsService.getAll({
       filter: `_aur_inquiry_value eq ${inquiryId}`,
@@ -213,7 +210,7 @@ export async function getInquiryDetailSupplementary(id: string): Promise<Partial
   ])
   const riCapacityChecks = await listRiCapacityChecksForInquiry(inquiryId)
 
-  const quotes = (quotesResult.data ?? [])
+  const quotes = quotesResult
     .filter((quote) => normalizeDataverseId(quote._aur_quotes_value) === inquiryId)
     .map((quote) => resolveQuoteRelations(quote, productMap, planMap))
 
@@ -596,6 +593,7 @@ async function getInquiryEditorOptionsUncached() {
       { value: 751820012, label: 'Quote Provided' },
       { value: 751820013, label: 'Escalate to Head of Aviation' },
       { value: 751820014, label: 'Property or Reinsurance Team' },
+      { value: 751820015, label: 'More Information Required' },
     ],
     coverTypes: [
       { value: 1, label: 'PAR All Risks' },
@@ -820,25 +818,30 @@ export async function createQuoteFromInquiry(
     premiumToBeCharged?: number
   },
 ) {
-  const inquiryResult = await Aur_quotesesService.get(inquiryId)
+  const recordId = normalizeDataverseId(inquiryId)
+  const inquiryResult = await Aur_quotesesService.get(recordId)
+  if (!inquiryResult.success) throw inquiryResult.error ?? new Error('Unable to load the inquiry for quote creation.')
   const inquiry = inquiryResult.data
   if (!inquiry) throw new Error('Inquiry not found.')
 
   const referenceCode = inquiry.aur_quote_number?.trim() || inquiry.aur_name?.trim() || 'Inquiry'
   const customerName = inquiry.aur_contactname?.trim() || inquiry.aur_name?.trim() || 'Customer'
-  const basePremium = inquiry.aur_total_amount_charge ?? fallback?.premiumToBeCharged ?? 0
-  const grossPremium = basePremium
+  const totalPremium = inquiry.aur_total_amount_charge ?? fallback?.premiumToBeCharged ?? 0
+  const grossPremium = inquiry.aur_gross_premium ?? 0
   const loadingPremium = grossPremium * 0.1
-  const vat = grossPremium * 0.05
-  const totalPremium = grossPremium + loadingPremium + vat
-  const productId = fallback?.productId ?? inquiry._aur_product_value
-  const planId = fallback?.planId ?? inquiry._aur_plan_value
+  const productId = inquiry._aur_product_value ?? fallback?.productId
+  const planId = inquiry._aur_plan_value ?? fallback?.planId
+  const planResult = planId ? await Aur_plansService.get(normalizeDataverseId(planId)) : undefined
+  if (planResult && !planResult.success) throw planResult.error ?? new Error('Unable to load the selected plan for quote creation.')
+  const plan = planResult?.data
+  if (planId && !plan) throw new Error('The selected inquiry plan could not be loaded.')
+  const vat = (plan as (typeof plan & { aur_vat?: number | null }))?.aur_vat ?? 0
 
   const record = {
     aur_name: `${referenceCode} - ${customerName}`,
     ...(productId ? { 'aur_product@odata.bind': `/aur_productses(${productId})` } : {}),
     ...(planId ? { 'aur_plan@odata.bind': `/aur_plans(${planId})` } : {}),
-    'aur_quotes@odata.bind': `/aur_quoteses(${inquiryId})`,
+    'aur_quotes@odata.bind': `/aur_quoteses(${recordId})`,
     aur_total_premium: totalPremium,
     aur_gross_premium: grossPremium,
     aur_loading_premium: loadingPremium,
@@ -849,11 +852,34 @@ export async function createQuoteFromInquiry(
   }
 
   const created = await Aur_quotesService.create(record as never)
-  const createdId = created.data?.aur_quoteid
-  if (createdId) {
-    await deactivateSiblingQuotes(inquiryId, [createdId])
+  if (!created.success) throw created.error ?? new Error('Quote creation failed. Please try again.')
+  const createdId = normalizeDataverseId(created.data?.aur_quoteid)
+  if (!createdId) throw new Error('Quote creation did not return a record ID. Refresh the quote list before trying again.')
+  const savedQuote = await Aur_quotesService.get(createdId)
+  if (!savedQuote.success || !savedQuote.data) {
+    throw savedQuote.error ?? new Error('The quote was created but could not be verified. Refresh the quote list before trying again.')
   }
+  if (normalizeDataverseId(savedQuote.data._aur_quotes_value) !== recordId) {
+    throw new Error('The created quote is not linked to this inquiry. Please check its Inquiry lookup before creating another quote.')
+  }
+  await deactivateSiblingQuotes(recordId, [createdId])
   return createdId
+}
+
+async function listQuotesForInquiry(inquiryId: string) {
+  const records: NonNullable<Awaited<ReturnType<typeof Aur_quotesService.getAll>>['data']> = []
+  let skipToken: string | undefined
+  do {
+    const result = await Aur_quotesService.getAll({
+      filter: `_aur_quotes_value eq ${normalizeDataverseId(inquiryId)}`,
+      orderBy: ['createdon desc'],
+      ...(skipToken ? { skipToken } : {}),
+    })
+    if (!result.success) throw result.error ?? new Error('Unable to load this inquiry\'s quotes. Please refresh and try again.')
+    records.push(...(result.data ?? []))
+    skipToken = result.skipToken
+  } while (skipToken)
+  return records
 }
 
 export async function listWonQuotesForProduct(productId: string) {

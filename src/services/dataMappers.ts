@@ -349,6 +349,8 @@ function inquiryLifecycleStatusLabel(formatted?: string, raw?: number | string) 
       return 'Escalate to Head of Aviation'
     case 751820014:
       return 'Property or Reinsurance Team'
+    case 751820015:
+      return 'More Information Required'
     default:
       break
   }

@@ -30,7 +30,8 @@ import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
 import { Select } from '../../components/ui/Select'
 import { getUnderwriterSubActions, underwriterActions, vehicleValueAverage } from '../../lib/inquiryUnderwriting'
-import { formatCurrency, formatDate, formatPercent } from '../../lib/formatters'
+import { formatAmount, formatCurrency, formatDate, formatPercent } from '../../lib/formatters'
+import { AmountInput } from '../../components/ui/AmountInput'
 
 interface InquiryFormState {
   name: string
@@ -1314,6 +1315,26 @@ export function InquiryWorkspacePage() {
                   </Card>
 
                   <Card className="space-y-5">
+                    <SectionHeader title="Underwriting Action" description="Record the underwriting decision and its associated reason." />
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <Field label="Underwriter Action Status">
+                        {isEditing ? (
+                          <SelectField value={form.underwriterActionStatus} options={underwriterActions} onChange={(value) => setForm({ ...form, underwriterActionStatus: value, underwriterSubAction: '' })} />
+                        ) : (
+                          <ReadOnlyValue value={findOptionLabel(underwriterActions, form.underwriterActionStatus, 'Not selected')} />
+                        )}
+                      </Field>
+                      <Field label="Underwriter Sub Action">
+                        {isEditing ? (
+                          <SelectField value={form.underwriterSubAction} options={getUnderwriterSubActions(form.underwriterActionStatus)} disabled={!form.underwriterActionStatus} onChange={(value) => setForm({ ...form, underwriterSubAction: value })} />
+                        ) : (
+                          <ReadOnlyValue value={findOptionLabel(getUnderwriterSubActions(form.underwriterActionStatus), form.underwriterSubAction, 'Not selected')} />
+                        )}
+                      </Field>
+                    </div>
+                  </Card>
+
+                  <Card className="space-y-5">
                     <SectionHeader title="Risk" description="Exposure, scope, and risk intelligence inputs for underwriting." />
                     <div className="grid gap-4 md:grid-cols-2">
                       <Field label="Cover Type">
@@ -1390,29 +1411,11 @@ export function InquiryWorkspacePage() {
                   <Card className="space-y-5">
                     <SectionHeader title="Premium" description="Commercial premium and deduction controls for the inquiry." />
                     <div className="grid gap-4 md:grid-cols-2">
-                      <Field label="Vehicle Value">
-                        <ReadOnlyValue value={vehicleValueAverage(inquiry.vehicleValue) || 'Not available'} />
-                      </Field>
-                      <Field label="Underwriter Action Status">
-                        {isEditing ? (
-                          <SelectField value={form.underwriterActionStatus} options={underwriterActions} onChange={(value) => setForm({ ...form, underwriterActionStatus: value, underwriterSubAction: '' })} />
-                        ) : (
-                          <ReadOnlyValue value={findOptionLabel(underwriterActions, form.underwriterActionStatus, 'Not selected')} />
-                        )}
-                      </Field>
-                      <Field label="Underwriter Sub Action">
-                        {isEditing ? (
-                          <SelectField value={form.underwriterSubAction} options={getUnderwriterSubActions(form.underwriterActionStatus)} disabled={!form.underwriterActionStatus} onChange={(value) => setForm({ ...form, underwriterSubAction: value })} />
-                        ) : (
-                          <ReadOnlyValue value={findOptionLabel(getUnderwriterSubActions(form.underwriterActionStatus), form.underwriterSubAction, 'Not selected')} />
-                        )}
-                      </Field>
-                      <div className="hidden md:block" aria-hidden="true" />
                       <Field label="Base Premium">
                         {isEditing ? (
-                          <Input type="number" value={form.basePremium} onChange={(event) => setForm({ ...form, basePremium: event.target.value })} />
+                          <AmountInput value={form.basePremium} onValueChange={(value) => setForm({ ...form, basePremium: value })} />
                         ) : (
-                          <ReadOnlyValue value={form.basePremium} />
+                          <ReadOnlyValue value={formatAmount(form.basePremium)} />
                         )}
                       </Field>
                       <div className="relative space-y-2.5">
@@ -1430,9 +1433,9 @@ export function InquiryWorkspacePage() {
                           </div>
                         </div>
                         {isEditing ? (
-                          <Input type="number" value={form.premiumToBeCharged} onChange={(event) => setForm({ ...form, premiumToBeCharged: event.target.value })} />
+                          <AmountInput value={form.premiumToBeCharged} onValueChange={(value) => setForm({ ...form, premiumToBeCharged: value })} />
                         ) : (
-                          <ReadOnlyValue value={form.premiumToBeCharged} />
+                          <ReadOnlyValue value={formatAmount(form.premiumToBeCharged)} />
                         )}
                       </div>
                       <Field label="Brokerage">
@@ -1444,9 +1447,9 @@ export function InquiryWorkspacePage() {
                       </Field>
                       <Field label="Gross Premium">
                         {isEditing ? (
-                          <Input type="number" value={form.grossPremium} onChange={(event) => setForm({ ...form, grossPremium: event.target.value })} />
+                          <AmountInput value={form.grossPremium} onValueChange={(value) => setForm({ ...form, grossPremium: value })} />
                         ) : (
-                          <ReadOnlyValue value={form.grossPremium} />
+                          <ReadOnlyValue value={formatAmount(form.grossPremium)} />
                         )}
                       </Field>
                       <Field label="Payment Term">
@@ -1458,9 +1461,9 @@ export function InquiryWorkspacePage() {
                       </Field>
                       <Field label="Fee">
                         {isEditing ? (
-                          <Input type="number" value={form.fee} onChange={(event) => setForm({ ...form, fee: event.target.value })} />
+                          <AmountInput value={form.fee} onValueChange={(value) => setForm({ ...form, fee: value })} />
                         ) : (
-                          <ReadOnlyValue value={form.fee} />
+                          <ReadOnlyValue value={formatAmount(form.fee)} />
                         )}
                       </Field>
                       <Field label="Total Deduction">
@@ -1469,6 +1472,9 @@ export function InquiryWorkspacePage() {
                         ) : (
                           <ReadOnlyValue value={form.totalDeduction} />
                         )}
+                      </Field>
+                      <Field label="Vehicle Value">
+                        <ReadOnlyValue value={formatAmount(vehicleValueAverage(inquiry.vehicleValue)) || 'Not available'} />
                       </Field>
                     </div>
                   </Card>
