@@ -127,9 +127,5 @@ export function HealthPremiumFields({ customerData, excludeInquiryAmounts = fals
     ['VAT Amount', healthMoney(data.premium.vatAmount, data.currency)],
   )
   if (!excludeInquiryAmounts) fields.push(['Total Amount to Charge', healthMoney(data.premium.totalAmountCharge, data.currency)])
-  fields.push(
-    ['Pricing Complete', healthAnswer(data.premium.complete)],
-    ['Rounding Method', data.premium.rounding === 'ceil-whole-unit' ? 'Round Up to Whole Unit' : healthChoice(data.premium.rounding)],
-  )
   return <HealthFields fields={fields} />
 }
