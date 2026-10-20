@@ -66,10 +66,12 @@ export async function createHealthQuotePdf({ detail, inquiry, form, planName, pl
   ], columnStyles: columns }, 'Inquiry Overview')
   divider()
   table({ body: [
-    ['TPA', clean(data.tpa), 'Network', clean(data.network)],
-    ['Network Charge', data.networkAdjustment, 'VAT Rate', rate(form.vat)],
+    ['TPA', clean(data.tpa), 'TPA Network', clean(data.network)],
     ['Coverage Type', clean(data.coverage), 'Members', String(data.members.length)],
-    ['Gross Premium', amount(inquiry.grossPremium), 'Premium to be Charged', amount(data.premiumToCharge)],
+    ['Gross Premium', amount(inquiry.grossPremium), 'Network Charge', data.networkAdjustment],
+    ['Network Adjustment Amount', amount(data.networkAdjustmentAmount), '', ''],
+    ['VAT Rate', rate(form.vat), ...(data.vatAmount !== null ? ['VAT Amount', amount(data.vatAmount)] : ['', ''])],
+    ['Premium to be Charged', amount(data.premiumToCharge), '', ''],
   ], columnStyles: columns }, 'Inquiry Overview')
   divider()
   const members = data.members.length ? data.members : [null]

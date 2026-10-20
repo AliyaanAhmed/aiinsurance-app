@@ -42,7 +42,9 @@ export function healthQuoteData(inquiry: InquiryDetail) {
     emirate: healthAnswer(customer?.visaEmirate),
     tpa: inquiry.tpa || 'Not provided',
     network: inquiry.tpaNetworkLabel || 'Not provided',
-    networkAdjustment: tpaNetworkPremiumAdjustment(inquiry.tpaNetworkLabel),
+    networkAdjustment: evaluationNumber(customer?.premium.networkAdjustmentPercent) !== null ? `${evaluationNumber(customer?.premium.networkAdjustmentPercent)}%` : tpaNetworkPremiumAdjustment(inquiry.tpaNetworkLabel),
+    networkAdjustmentAmount: evaluationNumber(customer?.premium.networkAdjustmentAmount),
+    vatAmount: evaluationNumber(customer?.premium.vatAmount),
     policyPremium: evaluationObject(evaluation?.policyPremiumBreakdown),
     premiumToCharge: inquiry.totalCharge,
   }
