@@ -102,7 +102,7 @@ export async function getInquiryDetailCore(id: string): Promise<InquiryDetail> {
   const [inquiryResult, inquiryChoiceFieldsResult, referenceData, tpaResult] = await Promise.all([
     Aur_quotesesService.get(id),
     Aur_quotesesService.get(id, {
-      select: ['aur_inquiry_type', 'aur_inquiry_typename', 'aur_inquiry_status', 'aur_inquiry_statusname', 'aur_ai_evaluation_json_response'],
+      select: ['aur_inquiry_type', 'aur_inquiry_typename', 'aur_inquiry_status', 'aur_inquiry_statusname', 'aur_ai_evaluation_json_response', 'aur_documents_url'],
     }).catch(() => ({ data: undefined })),
     getInquiryReferenceData(),
     Aur_quotesesService.get(id, { select: ['aur_tpa', 'aur_tpa_network', 'aur_tpa_networkname'] }).catch(() => ({ data: undefined })),
@@ -124,6 +124,9 @@ export async function getInquiryDetailCore(id: string): Promise<InquiryDetail> {
       ? {
           ...inquiryResult.data,
           ...(tpaResult.data ?? {}),
+          aur_documents_url:
+            (inquiryChoiceFieldsResult.data as { aur_documents_url?: string | null } | undefined)?.aur_documents_url ??
+            (inquiryResult.data as { aur_documents_url?: string | null }).aur_documents_url,
           aur_ai_evaluation_json_response:
             (inquiryChoiceFieldsResult.data as { aur_ai_evaluation_json_response?: string | null } | undefined)?.aur_ai_evaluation_json_response ??
             (inquiryResult.data as { aur_ai_evaluation_json_response?: string | null }).aur_ai_evaluation_json_response,

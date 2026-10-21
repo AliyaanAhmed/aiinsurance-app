@@ -84,6 +84,7 @@ export function mapInquiryDetail(
     aur_vehicle_value?: string | null
     aur_customer_data?: string | null
     aur_ai_evaluation_json_response?: string | null
+    aur_documents_url?: string | null
     aur_tpa?: string | null
     aur_tpa_network?: number | null
     aur_tpa_networkname?: string | null
@@ -139,6 +140,7 @@ export function mapInquiryDetail(
     vehicleValue: inquiryRecord.aur_vehicle_value ?? '',
     customerData: inquiryRecord.aur_customer_data ?? '',
     aiEvaluationJsonResponse: inquiryRecord.aur_ai_evaluation_json_response ?? '',
+    documentsUrl: inquiryRecord.aur_documents_url ?? '',
     tpa: inquiryRecord.aur_tpa ?? '',
     tpaNetworkValue: inquiryRecord.aur_tpa_network,
     tpaNetworkLabel: inquiryRecord.aur_tpa_networkname || inquiryRecord['aur_tpa_network@OData.Community.Display.V1.FormattedValue'] || '',

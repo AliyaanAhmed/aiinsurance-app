@@ -58,6 +58,25 @@
         "workflowDisplayName": "When Quote Generated - Send Email to Customer",
         "workflowName": "a5e6bde4-839e-804c-42dd-4985a1532328"
       }
+    },
+    "8b2ca91c-7563-478e-82b4-eba5874040cb": {
+      "id": "/providers/microsoft.powerapps/apis/shared_sharepointonline",
+      "displayName": "SharePoint"
+    },
+    "5c589f4e-7c50-4e69-a7de-df88208392a7": {
+      "id": "/providers/Microsoft.PowerApps/apis/shared_logicflows",
+      "displayName": "Logic flows",
+      "dataSources": [
+        "getinquiryevidencedocument_"
+      ],
+      "workflowDetails": {
+        "workflowEntityId": "4ea9d969-2ecd-f111-a05c-6045bd3e0166",
+        "workflowDisplayName": "Get Inquiry Evidence Document.",
+        "workflowName": "4ea9d969-2ecd-f111-a05c-6045bd3e0166",
+        "dependencies": {
+          "shared_sharepointonline": "8b2ca91c-7563-478e-82b4-eba5874040cb"
+        }
+      }
     }
   },
   "databaseReferences": {

@@ -152,6 +152,7 @@ export interface InquiryDetail extends InquirySummary {
   vehicleValue?: string
   customerData?: string
   aiEvaluationJsonResponse?: string
+  documentsUrl?: string
   tpa?: string
   tpaNetworkValue?: number | null
   tpaNetworkLabel?: string

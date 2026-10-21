@@ -18,6 +18,7 @@ interface SelectProps extends Omit<SelectHTMLAttributes<HTMLSelectElement>, 'onC
   disabled?: boolean
   className?: string
   contentClassName?: string
+  showSelectionIndicator?: boolean
   children?: ReactNode
 }
 
@@ -30,7 +31,9 @@ export function Select({
   disabled = false,
   className,
   contentClassName,
+  showSelectionIndicator = true,
   children,
+  'aria-label': ariaLabel,
 }: SelectProps) {
   const derivedOptions =
     options ??
@@ -52,6 +55,7 @@ export function Select({
       disabled={disabled}
     >
       <SelectPrimitive.Trigger
+        aria-label={ariaLabel}
         className={cn(
           'form-field-surface flex h-12 w-full items-center justify-between rounded-xl border border-slate-200 px-3 py-2 text-sm text-foreground shadow-sm outline-none ring-offset-white transition placeholder:text-[#94A3B8] focus:border-primary focus:ring-1 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50 data-[placeholder]:text-[#94A3B8] dark:border-white/10 dark:text-[#F1F5F9]',
           className,
@@ -80,9 +84,9 @@ export function Select({
                 disabled={option.disabled}
                 className="relative flex cursor-pointer select-none items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-foreground outline-none transition focus:bg-primary/8 focus:text-primary data-[disabled]:pointer-events-none data-[disabled]:opacity-40 dark:text-[#F1F5F9] dark:focus:bg-white/8"
               >
-                <SelectPrimitive.ItemIndicator>
+                {showSelectionIndicator ? <SelectPrimitive.ItemIndicator>
                   <Check className="h-4 w-4 text-primary" />
-                </SelectPrimitive.ItemIndicator>
+                </SelectPrimitive.ItemIndicator> : null}
                 <SelectPrimitive.ItemText>{option.label}</SelectPrimitive.ItemText>
               </SelectPrimitive.Item>
             ))}

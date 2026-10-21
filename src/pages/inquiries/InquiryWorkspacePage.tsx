@@ -5,6 +5,8 @@ import { ClipboardList, Car, UserRound, HeartPulse } from 'lucide-react'
 import { InquirySection, InquiryInformationSection, InquiryAiPanel, InquiryDecisionRail, InquiryEmailReader, InquiryHeaderMetric } from '../../components/inquiries/InquiryWorkspacePanels'
 import { HealthInquirySections, HealthPremiumFields } from '../../components/inquiries/HealthInquirySections'
 import { HealthAiEvaluation } from '../../components/inquiries/HealthAiEvaluation'
+import { DocumentEvidence } from '../../components/inquiries/DocumentEvidence'
+import { motorEvidenceRule } from '../../lib/documentEvidence'
 import { HealthInquiryStepper } from '../../components/inquiries/HealthInquiryStepper'
 import { healthAnswer, healthMoney, inquiryProductKind, parseHealthCustomerData, tpaNetworkPremiumAdjustment } from '../../lib/healthInquiry'
 import { evaluationNumber, evaluationObject, parseHealthAiEvaluation } from '../../lib/healthAiEvaluation'
@@ -1474,7 +1476,7 @@ export function InquiryWorkspacePage() {
                     value={inquiry.aiEvaluationJsonResponse}
                     loading={isHydratingSupplementary}
                     onReevaluate={() => setIsAiReevaluateOpen(true)}
-                    renderEvidence={(evidence) => <EvidenceTooltip evidence={evidence} compact />}
+                    renderEvidence={(evidence, rule) => <DocumentEvidence inquiryId={inquiry.id} documentsUrl={inquiry.documentsUrl} evidence={evidence} references={rule.evidenceReferences} />}
                   /> : <InquiryAiPanel
                     records={visibleQuoteDetails}
                     allRecords={inquiry.quoteDetails}
@@ -1487,7 +1489,7 @@ export function InquiryWorkspacePage() {
                     onSave={(recordId) => void handleSaveQuoteDetailResponse(recordId)}
                     onReevaluate={() => setIsAiReevaluateOpen(true)}
                     onRequestDraft={handleMakeDraft} showRequestDraft={missingQuoteDetails.length > 0}
-                    renderEvidence={(evidence) => <EvidenceTooltip evidence={evidence} compact />}
+                    renderEvidence={(evidence, rule) => <DocumentEvidence inquiryId={inquiry.id} documentsUrl={inquiry.documentsUrl} evidence={evidence} references={motorEvidenceRule(inquiry.aiEvaluationJsonResponse, rule).evidenceReferences} />}
                   />}
               </div>
               <InquiryDecisionRail inquiry={inquiry} hideCompleteness={isHealthInsurance || isMotorInsurance}
@@ -2855,145 +2857,6 @@ function findOptionName(
 }
 
 
-function EvidenceTooltip({ evidence, compact = false }: { evidence: string; compact?: boolean }) {
-  const preview = evidence
-    .replace(/Document Name:\s*/gi, '')
-    .replace(/\s+Evidence:\s*/gi, '\n')
-    .trim()
-  const [open, setOpen] = useState(false)
-  const [hovered, setHovered] = useState(false)
-  const [position, setPosition] = useState<{ top: number; left: number } | null>(null)
-  const popoverRef = useRef<HTMLDivElement | null>(null)
-  const triggerRef = useRef<HTMLButtonElement | null>(null)
-
-  useEffect(() => {
-    if (!open && !hovered) return
-
-    const updatePosition = () => {
-      if (!triggerRef.current) return
-      const rect = triggerRef.current.getBoundingClientRect()
-      const popoverWidth = 380
-      const viewportPadding = 16
-      const left = Math.min(
-        Math.max(viewportPadding, rect.right - popoverWidth),
-        window.innerWidth - popoverWidth - viewportPadding,
-      )
-
-      setPosition({
-        top: rect.bottom + 12,
-        left,
-      })
-    }
-
-    const handlePointerDown = (event: MouseEvent) => {
-      const target = event.target as Node
-      if (
-        popoverRef.current?.contains(target) ||
-        triggerRef.current?.contains(target)
-      ) {
-        return
-      }
-      if (!popoverRef.current?.contains(target)) {
-        setOpen(false)
-      }
-    }
-
-    updatePosition()
-    window.addEventListener('resize', updatePosition)
-    window.addEventListener('scroll', updatePosition, true)
-    document.addEventListener('mousedown', handlePointerDown)
-    return () => {
-      window.removeEventListener('resize', updatePosition)
-      window.removeEventListener('scroll', updatePosition, true)
-      document.removeEventListener('mousedown', handlePointerDown)
-    }
-  }, [open, hovered])
-
-  return (
-    <div
-      ref={popoverRef}
-      className={`relative inline-flex ${open || hovered ? 'z-[120]' : 'z-[2]'}`}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-    >
-      <button
-        ref={triggerRef}
-        type="button"
-        onClick={() => setOpen((current) => !current)}
-        onFocus={() => setHovered(true)}
-        onBlur={() => setHovered(false)}
-        className={`inline-flex items-center justify-center rounded-full border border-border-soft bg-white text-muted-foreground transition hover:border-primary/20 hover:text-primary dark:bg-slate-900 ${
-          compact ? 'h-7 w-7 shrink-0' : 'h-8 w-8'
-        }`}
-      >
-        <FileText className={compact ? 'h-3.5 w-3.5' : 'h-4 w-4'} />
-      </button>
-      {(open || hovered) && position
-        ? createPortal(
-            <div
-              className="fixed z-[160] w-[380px]"
-              style={{ top: position.top, left: position.left }}
-              onMouseEnter={() => setHovered(true)}
-              onMouseLeave={() => setHovered(false)}
-            >
-              <div className="absolute right-5 top-[-10px] h-5 w-5 rotate-45 border-l border-t border-border-soft bg-white shadow-[-6px_-6px_18px_rgba(15,23,42,0.04)] dark:bg-[#102033]" />
-              <div className="overflow-hidden rounded-[24px] border border-border-soft bg-white shadow-[0_26px_55px_rgba(15,23,42,0.18)] dark:bg-[#102033]">
-                <div className="flex items-start justify-between gap-4 border-b border-border-soft bg-white px-4 py-3.5 dark:bg-[#102033]">
-                  <div className="flex items-center gap-3">
-                    <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-amber-100 text-amber-700 dark:bg-amber-300/15 dark:text-amber-200">
-                      <FileText className="h-4 w-4" />
-                    </span>
-                    <div>
-                      <p className="text-sm font-semibold text-foreground">Evidence Preview</p>
-                      <p className="text-xs text-muted-foreground">Extracted from document source</p>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setOpen(false)}
-                    className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border-soft bg-white text-muted-foreground transition hover:border-primary/20 hover:text-primary dark:bg-slate-900"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-
-                <div
-                  className="relative overflow-hidden rounded-b-[24px] bg-[#fbfaf5] px-5 py-5 dark:bg-[#f8f4ea]"
-                  style={{
-                    backgroundImage:
-                      'radial-gradient(circle at 20% 20%, rgba(255,255,255,0.7) 0, rgba(255,255,255,0) 22%), radial-gradient(circle at 80% 0%, rgba(0,0,0,0.02) 0, rgba(0,0,0,0) 24%)',
-                  }}
-                >
-                  <div className="absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-black/10 via-black/5 to-transparent" />
-
-                  <div className="relative text-[13px] leading-6 text-slate-700/40">
-                    <p className="blur-[2.3px]">
-                      This Tenancy Agreement is made by and between the parties stated herein, subject to applicable regulations, submitted schedules, and the related supporting documentation reviewed during underwriting.
-                    </p>
-                  </div>
-
-                  <div className="relative mt-5">
-                    <div className="absolute inset-y-1 left-0 right-0 rounded-[22px] bg-yellow-200/50 blur-xl" />
-                    <div className="absolute inset-y-2 left-2 right-3 rounded-[18px] bg-yellow-100/80" />
-                    <div className="relative px-1.5 font-serif text-[15px] leading-7 text-slate-900">
-                      {preview}
-                    </div>
-                  </div>
-
-                  <div className="relative mt-5 text-[13px] leading-6 text-slate-700/40">
-                    <p className="blur-[2.3px]">
-                      Interpretation of extracted language should be considered alongside the complete submission record, related attachments, endorsements, and the full originating document source.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>,
-            document.body,
-          )
-        : null}
-    </div>
-  )
-}
 
 
 
